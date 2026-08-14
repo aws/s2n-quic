@@ -12,7 +12,7 @@ use s2n_quic::{
     },
     server::Name,
 };
-use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_core::{connection, endpoint::Type, inet::SocketAddress};
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -37,9 +37,16 @@ pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
 pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
 const DC_QUIC_VERSION: u32 = 0;
-/// Application error code the client uses to close a connection whose dcQUIC handshake did not
-/// complete when `ConfirmComplete` failed or timed out.
+/// Application error codes the client uses to close a connection whose dcQUIC handshake did not
+/// complete. Both must be non-zero so the close is emitted as an application `CONNECTION_CLOSE`
+/// rather than the clean, no-error close produced by dropping the connection handle.
+/// Distinct codes let the peer/operator tell the two failure modes apart.
+///
+/// `ConfirmComplete::wait_ready` reported an error before the dc handshake completed.
 const DC_HANDSHAKE_INCOMPLETE_ERROR: u32 = 1;
+/// `ConfirmComplete::wait_ready` did not resolve before the handshake deadline elapsed.
+const DC_HANDSHAKE_TIMEOUT_ERROR: u32 = 2;
+
 /// Number of threads used to make progress on the TLS handshake
 pub const DEFAULT_THREAD_COUNT: usize = 0;
 
@@ -100,7 +107,6 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
         ))
     }
 }
-
 pub struct Server {
     server: s2n_quic::Server,
 }
@@ -250,9 +256,37 @@ pub(super) async fn server<
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
             // confirmation and MTU probing completion.
             let result = tokio::time::timeout(Duration::from_secs(10), async {
-                // FIXME: add more logging information if the subscriber is not registered with the endpoint.
-                if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
-                    MtuConfirmComplete::wait_ready(&mut connection).await;
+                match ConfirmComplete::wait_ready(&mut connection).await {
+                    Ok(()) => {
+                        MtuConfirmComplete::wait_ready(&mut connection).await;
+                    }
+                    Err(error) => {
+                        // The dc handshake did not complete before the connection closed. Surface
+                        // the reason so it is observable. The dc application error codes the client
+                        // sends on its failure paths would otherwise render as a bare integer, so
+                        // translate them into a readable reason.
+                        let reason = match error
+                            .get_ref()
+                            .and_then(|inner| inner.downcast_ref::<connection::Error>())
+                        {
+                            Some(connection::Error::Application { error: code, .. })
+                                if *code == DC_HANDSHAKE_INCOMPLETE_ERROR.into() =>
+                            {
+                                "peer reported that its dc handshake did not complete"
+                            }
+                            Some(connection::Error::Application { error: code, .. })
+                                if *code == DC_HANDSHAKE_TIMEOUT_ERROR.into() =>
+                            {
+                                "peer reported that its dc handshake timed out"
+                            }
+                            _ => "connection closed before the dc handshake completed",
+                        };
+                        tracing::debug!(
+                            peer_address = ?connection.remote_addr().ok(),
+                            error = %error,
+                            "{reason}"
+                        );
+                    }
                 }
             })
             .await;
@@ -545,14 +579,22 @@ impl HandshakeQueue {
                     // emitted as an application CONNECTION_CLOSE (`connection::Error::Application`),
                     // which the server does not treat as completion. If the connection is already
                     // closed this is a no-op.
+                    //
+                    // This is safe to deploy ahead of the corresponding server-side change: a server that predates it
+                    // has no close-based dc completion (it completes only when its own `DC_STATELESS_RESET_TOKENS` are
+                    // acknowledged), so this application close neither completes nor harms it. On a failed handshake
+                    // such a server correctly stays incomplete, and its `ConfirmComplete` observes the application
+                    // error as a failure instead of the false success a clean close would have produced.
+                    // Both sides therefore agree the handshake did not complete.
                     connection.close(DC_HANDSHAKE_INCOMPLETE_ERROR.into());
                     return Err(e);
                 }
                 Err(_elapsed) => {
                     // Handshake timeout occurred. We should treat the handshake as failed.
                     //
-                    // Close with an explicit error. This is the same reason as the first error case.
-                    connection.close(DC_HANDSHAKE_INCOMPLETE_ERROR.into());
+                    // Close with an explicit error, as in the failure case above, but with a
+                    // distinct code so a timeout can be distinguished from other failures.
+                    connection.close(DC_HANDSHAKE_TIMEOUT_ERROR.into());
                     return Err(io::Error::new(
                         io::ErrorKind::TimedOut,
                         "ConfirmComplete handshake timeout",

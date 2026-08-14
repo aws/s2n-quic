@@ -1595,8 +1595,7 @@ fn dc_handshake_completes_when_all_acks_are_dropped() -> Result<()> {
     Ok(())
 }
 
-/// Server-side interceptor that neutralizes the client's standalone ACKs in the
-/// application space.
+/// Server-side interceptor that neutralizes the client's standalone ACKs in the application space.
 struct DropClientStandaloneAcks;
 
 impl Interceptor for DropClientStandaloneAcks {
