@@ -13,6 +13,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_dc_metrics::TaskMonitor;
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -25,7 +26,6 @@ use std::{
     time::Duration,
 };
 use tokio::{runtime::Runtime, sync::Semaphore, time::Instant as TokioInstant};
-use tokio_metrics::TaskMonitor;
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -49,11 +49,15 @@ pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 struct TokioExecutor {
     runtime: Runtime,
-    monitor: TaskMonitor,
+    monitor: Option<TaskMonitor>,
 }
 impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
     fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-        self.runtime.spawn(self.monitor.instrument(task));
+        if let Some(monitor) = &self.monitor {
+            self.runtime.spawn(monitor.instrument(task));
+        } else {
+            self.runtime.spawn(task);
+        }
     }
 }
 #[derive(Clone)]
@@ -102,7 +106,6 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
 
 pub struct Server {
     server: s2n_quic::Server,
-    offload_metrics: Option<TaskMonitor>,
 }
 
 impl Server {
@@ -162,7 +165,7 @@ impl Server {
             }};
         }
 
-        let (server, monitor) = if builder.thread_offload_count > 0 {
+        let server = if builder.thread_offload_count > 0 {
             let runtime = tokio::runtime::Builder::new_multi_thread()
                 // Hs=handshake, s=server, offload
                 .thread_name("hs-s-offload")
@@ -170,7 +173,16 @@ impl Server {
                 .enable_all()
                 .build()?;
 
-            let monitor = tokio_metrics::TaskMonitor::new();
+            let monitor = if let Some(registry) = builder.registry {
+                registry.instrument_runtime(
+                    "offload runtime stats",
+                    runtime.handle(),
+                    Duration::new(1, 0),
+                );
+                Some(registry.register_task_monitor("offload task stats"))
+            } else {
+                None
+            };
 
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
@@ -179,10 +191,7 @@ impl Server {
                     endpoint_type: Type::Server,
                     map: map.clone(),
                 })
-                .with_executor(TokioExecutor {
-                    runtime,
-                    monitor: monitor.clone(),
-                })
+                .with_executor(TokioExecutor { runtime, monitor })
                 .build();
 
             // We need packet storage when offloading is turned on due to this issue:
@@ -191,21 +200,12 @@ impl Server {
             let connection_limits =
                 connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
-            (
-                build_and_start!(tls, connection_limits),
-                Some(monitor.clone()),
-            )
+            build_and_start!(tls, connection_limits)
         } else {
-            (
-                build_and_start!(tls_materials_provider, connection_limits),
-                None,
-            )
+            build_and_start!(tls_materials_provider, connection_limits)
         };
 
-        Ok(Self {
-            server,
-            offload_metrics: monitor,
-        })
+        Ok(Self { server })
     }
 
     #[allow(dead_code)]
@@ -254,16 +254,16 @@ pub(super) async fn server<
     }
 
     let map_clone = map.clone();
-    if let Some(monitor) = server.offload_metrics.take() {
-        let frequency = std::time::Duration::new(1, 0);
-        tokio::spawn(async move {
-            loop {
-                let metrics = monitor.cumulative();
-                map_clone.on_offload_task_metrics(&metrics);
-                tokio::time::sleep(frequency).await;
-            }
-        });
-    }
+    // if let Some(monitor) = server.offload_metrics.take() {
+    //     let frequency = std::time::Duration::new(1, 0);
+    //     tokio::spawn(async move {
+    //         loop {
+    //             let metrics = monitor.cumulative();
+    //             map_clone.on_offload_task_metrics(&metrics);
+    //             tokio::time::sleep(frequency).await;
+    //         }
+    //     });
+    // }
 
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();

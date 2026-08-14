@@ -26,7 +26,6 @@ use std::{
     time::Duration,
 };
 use tokio::task::JoinHandle;
-use tokio_metrics::TaskMetrics;
 
 #[cfg(test)]
 mod tests;
@@ -1352,14 +1351,6 @@ where
         self.subscriber().on_path_secret_map_datagram_decrypt(
             event::builder::PathSecretMapDatagramDecrypt { packet_len },
         );
-    }
-
-    fn on_offload_task_metrics(&self, metrics: &TaskMetrics) {
-        self.subscriber()
-            .on_offload_task_metrics(event::builder::OffloadTaskMetrics {
-                mean_poll_duration: metrics.mean_poll_duration(),
-                mean_scheduled_duration: metrics.mean_scheduled_duration(),
-            });
     }
 }
 

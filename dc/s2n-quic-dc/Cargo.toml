@@ -48,6 +48,7 @@ s2n-codec = { version = "=0.86.0", path = "../../common/s2n-codec", default-feat
 s2n-quic = { version = "=1.86.0", path = "../../quic/s2n-quic", features = ["unstable-provider-connection-close-formatter", "unstable-provider-dc", "unstable-provider-random", "unstable-offload-tls"] }
 s2n-quic-core = { version = "=0.86.0", path = "../../quic/s2n-quic-core", default-features = false }
 s2n-quic-platform = { version = "=0.86.0", path = "../../quic/s2n-quic-platform" }
+s2n-quic-dc-metrics = { version= "=0.86.0", path = "../s2n-quic-dc-metrics" }
 s2n-tls = "0.3.38"
 slotmap = "1"
 hashbrown = "0.17"
@@ -63,7 +64,6 @@ zeroize = "1"
 parking_lot = "0.12"
 bitvec = { version = "1.1.1", default-features = false }
 nix = {version = "0.31.1", features = ["socket", "uio", "fs", "time"] }
-tokio-metrics = "0.5.1"
 
 [dev-dependencies]
 bach = { version = "0.1.0", features = ["net", "tokio-compat"] }

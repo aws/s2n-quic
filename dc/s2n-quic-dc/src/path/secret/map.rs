@@ -17,7 +17,6 @@ use core::fmt;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
-use tokio_metrics::TaskMetrics;
 
 mod cleaner;
 mod disk;
@@ -325,11 +324,6 @@ impl Map {
     /// Emits a DcConnectionTimeout event via the subscriber
     pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
         self.store.on_dc_connection_timeout(peer_address);
-    }
-
-    /// Emits a OffloadTaskMetrics event via the subscriber
-    pub fn on_offload_task_metrics(&self, metrics: &TaskMetrics) {
-        self.store.on_offload_task_metrics(metrics);
     }
 
     /// Emits a datagram encrypt event with the wire packet length
