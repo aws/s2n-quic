@@ -524,6 +524,8 @@ pub trait ConnectionTrait: 'static + Send + Sized {
 
     fn application_protocol(&self) -> Bytes;
 
+    fn signature_scheme(&self) -> Option<&'static str>;
+
     fn ping(&mut self) -> Result<(), connection::Error>;
 
     fn keep_alive(&mut self, enabled: bool) -> Result<(), connection::Error>;

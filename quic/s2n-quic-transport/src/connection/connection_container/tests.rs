@@ -317,6 +317,10 @@ impl connection::Trait for TestConnection {
         todo!()
     }
 
+    fn signature_scheme(&self) -> Option<&'static str> {
+        todo!()
+    }
+
     fn ping(&mut self) -> Result<(), connection::Error> {
         todo!()
     }

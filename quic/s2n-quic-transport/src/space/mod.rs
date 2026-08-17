@@ -84,6 +84,11 @@ pub struct PacketSpaceManager<Config: endpoint::Config> {
     //# another mechanism is used for agreeing on an application protocol,
     //# endpoints MUST use ALPN for this purpose.
     pub application_protocol: Bytes,
+    /// The signature scheme used to authenticate the server
+    ///
+    /// This is `None` if the TLS provider does not report a signature scheme, which
+    /// includes resumed handshakes, where no signature is produced.
+    pub signature_scheme: Option<&'static str>,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for PacketSpaceManager<Config> {
@@ -145,6 +150,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
             handshake_status: HandshakeStatus::default(),
             server_name: None,
             application_protocol: Bytes::new(),
+            signature_scheme: None,
         }
     }
 
@@ -281,6 +287,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 limits,
                 server_name: &mut self.server_name,
                 application_protocol: &mut self.application_protocol,
+                signature_scheme: &mut self.signature_scheme,
                 waker,
                 publisher,
                 datagram,
@@ -343,6 +350,7 @@ impl<Config: endpoint::Config> PacketSpaceManager<Config> {
                 limits,
                 server_name: &mut self.server_name,
                 application_protocol: &mut self.application_protocol,
+                signature_scheme: &mut self.signature_scheme,
                 waker,
                 publisher,
                 datagram,

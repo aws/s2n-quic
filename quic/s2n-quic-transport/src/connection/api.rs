@@ -176,6 +176,10 @@ impl Connection {
         self.api.application_protocol()
     }
     #[inline]
+    pub fn signature_scheme(&self) -> Result<Option<&'static str>, connection::Error> {
+        self.api.signature_scheme()
+    }
+    #[inline]
     pub fn take_tls_context(&self) -> Option<Box<dyn Any + Send>> {
         self.api.take_tls_context()
     }
