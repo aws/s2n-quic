@@ -12,7 +12,7 @@ use s2n_quic::{
     },
     server::Name,
 };
-use s2n_quic_core::{connection, endpoint::Type, inet::SocketAddress};
+use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -107,6 +107,7 @@ impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
         ))
     }
 }
+
 pub struct Server {
     server: s2n_quic::Server,
 }
@@ -256,37 +257,9 @@ pub(super) async fn server<
             // ConnectionClose from the client is lost. This timeout covers both the dc handshake
             // confirmation and MTU probing completion.
             let result = tokio::time::timeout(Duration::from_secs(10), async {
-                match ConfirmComplete::wait_ready(&mut connection).await {
-                    Ok(()) => {
-                        MtuConfirmComplete::wait_ready(&mut connection).await;
-                    }
-                    Err(error) => {
-                        // The dc handshake did not complete before the connection closed. Surface
-                        // the reason so it is observable. The dc application error codes the client
-                        // sends on its failure paths would otherwise render as a bare integer, so
-                        // translate them into a readable reason.
-                        let reason = match error
-                            .get_ref()
-                            .and_then(|inner| inner.downcast_ref::<connection::Error>())
-                        {
-                            Some(connection::Error::Application { error: code, .. })
-                                if *code == DC_HANDSHAKE_INCOMPLETE_ERROR.into() =>
-                            {
-                                "peer reported that its dc handshake did not complete"
-                            }
-                            Some(connection::Error::Application { error: code, .. })
-                                if *code == DC_HANDSHAKE_TIMEOUT_ERROR.into() =>
-                            {
-                                "peer reported that its dc handshake timed out"
-                            }
-                            _ => "connection closed before the dc handshake completed",
-                        };
-                        tracing::debug!(
-                            peer_address = ?connection.remote_addr().ok(),
-                            error = %error,
-                            "{reason}"
-                        );
-                    }
+                // FIXME: add more logging information if the subscriber is not registered with the endpoint.
+                if ConfirmComplete::wait_ready(&mut connection).await.is_ok() {
+                    MtuConfirmComplete::wait_ready(&mut connection).await;
                 }
             })
             .await;
