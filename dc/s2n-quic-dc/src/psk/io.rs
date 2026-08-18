@@ -174,12 +174,7 @@ impl Server {
                 .build()?;
 
             let monitor = if let Some(registry) = builder.registry {
-                registry.instrument_runtime(
-                    "offload runtime stats",
-                    runtime.handle(),
-                    Duration::new(1, 0),
-                );
-                Some(registry.register_task_monitor("offload task stats"))
+                Some(registry.register_task_monitor("HsOffload"))
             } else {
                 None
             };
