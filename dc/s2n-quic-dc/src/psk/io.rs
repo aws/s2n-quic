@@ -13,6 +13,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_dc_metrics::TaskMonitor;
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -48,10 +49,15 @@ pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 struct TokioExecutor {
     runtime: Runtime,
+    monitor: Option<TaskMonitor>,
 }
 impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
     fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-        self.runtime.spawn(task);
+        if let Some(monitor) = &self.monitor {
+            self.runtime.spawn(monitor.instrument(task));
+        } else {
+            self.runtime.spawn(task);
+        }
     }
 }
 #[derive(Clone)]
@@ -167,6 +173,10 @@ impl Server {
                 .enable_all()
                 .build()?;
 
+            let monitor = builder
+                .registry
+                .map(|registry| registry.register_task_monitor("HsOffload"));
+
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
                 .with_exporter(DCExporter {
@@ -174,7 +184,7 @@ impl Server {
                     endpoint_type: Type::Server,
                     map: map.clone(),
                 })
-                .with_executor(TokioExecutor { runtime })
+                .with_executor(TokioExecutor { runtime, monitor })
                 .build();
 
             // We need packet storage when offloading is turned on due to this issue:
