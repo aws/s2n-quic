@@ -173,11 +173,9 @@ impl Server {
                 .enable_all()
                 .build()?;
 
-            let monitor = if let Some(registry) = builder.registry {
-                Some(registry.register_task_monitor("HsOffload"))
-            } else {
-                None
-            };
+            let monitor = builder
+                .registry
+                .map(|registry| registry.register_task_monitor("HsOffload"));
 
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
