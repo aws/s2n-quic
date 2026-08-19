@@ -1435,12 +1435,13 @@ impl ExporterHandler for Exporter {
     }
 }
 
-/// Drives a dc handshake where the server's standalone token ACKs are neutralized by a
-/// packet interceptor, then has the client close and linger  so the server can only reach `Complete`
-/// via the token ACK that rides on the client's close.
+/// Drives a dc handshake where the client's standalone ACKs are neutralized by a packet interceptor,
+/// so the server never sees an acknowledgement of its `DC_STATELESS_RESET_TOKENS`, then has the
+/// client close and linger. The server can therefore only reach `Complete` by treating the client's
+/// clean `CONNECTION_CLOSE` as proof that the client received those tokens.
 ///
-/// The server MTU is pinned so it never probes, because its ACKs dropped it couldn't drive an
-/// MTU search anyway, while the client probes normally against the un-intercepted server->client path.
+/// The server's MTU is pinned so it never probes: with the ACKs of its probes dropped it could not
+/// drive an MTU search anyway, while the client probes normally.
 ///
 /// Returns the client and server `DcRecorder`s so the caller can assert on dc state.
 #[track_caller]
@@ -1493,8 +1494,8 @@ fn dc_completes_through_close<S: ServerProviders, C: ClientProviders>(
         spawn(async move {
             if let Some(mut conn) = server.accept().await {
                 // Mirror the real dc server: wait for the dc handshake, then MTU probing.
-                // Reaching `Complete` under this interception can only happen via the ACK
-                // bundled onto the client's close.
+                // Under this interception the acknowledgement of the server's tokens never
+                // arrives, so `Complete` can only be reached via the client's clean close.
                 let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
                 assert!(
                     result.is_ok(),
@@ -1529,10 +1530,12 @@ fn dc_completes_through_close<S: ServerProviders, C: ClientProviders>(
             let mut conn = client.connect(connect).await.unwrap();
             // Mirror the real dc client: wait for BOTH the dc handshake and MTU probing
             // before closing. The client closes once its own MTU search completes and it
-            // has the server's tokens, which is exactly the timing that triggers the bug.
+            // has the server's tokens, which is exactly the timing that leaves the server
+            // waiting on an acknowledgement it will never receive.
             dc::ConfirmComplete::wait_ready(&mut conn).await.unwrap();
             dc::MtuConfirmComplete::wait_ready(&mut conn).await;
-            // Closing here sends a CONNECTION_CLOSE carrying the pending token ACK.
+            // Dropping the connection sends a no-error CONNECTION_CLOSE, which is the signal the
+            // server completes on. The clean close itself that tells the server the client got its tokens.
             drop(conn);
             // Keep this (primary) task alive so the simulation continues running long
             // enough for the close (or its retransmission) to reach the server.
