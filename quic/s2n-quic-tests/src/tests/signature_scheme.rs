@@ -106,13 +106,6 @@ fn signature_scheme_test(case: &'static Case) {
             // confirm this really is an h3 connection
             assert_eq!(&conn.application_protocol().unwrap()[..], b"h3");
 
-            assert_eq!(
-                conn.signature_scheme().unwrap(),
-                Some(case.expected),
-                "unexpected Connection::signature_scheme() for {}",
-                case.name
-            );
-
             // round trip through the echo server so the server side of the handshake
             // completes before the simulation ends
             let mut stream = conn.open_bidirectional_stream().await.unwrap();
@@ -125,8 +118,8 @@ fn signature_scheme_test(case: &'static Case) {
     })
     .unwrap();
 
-    // Check the two event surfaces on both endpoints. The accessor itself was asserted on
-    // the client above, but not on the server.
+    // The scheme is reported through events only, so assert both event surfaces on both
+    // endpoints.
     client_recorders.assert_observed(Some(case.expected), &format!("{} client", case.name));
     server_recorders.assert_observed(Some(case.expected), &format!("{} server", case.name));
 }
@@ -136,8 +129,8 @@ fn signature_scheme_is_available_on_h3_connections() {
     signature_scheme_test(&ECDSA_P256);
 }
 
-/// The same API must report a different scheme when the server signs with a different
-/// key type, which is what proves it reflects the negotiated handshake.
+/// The event must report a different scheme when the server signs with a different key
+/// type, which is what proves it reflects the negotiated handshake.
 #[test]
 fn signature_scheme_reports_ecdsa_p384() {
     signature_scheme_test(&ECDSA_P384);
@@ -224,12 +217,6 @@ fn signature_scheme_is_absent_on_resumed_h3_connections() {
             );
 
             assert_eq!(&conn.application_protocol().unwrap()[..], b"h3");
-
-            assert_eq!(
-                conn.signature_scheme().unwrap(),
-                None,
-                "a resumed handshake produces no server signature"
-            );
         });
 
         Ok(addr)

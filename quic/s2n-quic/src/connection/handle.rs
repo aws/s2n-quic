@@ -168,24 +168,6 @@ macro_rules! impl_handle_api {
         pub fn application_protocol(&self) -> $crate::connection::Result<::bytes::Bytes> {
             self.0.application_protocol()
         }
-        /// Returns the TLS signature scheme used to authenticate the server for this connection.
-        ///
-        /// This is the QUIC equivalent of s2n-tls's `s2n_connection_get_signature_scheme`.
-        /// Since QUIC always negotiates TLS 1.3, the returned name is the TLS 1.3 name for
-        /// signature schemes that share an IANA value with TLS 1.2.
-        ///
-        /// Returns `Ok(None)` when no signature scheme is available, which includes:
-        ///
-        /// * the handshake was resumed, so the server produced no signature
-        /// * the handshake has not completed yet
-        /// * the configured TLS provider does not report the signature scheme
-        /// * the handshake was offloaded, which does not report the TLS session back to
-        ///   the connection. This is the same limitation that applies to the
-        ///   `TlsExporterReady` event.
-        #[inline]
-        pub fn signature_scheme(&self) -> $crate::connection::Result<Option<&'static str>> {
-            self.0.signature_scheme()
-        }
 
         /// Takes the context provided by the TLS provider.
         ///

@@ -310,9 +310,6 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
     fn application_protocol(&self) -> Result<Bytes, connection::Error> {
         self.api_read_call(|conn| Ok(conn.application_protocol()))
     }
-    fn signature_scheme(&self) -> Result<Option<&'static str>, connection::Error> {
-        self.api_read_call(|conn| Ok(conn.signature_scheme()))
-    }
     fn take_tls_context(&self) -> Option<Box<dyn Any + Send>> {
         self.api_write_call(|conn| Ok::<_, connection::Error>(conn.take_tls_context()))
             .ok()

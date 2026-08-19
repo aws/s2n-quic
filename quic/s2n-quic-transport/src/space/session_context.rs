@@ -75,7 +75,6 @@ pub struct SessionContext<'a, Config: endpoint::Config, Pub: event::ConnectionPu
     pub limits: &'a mut Limits,
     pub server_name: &'a mut Option<ServerName>,
     pub application_protocol: &'a mut Bytes,
-    pub signature_scheme: &'a mut Option<&'static str>,
     pub waker: &'a Waker,
     pub publisher: &'a mut Pub,
     pub datagram: &'a mut Config::DatagramEndpoint,
@@ -567,7 +566,6 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 .on_signature_scheme(event::builder::SignatureScheme {
                     chosen_signature_scheme: signature_scheme,
                 });
-            *self.signature_scheme = Some(signature_scheme);
         }
 
         self.application
