@@ -13,7 +13,7 @@ use std::{
 fn disk_entry(entry: &Arc<Entry>) -> DiskEntry {
     DiskEntry {
         peer: *entry.peer(),
-        id: *entry.id(),
+        id: Some(*entry.id()),
     }
 }
 
@@ -243,20 +243,42 @@ fn build_accepts_existing_directory() {
 }
 
 #[test]
-fn rejects_old_version() {
-    // A file written by the previous (v0) format must be rejected as unsupported rather than
-    // misdecoded: v0 entries do not carry credential IDs.
+fn reads_v0_entries_without_credential_id() {
+    // A file written by the previous (v0) format is still readable so a process can recover from
+    // one written before a credential-id-aware binary rolled out. v0 entries carry only a peer
+    // address, so their credential id decodes as `None`.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("secrets");
+    let peer = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 4433));
 
     let mut bytes = Vec::new();
     bytes.extend_from_slice(HEADER.as_bytes());
     bytes.extend_from_slice(b"v0");
     bytes.extend_from_slice(&0u64.to_le_bytes());
+    // One v0 entry: tag 0 (IPv4), address, port, and no credential id.
+    bytes.push(0);
+    bytes.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
+    bytes.extend_from_slice(&4433u16.to_le_bytes());
+    std::fs::write(&path, &bytes).unwrap();
+
+    let decoded: Vec<DiskEntry> = deserialize(&path).unwrap().map(|e| e.unwrap()).collect();
+    assert_eq!(decoded, vec![DiskEntry { peer, id: None }]);
+}
+
+#[test]
+fn rejects_unknown_version() {
+    // A version that is neither v0 nor v1 is rejected rather than misdecoded.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("secrets");
+
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(HEADER.as_bytes());
+    bytes.extend_from_slice(b"v9");
+    bytes.extend_from_slice(&0u64.to_le_bytes());
     std::fs::write(&path, &bytes).unwrap();
 
     let err = match deserialize(&path) {
-        Ok(_) => panic!("expected deserialize to reject an old version"),
+        Ok(_) => panic!("expected deserialize to reject an unknown version"),
         Err(err) => err,
     };
     assert_eq!(err.kind(), io::ErrorKind::InvalidData);
