@@ -314,7 +314,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         }
         self.first_buffered_at = None;
 
-        let mut payload: Vec<u8> = self.packet_buffer.drain(..).collect();
+        let mut payload: Vec<u8> = std::mem::take(&mut self.packet_buffer);
         let buffer = DecoderBufferMut::new(payload.as_mut_slice());
 
         let destination_connection_id = self.path_manager.active_path().local_connection_id;

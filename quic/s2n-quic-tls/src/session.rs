@@ -118,6 +118,10 @@ impl tls::TlsSession for Session {
         self.state.cipher_suite()
     }
 
+    fn signature_scheme(&self) -> Option<&'static str> {
+        self.connection.signature_scheme()
+    }
+
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, tls::ChainError> {
         self.connection
             .peer_cert_chain()

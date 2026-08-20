@@ -106,6 +106,17 @@ pub trait TlsSession: Send {
 
     fn cipher_suite(&self) -> CipherSuite;
 
+    /// The signature scheme used to authenticate the server for this connection,
+    /// e.g. `"ecdsa_secp256r1_sha256"`.
+    ///
+    /// Returns `None` when the signature scheme is unavailable, which includes:
+    ///
+    /// * the handshake was a session resumption, so no signature was produced
+    /// * the TLS provider does not expose the negotiated signature scheme
+    fn signature_scheme(&self) -> Option<&'static str> {
+        None
+    }
+
     // The peer's verified cert chain.
     #[cfg(feature = "alloc")]
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError>;
