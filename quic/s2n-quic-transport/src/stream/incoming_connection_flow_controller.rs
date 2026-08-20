@@ -178,6 +178,11 @@ impl IncomingConnectionFlowController {
     }
 
     #[cfg(test)]
+    pub fn consumed_window(&self) -> VarInt {
+        self.inner.borrow().consumed_window
+    }
+
+    #[cfg(test)]
     pub fn remaining_window(&self) -> VarInt {
         self.inner.borrow_mut().remaining_window()
     }
