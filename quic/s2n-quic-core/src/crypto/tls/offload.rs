@@ -6,7 +6,7 @@ use crate::{
         tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsSession},
         CryptoSuite,
     },
-    sync::spsc::{channel, Receiver, SendSlice, Sender},
+    sync::spsc::{channel, Receiver, RecvSlice, SendSlice, Sender},
     transport,
 };
 use alloc::{boxed::Box, collections::vec_deque::VecDeque, sync::Arc, vec::Vec};
@@ -225,6 +225,72 @@ impl<S: tls::Session + 'static> OffloadSession<S> {
     }
 }
 
+/// Drains all pending [`Request`]s from a receive slice, applying each one to the QUIC-side
+/// `context`.
+///
+/// Returns [`Poll::Ready`] once the handshake reaches a terminal state (it either completed via
+/// [`Request::TlsDone`] or failed via [`Request::TlsError`] or a context error), in which case the
+/// caller should propagate the result. Returns [`Poll::Pending`] once the slice is fully drained,
+/// meaning polling should continue.
+#[inline]
+fn process_requests<S, W>(
+    slice: &mut RecvSlice<'_, Request<S>>,
+    context: &mut W,
+) -> Poll<Result<(), transport::Error>>
+where
+    S: tls::Session,
+    W: tls::Context<OffloadSession<S>>,
+{
+    while let Some(request) = slice.pop() {
+        match request {
+            Request::HandshakeKeys(key, header_key) => {
+                context.on_handshake_keys(key, header_key)?;
+            }
+            Request::ServerName(server_name) => context.on_server_name(server_name)?,
+            Request::SendInitial(bytes) => context.send_initial(bytes),
+            Request::ApplicationProtocol(bytes) => {
+                context.on_application_protocol(bytes)?;
+            }
+            Request::KeyExchangeGroup(named_group) => {
+                context.on_key_exchange_group(named_group)?;
+            }
+            Request::OneRttKeys(key, header_key, transport_parameters) => context.on_one_rtt_keys(
+                key,
+                header_key,
+                tls::ApplicationParameters {
+                    transport_parameters: &transport_parameters,
+                },
+            )?,
+            Request::SendHandshake(bytes) => {
+                context.send_handshake(bytes);
+            }
+            Request::HandshakeComplete => {
+                context.on_handshake_complete()?;
+            }
+            Request::TlsDone => {
+                return Poll::Ready(Ok(()));
+            }
+            Request::ZeroRtt(key, header_key, transport_parameters) => {
+                context.on_zero_rtt_keys(
+                    key,
+                    header_key,
+                    tls::ApplicationParameters {
+                        transport_parameters: &transport_parameters,
+                    },
+                )?;
+            }
+            Request::TlsContext(ctx) => {
+                context.on_tls_context(ctx);
+            }
+            Request::SendApplication(transmission) => {
+                context.send_application(transmission);
+            }
+            Request::TlsError(e) => return Poll::Ready(Err(e)),
+        }
+    }
+    Poll::Pending
+}
+
 impl<S: tls::Session> tls::Session for OffloadSession<S> {
     #[inline]
     fn poll<W>(&mut self, context: &mut W) -> Poll<Result<(), transport::Error>>
@@ -237,60 +303,13 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
         match self.recv_from_tls.poll_slice(&mut ctx) {
             Poll::Ready(res) => match res {
                 Ok(mut slice) => {
-                    while let Some(request) = slice.pop() {
-                        match request {
-                            Request::HandshakeKeys(key, header_key) => {
-                                context.on_handshake_keys(key, header_key)?;
-                            }
-                            Request::ServerName(server_name) => {
-                                context.on_server_name(server_name)?
-                            }
-                            Request::SendInitial(bytes) => context.send_initial(bytes),
-                            Request::ApplicationProtocol(bytes) => {
-                                context.on_application_protocol(bytes)?;
-                            }
-                            Request::KeyExchangeGroup(named_group) => {
-                                context.on_key_exchange_group(named_group)?;
-                            }
-                            Request::OneRttKeys(key, header_key, transport_parameters) => context
-                                .on_one_rtt_keys(
-                                key,
-                                header_key,
-                                tls::ApplicationParameters {
-                                    transport_parameters: &transport_parameters,
-                                },
-                            )?,
-                            Request::SendHandshake(bytes) => {
-                                context.send_handshake(bytes);
-                            }
-                            Request::HandshakeComplete => {
-                                context.on_handshake_complete()?;
-                            }
-                            Request::TlsDone => {
-                                return Poll::Ready(Ok(()));
-                            }
-                            Request::ZeroRtt(key, header_key, transport_parameters) => {
-                                context.on_zero_rtt_keys(
-                                    key,
-                                    header_key,
-                                    tls::ApplicationParameters {
-                                        transport_parameters: &transport_parameters,
-                                    },
-                                )?;
-                            }
-                            Request::TlsContext(ctx) => {
-                                context.on_tls_context(ctx);
-                            }
-                            Request::SendApplication(transmission) => {
-                                context.send_application(transmission);
-                            }
-                            Request::TlsError(e) => return Poll::Ready(Err(e)),
-                        }
+                    if let Poll::Ready(res) = process_requests(&mut slice, context) {
+                        return Poll::Ready(res);
                     }
                 }
                 Err(_) => {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
-                    return Poll::Ready(Err(TLS_TASK_CANCELLED));
+                    return Poll::Ready(Err(TLS_RECV_CHANNEL_DROPPED));
                 }
             },
             Poll::Pending => (),
@@ -333,7 +352,14 @@ impl<S: tls::Session> tls::Session for OffloadSession<S> {
                 }
                 Err(_) => {
                     // For whatever reason the TLS task was cancelled. We cannot continue the handshake.
-                    return Poll::Ready(Err(TLS_TASK_CANCELLED));
+                    // Before returning we make one final attempt to read as the TLS task may have sent
+                    // us a final message in the interim between now and the last read.
+                    if let Poll::Ready(Ok(mut slice)) = self.recv_from_tls.poll_slice(&mut ctx) {
+                        if let Poll::Ready(res) = process_requests(&mut slice, context) {
+                            return Poll::Ready(res);
+                        }
+                    }
+                    return Poll::Ready(Err(TLS_SEND_CHANNEL_DROPPED));
                 }
             },
             Poll::Pending => (),
@@ -365,8 +391,11 @@ struct AllowedToSend {
 const SLICE_ERROR: crate::transport::Error =
     crate::transport::Error::INTERNAL_ERROR.with_reason("Slice is full");
 
-const TLS_TASK_CANCELLED: crate::transport::Error =
-    crate::transport::Error::INTERNAL_ERROR.with_reason("TLS task cancelled");
+const TLS_SEND_CHANNEL_DROPPED: crate::transport::Error =
+    crate::transport::Error::INTERNAL_ERROR.with_reason("TLS send channel dropped");
+
+const TLS_RECV_CHANNEL_DROPPED: crate::transport::Error =
+    crate::transport::Error::INTERNAL_ERROR.with_reason("TLS recv channel dropped");
 
 #[derive(Debug)]
 struct RemoteContext<'a, Request, H> {
