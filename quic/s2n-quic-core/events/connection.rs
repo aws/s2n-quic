@@ -26,6 +26,12 @@ struct KeyExchangeGroup<'a> {
     contains_kem: bool,
 }
 
+#[event("transport:signature_scheme")]
+/// Signature scheme was negotiated for the connection
+struct SignatureScheme<'a> {
+    chosen_signature_scheme: &'a str,
+}
+
 #[event("transport:packet_skipped")]
 /// Packet was skipped with a given reason
 struct PacketSkipped {

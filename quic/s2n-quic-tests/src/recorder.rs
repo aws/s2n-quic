@@ -135,6 +135,26 @@ event_recorder!(
     }
 );
 
+event_recorder!(
+    SignatureScheme,
+    SignatureScheme,
+    on_signature_scheme,
+    String,
+    |event: &events::SignatureScheme, storage: &mut Vec<String>| {
+        storage.push(event.chosen_signature_scheme.into());
+    }
+);
+
+event_recorder!(
+    TlsExporterSignatureScheme,
+    TlsExporterReady,
+    on_tls_exporter_ready,
+    Option<String>,
+    |event: &events::TlsExporterReady, storage: &mut Vec<Option<String>>| {
+        storage.push(event.session.signature_scheme().map(String::from));
+    }
+);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketDropReason {
     ConnectionError,
