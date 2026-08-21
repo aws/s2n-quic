@@ -552,27 +552,6 @@ impl HandshakeQueue {
                     // emitted as an application CONNECTION_CLOSE (`connection::Error::Application`),
                     // which the server does not treat as completion. If the connection is already
                     // closed this is a no-op.
-                    //
-                    // Version skew discussions: where "new" means with the DC stateless reset token fix and "old" without it.
-                    // Read the full write-up in https://github.com/aws/s2n-quic/pull/3193 description; the summary:
-                    //
-                    // |            | old client        | new client   |
-                    // |------------|-------------------|--------------|
-                    // | old server | the bug (1)       | safe (2)     |
-                    // | new server | recoverable (3)   | intended (4) |
-                    //
-                    // 1. A lost token ACK leaves the server in `ServerTokensSent`. This is the original
-                    //    stateless reset token bug.
-                    // 2. The bug persists but is not made worse. On a failed handshake the server
-                    //    now sees this application close rather than a clean one, so its
-                    //    `ConfirmComplete` reports failure instead of the pre-existing false
-                    //    success. Both sides agree the handshake did not complete.
-                    // 3. A client that timed out never received the tokens and holds no map entry,
-                    //    yet still closes cleanly, so the server completes and publishes an entry
-                    //    the peer does not share. Recoverable: server-originated dc traffic to that
-                    //    peer fails until the peer's `UnknownPathSecret` response triggers a
-                    //    re-handshake.
-                    // 4. Intended end state: a clean close completes the server, codes 1 and 2 do not.
                     connection.close(DC_HANDSHAKE_INCOMPLETE_ERROR.into());
                     return Err(e);
                 }
