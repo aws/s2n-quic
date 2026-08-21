@@ -872,9 +872,13 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if let Some((space, _)) = self.space_manager.application_mut() {
             let closed_without_error = matches!(error, connection::Error::Closed { .. });
+            let peer_initiated = matches!(
+                error,
+                connection::Error::Closed { initiator, .. } if initiator.is_remote()
+            );
             space
                 .dc_manager
-                .on_close(closed_without_error, &mut publisher);
+                .on_close(closed_without_error, peer_initiated, &mut publisher);
         }
 
         publisher.on_connection_closed(event::builder::ConnectionClosed { error });

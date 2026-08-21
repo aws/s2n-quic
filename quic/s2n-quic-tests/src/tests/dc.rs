@@ -26,7 +26,7 @@ use s2n_quic_core::{
         Timestamp,
     },
     frame::ConnectionClose,
-    packet::interceptor::{Datagram, Interceptor},
+    packet::interceptor::{Datagram, Interceptor, Packet},
     stateless_reset::{
         self,
         token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
@@ -1432,5 +1432,370 @@ impl ExporterHandler for Exporter {
             client_params,
             server_params,
         ))
+    }
+}
+
+/// Drives a dc handshake where the client's standalone ACKs are neutralized by a packet interceptor,
+/// so the server never sees an acknowledgement of its `DC_STATELESS_RESET_TOKENS`, then has the
+/// client close and linger. The server can therefore only reach `Complete` by treating the client's
+/// clean `CONNECTION_CLOSE` as proof that the client received those tokens.
+///
+/// The server's MTU is pinned so it never probes: with the ACKs of its probes dropped it could not
+/// drive an MTU search anyway, while the client probes normally.
+///
+/// Returns the client and server `DcRecorder`s so the caller can assert on dc state.
+#[track_caller]
+fn dc_completes_through_close<S: ServerProviders, C: ClientProviders>(
+    server: server::Builder<S>,
+    client: client::Builder<C>,
+    client_closing: Arc<std::sync::atomic::AtomicBool>,
+    client_linger: Duration,
+    packet_snapshots: (PacketSnapshot, PacketSnapshot),
+) -> (DcRecorder, DcRecorder) {
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    model.set_delay(rtt / 2);
+
+    // Pin the server's MTU to prevent it from probing. Since we are dropping all ACKs for the
+    // server, the server can't perform MTU probing.
+    const SERVER_PINNED_MTU: u16 = 1500;
+
+    let (server_packet_snapshot, client_packet_snapshot) = packet_snapshots;
+
+    let server_subscriber = DcRecorder::new();
+    let server_events = server_subscriber.clone();
+    let client_subscriber = DcRecorder::new();
+    let client_events = client_subscriber.clone();
+
+    test(model.clone(), |handle| {
+        let server_event = (
+            (dc::ConfirmComplete, dc::MtuConfirmComplete),
+            (
+                (tracing_events(false, model.clone()), server_packet_snapshot),
+                server_subscriber,
+            ),
+        );
+
+        let mut server = server
+            .with_io(
+                handle
+                    .builder()
+                    .with_max_mtu(SERVER_PINNED_MTU)
+                    .with_base_mtu(SERVER_PINNED_MTU)
+                    .with_initial_mtu(SERVER_PINNED_MTU)
+                    .build()?,
+            )?
+            .with_event(server_event)?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = server.local_addr()?;
+
+        spawn(async move {
+            if let Some(mut conn) = server.accept().await {
+                // Mirror the real dc server: wait for the dc handshake, then MTU probing.
+                // Under this interception the acknowledgement of the server's tokens never
+                // arrives, so `Complete` can only be reached via the client's clean close.
+                let result = dc::ConfirmComplete::wait_ready(&mut conn).await;
+                assert!(
+                    result.is_ok(),
+                    "server dc handshake did not complete: {result:?}"
+                );
+                dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            }
+        });
+
+        let client_event = (
+            (dc::ConfirmComplete, dc::MtuConfirmComplete),
+            (
+                (
+                    (tracing_events(false, model.clone()), client_packet_snapshot),
+                    client_subscriber,
+                ),
+                // Flips `client_closing` the moment the client begins closing.
+                ClientCloseWatcher(client_closing.clone()),
+            ),
+        );
+
+        let client = client
+            .with_io(handle.builder().build().unwrap())?
+            .with_event(client_event)?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(addr)
+                .with_server_name("localhost")
+                .with_deduplicate(true);
+            let mut conn = client.connect(connect).await.unwrap();
+            // Mirror the real dc client: wait for BOTH the dc handshake and MTU probing
+            // before closing. The client closes once its own MTU search completes and it
+            // has the server's tokens, which is exactly the timing that leaves the server
+            // waiting on an acknowledgement it will never receive.
+            dc::ConfirmComplete::wait_ready(&mut conn).await.unwrap();
+            dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            // Dropping the connection sends a no-error CONNECTION_CLOSE, which is the signal the
+            // server completes on. The clean close itself that tells the server the client got its tokens.
+            drop(conn);
+            // Keep this (primary) task alive so the simulation continues running long
+            // enough for the close (or its retransmission) to reach the server.
+            delay(client_linger).await;
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    (client_events, server_events)
+}
+
+// dcQUIC endpoints to drop all ACKs to see if dc states will reach complete
+#[test]
+fn dc_handshake_completes_when_all_acks_are_dropped() -> Result<()> {
+    let server = Server::builder()
+        .with_tls((certificates::CERT_PKCS1_PEM, certificates::KEY_PKCS1_PEM))?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
+        .with_packet_interceptor(DropClientStandaloneAcks)?;
+    let client = Client::builder()
+        .with_tls(certificates::CERT_PKCS1_PEM)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    // Even though every standalone ACK is dropped, the server reaches Complete when it processes
+    // the client's clean CONNECTION_CLOSE: a no-error close means the client finished the dc
+    // handshake, which it only does after receiving the server's tokens. A short linger is enough
+    // for that single close to arrive. This test doesn't drop the close, so the close-watcher flag
+    // is unused.
+    let (client_events, server_events) = dc_completes_through_close(
+        server,
+        client,
+        Default::default(),
+        Duration::from_millis(300),
+        (
+            PacketSnapshot::named_snapshot(
+                "dc_handshake_completes_when_all_acks_are_dropped__server",
+            ),
+            PacketSnapshot::named_snapshot(
+                "dc_handshake_completes_when_all_acks_are_dropped__client",
+            ),
+        ),
+    );
+
+    assert_dc_complete(
+        &client_events
+            .dc_state_changed_events()
+            .lock()
+            .unwrap()
+            .clone(),
+    );
+    assert_dc_complete(
+        &server_events
+            .dc_state_changed_events()
+            .lock()
+            .unwrap()
+            .clone(),
+    );
+
+    Ok(())
+}
+
+/// Server-side interceptor that neutralizes the client's standalone ACKs in the application space.
+struct DropClientStandaloneAcks;
+
+impl Interceptor for DropClientStandaloneAcks {
+    #[inline]
+    fn intercept_rx_payload<'a>(
+        &mut self,
+        _subject: &Subject,
+        packet: &Packet,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        if !packet.number.space().is_application_data() {
+            return payload;
+        }
+
+        let bytes = payload.into_less_safe_slice();
+
+        if !is_standalone_ack(bytes) {
+            return DecoderBufferMut::new(bytes);
+        }
+
+        // Neutralize to a single PADDING frame.
+        bytes[0] = 0;
+        DecoderBufferMut::new(&mut bytes[..1])
+    }
+}
+
+/// Returns true if the payload carries an ACK frame and does not carry the client's tokens or a CONNECTION_CLOSE.
+/// We only want to drop a standalone ACK.
+fn is_standalone_ack(bytes: &mut [u8]) -> bool {
+    use s2n_quic_core::frame::{Frame as CoreFrame, FrameMut};
+
+    let mut has_ack = false;
+    let mut buffer = DecoderBufferMut::new(bytes);
+    while !buffer.is_empty() {
+        match buffer.decode::<FrameMut>() {
+            Ok((frame, remaining)) => {
+                match frame {
+                    // Never drop the packets the server needs to make progress or complete.
+                    CoreFrame::DcStatelessResetTokens(_) | CoreFrame::ConnectionClose(_) => {
+                        return false
+                    }
+                    CoreFrame::Ack(_) => has_ack = true,
+                    _ => {}
+                }
+                buffer = remaining;
+            }
+            // If it does not parse cleanly, leave it untouched.
+            Err(_) => return false,
+        }
+    }
+    has_ack
+}
+
+// Verify if CONNECTION_CLOSE got dropped, dcQUIC endpoints can reach complete
+#[test]
+fn dc_handshake_completes_when_all_acks_and_first_close_is_dropped() -> Result<()> {
+    use std::sync::atomic::AtomicBool;
+
+    // Shared across the client's close watcher and the server's interceptor.
+    let client_closing: Arc<AtomicBool> = Default::default();
+    let close_dropped: Arc<AtomicBool> = Default::default();
+
+    let server = Server::builder()
+        .with_tls((certificates::CERT_PKCS1_PEM, certificates::KEY_PKCS1_PEM))?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
+        .with_packet_interceptor(DropAcksAndFirstClose {
+            client_closing: client_closing.clone(),
+            close_dropped: close_dropped.clone(),
+            seen_while_closing: Vec::new(),
+        })?;
+    let client = Client::builder()
+        .with_tls(certificates::CERT_PKCS1_PEM)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let (client_events, server_events) = dc_completes_through_close(
+        server,
+        client,
+        client_closing,
+        Duration::from_secs(3),
+        (
+            PacketSnapshot::named_snapshot(
+                "dc_handshake_completes_when_all_acks_and_first_close_is_dropped__server",
+            ),
+            PacketSnapshot::named_snapshot(
+                "dc_handshake_completes_when_all_acks_and_first_close_is_dropped__client",
+            ),
+        ),
+    );
+
+    assert!(
+        close_dropped.load(Ordering::Relaxed),
+        "no close was dropped and redelivered, so retransmission wasn't exercised"
+    );
+
+    assert_dc_complete(
+        &client_events
+            .dc_state_changed_events()
+            .lock()
+            .unwrap()
+            .clone(),
+    );
+    assert_dc_complete(
+        &server_events
+            .dc_state_changed_events()
+            .lock()
+            .unwrap()
+            .clone(),
+    );
+
+    Ok(())
+}
+
+/// Client-side event subscriber that flips a shared flag when the client begins closing.
+struct ClientCloseWatcher(Arc<std::sync::atomic::AtomicBool>);
+
+impl events::Subscriber for ClientCloseWatcher {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    fn on_connection_closed(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        _event: &events::ConnectionClosed,
+    ) {
+        self.0.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+struct DropAcksAndFirstClose {
+    client_closing: Arc<std::sync::atomic::AtomicBool>,
+    /// Set once a byte-identical retransmission is allowed through, i.e. once a dropped close
+    /// has been redelivered. Proves the retransmission path was actually exercised.
+    close_dropped: Arc<std::sync::atomic::AtomicBool>,
+    /// Distinct datagrams already seen while closing, used to tell a first transmission (which
+    /// is dropped) from a retransmission (which is allowed).
+    seen_while_closing: Vec<Vec<u8>>,
+}
+
+impl Interceptor for DropAcksAndFirstClose {
+    fn intercept_rx_datagram<'a>(
+        &mut self,
+        _subject: &Subject,
+        _datagram: &Datagram,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        use std::sync::atomic::Ordering::Relaxed;
+
+        // Before the client starts closing, everything is ordinary handshake/data traffic that
+        // must be delivered untouched.
+        if !self.client_closing.load(Relaxed) {
+            return payload;
+        }
+
+        let bytes = payload.into_less_safe_slice();
+
+        if self
+            .seen_while_closing
+            .iter()
+            .any(|seen| seen[..] == *bytes)
+        {
+            // A byte-identical repeat: this is a retransmitted close. Let it through and record
+            // that a dropped close was successfully redelivered.
+            self.close_dropped.store(true, Relaxed);
+            return DecoderBufferMut::new(bytes);
+        }
+
+        // First time we've seen this datagram while closing (a pre-close straggler or the first
+        // CONNECTION_CLOSE). Drop it at the datagram level so its packet number is never recorded
+        // and the retransmission is processed rather than discarded as a duplicate.
+        self.seen_while_closing.push(bytes.to_vec());
+        DecoderBufferMut::new(&mut bytes[..0])
+    }
+
+    #[inline]
+    fn intercept_rx_payload<'a>(
+        &mut self,
+        _subject: &Subject,
+        packet: &Packet,
+        payload: DecoderBufferMut<'a>,
+    ) -> DecoderBufferMut<'a> {
+        if !packet.number.space().is_application_data() {
+            return payload;
+        }
+
+        let bytes = payload.into_less_safe_slice();
+        if !is_standalone_ack(bytes) {
+            return DecoderBufferMut::new(bytes);
+        }
+
+        bytes[0] = 0;
+        DecoderBufferMut::new(&mut bytes[..1])
     }
 }
