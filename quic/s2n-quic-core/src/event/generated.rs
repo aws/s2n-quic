@@ -2003,6 +2003,23 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Signature scheme was negotiated for the connection
+    pub struct SignatureScheme<'a> {
+        pub chosen_signature_scheme: &'a str,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for SignatureScheme<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("SignatureScheme");
+            fmt.field("chosen_signature_scheme", &self.chosen_signature_scheme);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for SignatureScheme<'a> {
+        const NAME: &'static str = "transport:signature_scheme";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Packet was skipped with a given reason
     pub struct PacketSkipped {
         pub number: u64,
@@ -4050,6 +4067,23 @@ pub mod tracing {
                 target : "key_exchange_group", parent : id, tracing::Level::DEBUG, {
                 chosen_group_name = tracing::field::debug(chosen_group_name),
                 contains_kem = tracing::field::debug(contains_kem) }
+            );
+        }
+        #[inline]
+        fn on_signature_scheme(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::SignatureScheme,
+        ) {
+            let id = context.id();
+            let api::SignatureScheme {
+                chosen_signature_scheme,
+            } = event;
+            tracing::event!(
+                target : "signature_scheme", parent : id, tracing::Level::DEBUG, {
+                chosen_signature_scheme = tracing::field::debug(chosen_signature_scheme)
+                }
             );
         }
         #[inline]
@@ -6480,6 +6514,22 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Signature scheme was negotiated for the connection
+    pub struct SignatureScheme<'a> {
+        pub chosen_signature_scheme: &'a str,
+    }
+    impl<'a> IntoEvent<api::SignatureScheme<'a>> for SignatureScheme<'a> {
+        #[inline]
+        fn into_event(self) -> api::SignatureScheme<'a> {
+            let SignatureScheme {
+                chosen_signature_scheme,
+            } = self;
+            api::SignatureScheme {
+                chosen_signature_scheme: chosen_signature_scheme.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// Packet was skipped with a given reason
     pub struct PacketSkipped {
         pub number: u64,
@@ -8004,6 +8054,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `SignatureScheme` event is triggered
+        #[inline]
+        fn on_signature_scheme(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SignatureScheme,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `PacketSkipped` event is triggered
         #[inline]
         fn on_packet_skipped(
@@ -8889,6 +8951,16 @@ mod traits {
             (self.1).on_key_exchange_group(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_signature_scheme(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SignatureScheme,
+        ) {
+            (self.0).on_signature_scheme(&mut context.0, meta, event);
+            (self.1).on_signature_scheme(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_skipped(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -9768,6 +9840,8 @@ mod traits {
         fn on_server_name_information(&mut self, event: builder::ServerNameInformation);
         ///Publishes a `KeyExchangeGroup` event to the publisher's subscriber
         fn on_key_exchange_group(&mut self, event: builder::KeyExchangeGroup);
+        ///Publishes a `SignatureScheme` event to the publisher's subscriber
+        fn on_signature_scheme(&mut self, event: builder::SignatureScheme);
         ///Publishes a `PacketSkipped` event to the publisher's subscriber
         fn on_packet_skipped(&mut self, event: builder::PacketSkipped);
         ///Publishes a `PacketSent` event to the publisher's subscriber
@@ -9936,6 +10010,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_key_exchange_group(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_signature_scheme(&mut self, event: builder::SignatureScheme) {
+            let event = event.into_event();
+            self.subscriber
+                .on_signature_scheme(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -10686,6 +10769,7 @@ pub mod testing {
         pub application_protocol_information: u64,
         pub server_name_information: u64,
         pub key_exchange_group: u64,
+        pub signature_scheme: u64,
         pub packet_skipped: u64,
         pub packet_sent: u64,
         pub packet_received: u64,
@@ -10787,6 +10871,7 @@ pub mod testing {
                 application_protocol_information: 0,
                 server_name_information: 0,
                 key_exchange_group: 0,
+                signature_scheme: 0,
                 packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
@@ -10900,6 +10985,20 @@ pub mod testing {
             event: &api::KeyExchangeGroup,
         ) {
             self.key_exchange_group += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_signature_scheme(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SignatureScheme,
+        ) {
+            self.signature_scheme += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -11787,6 +11886,7 @@ pub mod testing {
         pub application_protocol_information: u64,
         pub server_name_information: u64,
         pub key_exchange_group: u64,
+        pub signature_scheme: u64,
         pub packet_skipped: u64,
         pub packet_sent: u64,
         pub packet_received: u64,
@@ -11878,6 +11978,7 @@ pub mod testing {
                 application_protocol_information: 0,
                 server_name_information: 0,
                 key_exchange_group: 0,
+                signature_scheme: 0,
                 packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
@@ -12102,6 +12203,15 @@ pub mod testing {
         }
         fn on_key_exchange_group(&mut self, event: builder::KeyExchangeGroup) {
             self.key_exchange_group += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_signature_scheme(&mut self, event: builder::SignatureScheme) {
+            self.signature_scheme += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
