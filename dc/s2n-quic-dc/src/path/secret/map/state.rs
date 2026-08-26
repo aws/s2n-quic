@@ -614,13 +614,22 @@ where
         };
 
         // Clone the weak references out under the lock so we don't hold it across the write.
-        let entries: Vec<Weak<Entry>> = {
+        let mut entries: Vec<Weak<Entry>> = {
             let queue = self
                 .eviction_queue
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             queue.iter().cloned().collect()
         };
+
+        // Order by access recency (newest first), so the most-active peers come first regardless
+        // of when they were created.
+        entries.sort_by_cached_key(|weak| {
+            core::cmp::Reverse(
+                weak.upgrade()
+                    .map_or(0, |entry| entry.accessed_at_epoch().get()),
+            )
+        });
 
         let start = self.clock.get_time();
         let result = serializer.serialize(&entries, self.cleaner.epoch());
