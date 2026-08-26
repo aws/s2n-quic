@@ -772,12 +772,11 @@ mod tests {
             _meta: &s2n_quic::provider::event::ConnectionMeta,
             _info: &s2n_quic::provider::event::ConnectionInfo,
         ) -> Self::ConnectionContext {
-            ()
         }
 
         fn on_mtu_updated(
             &mut self,
-            context: &mut Self::ConnectionContext,
+            _context: &mut Self::ConnectionContext,
             _meta: &s2n_quic::provider::event::ConnectionMeta,
             event: &s2n_quic::provider::event::events::MtuUpdated,
         ) {
