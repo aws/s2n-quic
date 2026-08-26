@@ -132,11 +132,7 @@ impl Server {
     ) -> Result<Self, Error> {
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
-            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(builder.mtu)?
-            .with_max_mtu(builder.mtu)?
-            .with_internal_recv_buffer_size(BUFFER_SIZE)?
-            .build()?;
+            .with_internal_recv_buffer_size(BUFFER_SIZE)?;
 
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
@@ -198,12 +194,10 @@ impl Server {
                 .build();
 
             // We're temporarily turning off MTU probing when the offloading feature is on.
-            let io = s2n_quic::provider::io::default::Builder::default()
-                .with_receive_address(addr)?
+            let io = io
                 .with_base_mtu(DEFAULT_BASE_MTU)?
                 .with_initial_mtu(DEFAULT_BASE_MTU)?
                 .with_max_mtu(DEFAULT_BASE_MTU)?
-                .with_internal_recv_buffer_size(BUFFER_SIZE)?
                 .build()?;
 
             // We need packet storage when offloading is turned on due to this issue:
@@ -214,6 +208,11 @@ impl Server {
 
             build_and_start!(tls, connection_limits, io)
         } else {
+            let io = io
+                .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+                .with_initial_mtu(builder.mtu)?
+                .with_max_mtu(builder.mtu)?
+                .build()?;
             build_and_start!(tls_materials_provider, connection_limits, io)
         };
 
@@ -766,14 +765,14 @@ mod tests {
     }
 
     impl s2n_quic::provider::event::Subscriber for MtuRecorder {
-        type ConnectionContext = MtuRecorder;
+        type ConnectionContext = ();
 
         fn create_connection_context(
             &mut self,
             _meta: &s2n_quic::provider::event::ConnectionMeta,
             _info: &s2n_quic::provider::event::ConnectionInfo,
         ) -> Self::ConnectionContext {
-            self.clone()
+            ()
         }
 
         fn on_mtu_updated(
@@ -782,7 +781,7 @@ mod tests {
             _meta: &s2n_quic::provider::event::ConnectionMeta,
             event: &s2n_quic::provider::event::events::MtuUpdated,
         ) {
-            context.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
+            self.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
         }
     }
 
