@@ -371,6 +371,12 @@ pub enum StreamTcpConnectErrorReason {
     /// Handshake failed to produce credentials.
     Handshake,
 
+    /// Fast-fail: no path secret (PSK) was cached for the peer.
+    ///
+    /// Emitted when `fail_fast_on_missing_psk` is enabled and the connect did not wait on a
+    /// handshake because no credentials were cached.
+    PeerPskMissing,
+
     /// When the connect future is dropped prior to returning any result.
     ///
     /// This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect

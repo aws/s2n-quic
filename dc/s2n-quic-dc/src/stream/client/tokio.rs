@@ -8,7 +8,7 @@ use crate::{
     path::secret,
     stream::{
         application::Stream,
-        client::{rpc as rpc_internal, tokio as client},
+        client::{error as client_error, rpc as rpc_internal, tokio as client},
         endpoint,
         environment::{
             tokio::{self as env, Environment},
@@ -37,6 +37,13 @@ pub trait Handshake: Clone {
         server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)>;
 
+    /// Initiates a handshake with the remote peer in the background, returning immediately.
+    fn background_handshake_with(
+        &self,
+        remote_handshake_addr: SocketAddr,
+        server_name: Name,
+    ) -> std::io::Result<secret::HandshakeKind>;
+
     fn local_addr(&self) -> std::io::Result<SocketAddr>;
 
     fn map(&self) -> &secret::Map;
@@ -50,6 +57,14 @@ impl Handshake for crate::psk::client::Provider {
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)> {
         self.handshake_with_entry(remote_handshake_addr, server_name)
             .await
+    }
+
+    fn background_handshake_with(
+        &self,
+        remote_handshake_addr: SocketAddr,
+        server_name: Name,
+    ) -> std::io::Result<secret::HandshakeKind> {
+        self.background_handshake_with(remote_handshake_addr, server_name)
     }
 
     fn local_addr(&self) -> std::io::Result<SocketAddr> {
@@ -67,6 +82,7 @@ pub struct Client<H: Handshake + Clone, S: event::Subscriber + Clone> {
     handshake: H,
     default_protocol: socket::Protocol,
     linger: Option<Duration>,
+    fail_fast_on_missing_psk: bool,
 }
 
 impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
@@ -107,6 +123,15 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         remote_handshake_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<secret::map::Peer> {
+        if self.fail_fast_on_missing_psk {
+            if let Some(entry) = self.handshake.map().get_tracked(remote_handshake_addr) {
+                return Ok(entry);
+            }
+            let _ = self
+                .handshake
+                .background_handshake_with(remote_handshake_addr, server_name);
+            return Err(client_error::Kind::PeerPskMissing.err().into());
+        }
         let (peer, _kind) = self
             .handshake
             .handshake_with_entry(remote_handshake_addr, server_name)
@@ -333,6 +358,7 @@ pub struct Builder {
     linger: Option<Duration>,
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
+    fail_fast_on_missing_psk: bool,
 }
 
 impl Builder {
@@ -389,6 +415,15 @@ impl Builder {
         self
     }
 
+    /// Fail fast when the peer's path secret (PSK) is not cached locally.
+    ///
+    /// When enabled, connect attempts do not block on a handshake: if no path secret is cached for
+    /// the peer, a background handshake is initiated and the connect fails fast.
+    pub fn with_fail_fast_on_missing_psk(mut self, fail_fast_on_missing_psk: bool) -> Self {
+        self.fail_fast_on_missing_psk = fail_fast_on_missing_psk;
+        self
+    }
+
     #[inline]
     pub fn build<H: Handshake + Clone, S: event::Subscriber + Clone>(
         self,
@@ -423,6 +458,7 @@ impl Builder {
             handshake,
             default_protocol,
             linger,
+            fail_fast_on_missing_psk: self.fail_fast_on_missing_psk,
         })
     }
 }
@@ -555,7 +591,12 @@ where
                         };
                     },
                     Err(e) => {
-                        guard.reason = Some(StreamTcpConnectErrorReason::Handshake);
+                        guard.reason = match client_error::Kind::from_io(&e) {
+                            Some(client_error::Kind::PeerPskMissing) => {
+                                Some(StreamTcpConnectErrorReason::PeerPskMissing)
+                            }
+                            _ => Some(StreamTcpConnectErrorReason::Handshake),
+                        };
                         error = Some(e);
                         peer = Some(Err(()));
                     }
