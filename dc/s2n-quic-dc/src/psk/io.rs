@@ -155,9 +155,9 @@ impl Server {
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         macro_rules! build_and_start {
-            ($tls:expr, $limits:expr) => {{
+            ($tls:expr, $limits:expr, $io:expr) => {{
                 let s = s2n_quic::Server::builder()
-                    .with_io(io)?
+                    .with_io($io)?
                     .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
                     .with_limits($limits)?
                     .with_dc(map.clone())?
@@ -197,15 +197,24 @@ impl Server {
                 .with_executor(TokioExecutor { runtime, monitor })
                 .build();
 
+            // We're temporarily turning off MTU probing when the offloading feature is on.
+            let io = s2n_quic::provider::io::default::Builder::default()
+                .with_receive_address(addr)?
+                .with_base_mtu(DEFAULT_BASE_MTU)?
+                .with_initial_mtu(DEFAULT_BASE_MTU)?
+                .with_max_mtu(DEFAULT_BASE_MTU)?
+                .with_internal_recv_buffer_size(BUFFER_SIZE)?
+                .build()?;
+
             // We need packet storage when offloading is turned on due to this issue:
             // https://github.com/aws/s2n-quic/issues/2601. The size needs to be large enough
             // to store a packet with the given MTU.
             let connection_limits =
                 connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
-            build_and_start!(tls, connection_limits)
+            build_and_start!(tls, connection_limits, io)
         } else {
-            build_and_start!(tls_materials_provider, connection_limits)
+            build_and_start!(tls_materials_provider, connection_limits, io)
         };
 
         Ok(Self { server })
@@ -750,6 +759,33 @@ mod tests {
         }
     }
 
+    /// A test event subscriber that records the maximum MTU reported by `MtuUpdated` events.
+    #[derive(Clone, Default)]
+    struct MtuRecorder {
+        max_mtu: Arc<AtomicU16>,
+    }
+
+    impl s2n_quic::provider::event::Subscriber for MtuRecorder {
+        type ConnectionContext = MtuRecorder;
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &s2n_quic::provider::event::ConnectionMeta,
+            _info: &s2n_quic::provider::event::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+            self.clone()
+        }
+
+        fn on_mtu_updated(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic::provider::event::ConnectionMeta,
+            event: &s2n_quic::provider::event::events::MtuUpdated,
+        ) {
+            context.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
+        }
+    }
+
     /// Helper to set up a test client and server
     struct TestSetup {
         client: Client,
@@ -759,9 +795,13 @@ mod tests {
 
     impl TestSetup {
         /// Creates a test setup with an optional endpoint limiter for the server
-        async fn new<L>(endpoint_limits: Option<L>, server_builder: server::Builder) -> Self
+        async fn new<L, Event>(
+            endpoint_limits: Option<L>,
+            server_builder: server::Builder<Event>,
+        ) -> Self
         where
             L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
+            Event: s2n_quic::provider::event::Subscriber + Send + Sync + 'static,
         {
             init_tracing();
 
@@ -837,7 +877,7 @@ mod tests {
     #[tokio::test]
     async fn mtu_probing_complete_no_delay_test() {
         let server_builder = crate::psk::server::Builder::default();
-        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
@@ -1005,10 +1045,12 @@ mod tests {
     #[tokio::test]
     async fn server_offloading() {
         const TEST_THREAD_COUNT: usize = 8;
-        let server_builder =
-            crate::psk::server::Builder::default().with_thread_count(TEST_THREAD_COUNT);
+        let mtu_recorder = MtuRecorder::default();
+        let server_builder = crate::psk::server::Builder::default()
+            .with_thread_count(TEST_THREAD_COUNT)
+            .with_event_subscriber(mtu_recorder.clone());
 
-        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         setup
@@ -1016,5 +1058,19 @@ mod tests {
             .connect(setup.server_addr, HandshakeReason::User, server_name)
             .await
             .unwrap();
+
+        // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
+        // DEFAULT_BASE_MTU. Wait for the server (which runs on a background runtime) to report
+        // its MTU via an `MtuUpdated` event.
+        let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
+
+        // The MTU reported by the event is the maximum QUIC datagram size, which excludes the UDP
+        // and IP headers, so derive the expected value from DEFAULT_BASE_MTU the same way.
+        let peer_address: SocketAddress = setup.server_addr.into();
+        let expected_mtu = s2n_quic_core::path::InitialMtu::try_from(DEFAULT_BASE_MTU)
+            .unwrap()
+            .max_datagram_size(&peer_address);
+
+        assert_eq!(mtu, expected_mtu);
     }
 }
