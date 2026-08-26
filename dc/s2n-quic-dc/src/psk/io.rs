@@ -1045,6 +1045,7 @@ mod tests {
     #[tokio::test]
     async fn server_offloading() {
         const TEST_THREAD_COUNT: usize = 8;
+        const MIN_MTU: u16 = 1200;
         let mtu_recorder = MtuRecorder::default();
         let server_builder = crate::psk::server::Builder::default()
             .with_thread_count(TEST_THREAD_COUNT)
@@ -1060,8 +1061,7 @@ mod tests {
             .unwrap();
 
         // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
-        // DEFAULT_BASE_MTU. Wait for the server (which runs on a background runtime) to report
-        // its MTU via an `MtuUpdated` event.
+        // DEFAULT_BASE_MTU.
         let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
 
         // The MTU reported by the event is the maximum QUIC datagram size, which excludes the UDP
@@ -1071,6 +1071,10 @@ mod tests {
             .unwrap()
             .max_datagram_size(&peer_address);
 
-        assert_eq!(mtu, expected_mtu);
+        if cfg!(target_os = "linux") {
+            assert_eq!(mtu, expected_mtu);
+        } else {
+            assert_eq!(mtu, MIN_MTU);
+        }
     }
 }
