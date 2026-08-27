@@ -516,6 +516,9 @@ pub struct Controller {
     needs_to_send_completion: bool,
     /// Flag indicating MtuProbingComplete frame is enabled
     mtu_probing_complete_support: bool,
+    /// Enabled for dcQUIC: probes the max size - if it fails, complete at the
+    /// base MTU instead of running the default binary search.
+    two_candidate_search: bool,
 }
 
 impl Controller {
@@ -582,6 +585,7 @@ impl Controller {
             pmtu_raise_timer: Timer::default(),
             needs_to_send_completion: false,
             mtu_probing_complete_support: false,
+            two_candidate_search: false,
         }
     }
 
@@ -594,6 +598,12 @@ impl Controller {
         if self.state.is_search_complete() {
             self.needs_to_send_completion = true;
         }
+    }
+
+    /// Enable the two-candidate search
+    #[inline]
+    pub fn enable_two_candidate_search(&mut self) {
+        self.two_candidate_search = true;
     }
 
     /// Enable path MTU probing
@@ -760,20 +770,29 @@ impl Controller {
             State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
                 if self.probe_count == MAX_PROBES {
-                    // We've sent MAX_PROBES without acknowledgement, so
-                    // attempt a smaller probe size
-                    self.max_probe_size = self.probed_size;
-                    self.update_probed_size();
-                    self.request_new_search(None);
+                    if self.two_candidate_search {
+                        self.set_search_complete();
 
-                    if self.is_search_completed() {
-                        // Emit an on_mtu_updated event as the search has now completed
                         publisher.on_mtu_updated(event::builder::MtuUpdated {
                             path_id: path_id.into_event(),
                             mtu: self.plpmtu,
                             cause: MtuUpdatedCause::LargerProbesLost,
                             search_complete: true,
-                        })
+                        });
+                    } else {
+                        self.max_probe_size = self.probed_size;
+                        self.update_probed_size();
+                        self.request_new_search(None);
+
+                        if self.is_search_completed() {
+                            // Emit an on_mtu_updated event as the search has now completed
+                            publisher.on_mtu_updated(event::builder::MtuUpdated {
+                                path_id: path_id.into_event(),
+                                mtu: self.plpmtu,
+                                cause: MtuUpdatedCause::LargerProbesLost,
+                                search_complete: true,
+                            })
+                        }
                     }
                 } else {
                     // Try the same probe size again
@@ -825,13 +844,18 @@ impl Controller {
         self.state.is_search_complete()
     }
 
-    /// Sets `probed_size` to the next MTU size to probe for based on a binary search
+    /// Sets `probed_size` to the next MTU size to probe for based on a binary search.
+    /// For dcQUIC the max size is the only size probed, and drops to the base if it fails.
     #[inline]
     fn update_probed_size(&mut self) {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
-        self.probed_size = Self::next_probe_size(self.plpmtu, self.max_probe_size);
+        self.probed_size = if self.two_candidate_search {
+            self.max_probe_size
+        } else {
+            Self::next_probe_size(self.plpmtu, self.max_probe_size)
+        };
     }
 
     /// Calculates the next probe size as halfway from the current to the max size
@@ -864,6 +888,10 @@ impl Controller {
     /// of the current PLPMTU
     #[inline]
     fn request_new_search(&mut self, last_probe_time: Option<Timestamp>) {
+        if self.two_candidate_search {
+            self.update_probed_size();
+        }
+
         if self.is_next_probe_size_above_threshold() {
             self.probe_count = 0;
             self.state = State::SearchRequested;
