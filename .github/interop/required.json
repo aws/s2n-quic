@@ -728,7 +728,9 @@
     "aioquic": [
       "client"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
