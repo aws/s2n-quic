@@ -1083,7 +1083,13 @@ fn two_candidate_search_jumbo_acked() {
 
     // The max probe is ACKed -> MTU confirmed at max and the search completes.
     controller.state = State::Searching(pn, now);
-    controller.on_packet_ack(pn, controller.probed_size, &mut cc, path::Id::test_id(), &mut publisher);
+    controller.on_packet_ack(
+        pn,
+        controller.probed_size,
+        &mut cc,
+        path::Id::test_id(),
+        &mut publisher,
+    );
     assert_eq!(max_udp_payload, controller.plpmtu);
     assert_eq!(State::SearchComplete, controller.state);
 }
@@ -1104,7 +1110,15 @@ fn two_candidate_search_falls_back_to_base() {
     // The final max probe is lost -> the search completes at base.
     controller.state = State::Searching(pn, now);
     controller.probe_count = MAX_PROBES;
-    controller.on_packet_loss(pn, controller.probed_size, false, now, &mut cc, path::Id::test_id(), &mut publisher);
+    controller.on_packet_loss(
+        pn,
+        controller.probed_size,
+        false,
+        now,
+        &mut cc,
+        path::Id::test_id(),
+        &mut publisher,
+    );
     assert_eq!(base_plpmtu, controller.plpmtu);
     assert_eq!(State::SearchComplete, controller.state);
 }

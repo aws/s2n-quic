@@ -474,7 +474,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.publisher
                 .on_dc_path_created(DcPathCreated { path: &dc_path });
 
-            // Use the two-candidate search (probe the max size, else stay at base) 
+            // Use the two-candidate search (probe the max size, else stay at base)
             // on all DC Quic connections.
             self.path_manager
                 .active_path_mut()
