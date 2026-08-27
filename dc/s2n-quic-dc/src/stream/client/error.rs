@@ -73,9 +73,11 @@ impl From<Error> for std::io::Error {
     #[inline]
     #[track_caller]
     fn from(error: Error) -> Self {
-        // Preserve the typed error as the source so downstream layers can downcast and recover the
-        // specific `Kind` rather than seeing a generic I/O error.
-        Self::new(error.kind.into(), error)
+        use std::io::ErrorKind;
+        let kind = match error.kind {
+            Kind::PeerPskMissing => ErrorKind::NotFound,
+        };
+        Self::new(kind, error)
     }
 }
 
@@ -100,12 +102,3 @@ impl Kind {
     }
 }
 
-impl From<Kind> for std::io::ErrorKind {
-    #[inline]
-    fn from(kind: Kind) -> Self {
-        use std::io::ErrorKind;
-        match kind {
-            Kind::PeerPskMissing => ErrorKind::WouldBlock,
-        }
-    }
-}

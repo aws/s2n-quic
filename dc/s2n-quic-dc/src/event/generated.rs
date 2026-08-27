@@ -1383,6 +1383,26 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Tracks stream connects that are skipped before a connection is attempted, independent of the
+    /// transport.
+    pub struct StreamConnectSkipped {
+        pub reason: StreamConnectSkippedReason,
+        pub latency: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamConnectSkipped {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamConnectSkipped");
+            fmt.field("reason", &self.reason);
+            fmt.field("latency", &self.latency);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamConnectSkipped {
+        const NAME: &'static str = "stream:connect_skipped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Tracks stream connect errors.
     ///
     /// Currently only emitted in cases where dcQUIC owns the TCP connect too.
@@ -1765,6 +1785,28 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Reasons a stream connect can be skipped, independent of the transport.
+    pub enum StreamConnectSkippedReason {
+        #[non_exhaustive]
+        /// No PSK was cached for the peer and the stream did not attempt to connect.
+        PeerPskMissing {},
+    }
+    impl aggregate::AsVariant for StreamConnectSkippedReason {
+        const VARIANTS: &'static [aggregate::info::Variant] =
+            &[aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("PEER_PSK_MISSING\0"),
+                id: 0usize,
+            }
+            .build()];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::PeerPskMissing { .. } => 0usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Note that there's no guarantee of a particular reason if multiple reasons ~simultaneously
     /// terminate the connection.
     pub enum StreamTcpConnectErrorReason {
@@ -1774,12 +1816,6 @@ pub mod api {
         #[non_exhaustive]
         /// Handshake failed to produce credentials.
         Handshake {},
-        #[non_exhaustive]
-        /// Fast-fail: no path secret (PSK) was cached for the peer.
-        ///
-        /// Emitted when `fail_fast_on_missing_psk` is enabled and the connect did not wait on a
-        /// handshake because no credentials were cached.
-        PeerPskMissing {},
         #[non_exhaustive]
         /// When the connect future is dropped prior to returning any result.
         ///
@@ -1810,23 +1846,18 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("PEER_PSK_MISSING\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
                 id: 2usize,
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
                 id: 3usize,
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
-                id: 4usize,
-            }
-            .build(),
-            aggregate::info::variant::Builder {
                 name: aggregate::info::Str::new("ABORTED_PENDING_BOTH\0"),
-                id: 5usize,
+                id: 4usize,
             }
             .build(),
         ];
@@ -1835,10 +1866,9 @@ pub mod api {
             match self {
                 Self::TcpConnect { .. } => 0usize,
                 Self::Handshake { .. } => 1usize,
-                Self::PeerPskMissing { .. } => 2usize,
-                Self::AbortedPendingHandshake { .. } => 3usize,
-                Self::AbortedPendingConnect { .. } => 4usize,
-                Self::AbortedPendingBoth { .. } => 5usize,
+                Self::AbortedPendingHandshake { .. } => 2usize,
+                Self::AbortedPendingConnect { .. } => 3usize,
+                Self::AbortedPendingBoth { .. } => 4usize,
             }
         }
     }
@@ -3705,6 +3735,20 @@ pub mod tracing {
                 error = tracing::field::debug(error), tcp_success =
                 tracing::field::debug(tcp_success), handshake_success =
                 tracing::field::debug(handshake_success) }
+            );
+        }
+        #[inline]
+        fn on_stream_connect_skipped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectSkipped,
+        ) {
+            let parent = self.parent(meta);
+            let api::StreamConnectSkipped { reason, latency } = event;
+            tracing::event!(
+                target : "stream_connect_skipped", parent : parent,
+                tracing::Level::DEBUG, { reason = tracing::field::debug(reason), latency
+                = tracing::field::debug(latency) }
             );
         }
         #[inline]
@@ -5972,6 +6016,23 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Tracks stream connects that are skipped before a connection is attempted, independent of the
+    /// transport.
+    pub struct StreamConnectSkipped {
+        pub reason: StreamConnectSkippedReason,
+        pub latency: core::time::Duration,
+    }
+    impl IntoEvent<api::StreamConnectSkipped> for StreamConnectSkipped {
+        #[inline]
+        fn into_event(self) -> api::StreamConnectSkipped {
+            let StreamConnectSkipped { reason, latency } = self;
+            api::StreamConnectSkipped {
+                reason: reason.into_event(),
+                latency: latency.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// Tracks stream connect errors.
     ///
     /// Currently only emitted in cases where dcQUIC owns the TCP connect too.
@@ -6343,6 +6404,21 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Reasons a stream connect can be skipped, independent of the transport.
+    pub enum StreamConnectSkippedReason {
+        /// No PSK was cached for the peer and the stream did not attempt to connect.
+        PeerPskMissing,
+    }
+    impl IntoEvent<api::StreamConnectSkippedReason> for StreamConnectSkippedReason {
+        #[inline]
+        fn into_event(self) -> api::StreamConnectSkippedReason {
+            use api::StreamConnectSkippedReason::*;
+            match self {
+                Self::PeerPskMissing => PeerPskMissing {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// Note that there's no guarantee of a particular reason if multiple reasons ~simultaneously
     /// terminate the connection.
     pub enum StreamTcpConnectErrorReason {
@@ -6350,11 +6426,6 @@ pub mod builder {
         TcpConnect,
         /// Handshake failed to produce credentials.
         Handshake,
-        /// Fast-fail: no path secret (PSK) was cached for the peer.
-        ///
-        /// Emitted when `fail_fast_on_missing_psk` is enabled and the connect did not wait on a
-        /// handshake because no credentials were cached.
-        PeerPskMissing,
         /// When the connect future is dropped prior to returning any result.
         ///
         /// This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect
@@ -6376,7 +6447,6 @@ pub mod builder {
             match self {
                 Self::TcpConnect => TcpConnect {},
                 Self::Handshake => Handshake {},
-                Self::PeerPskMissing => PeerPskMissing {},
                 Self::AbortedPendingHandshake => AbortedPendingHandshake {},
                 Self::AbortedPendingConnect => AbortedPendingConnect {},
                 Self::AbortedPendingBoth => AbortedPendingBoth {},
@@ -7836,6 +7906,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `StreamConnectSkipped` event is triggered
+        #[inline]
+        fn on_stream_connect_skipped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectSkipped,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `StreamConnectError` event is triggered
         #[inline]
         fn on_stream_connect_error(
@@ -8824,6 +8904,14 @@ mod traits {
             self.as_ref().on_stream_connect(meta, event);
         }
         #[inline]
+        fn on_stream_connect_skipped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectSkipped,
+        ) {
+            self.as_ref().on_stream_connect_skipped(meta, event);
+        }
+        #[inline]
         fn on_stream_connect_error(
             &self,
             meta: &api::EndpointMeta,
@@ -9749,6 +9837,15 @@ mod traits {
             (self.1).on_stream_connect(meta, event);
         }
         #[inline]
+        fn on_stream_connect_skipped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectSkipped,
+        ) {
+            (self.0).on_stream_connect_skipped(meta, event);
+            (self.1).on_stream_connect_skipped(meta, event);
+        }
+        #[inline]
         fn on_stream_connect_error(
             &self,
             meta: &api::EndpointMeta,
@@ -10317,6 +10414,8 @@ mod traits {
         fn on_stream_tls_connect_error(&self, event: builder::StreamTlsConnectError);
         ///Publishes a `StreamConnect` event to the publisher's subscriber
         fn on_stream_connect(&self, event: builder::StreamConnect);
+        ///Publishes a `StreamConnectSkipped` event to the publisher's subscriber
+        fn on_stream_connect_skipped(&self, event: builder::StreamConnectSkipped);
         ///Publishes a `StreamConnectError` event to the publisher's subscriber
         fn on_stream_connect_error(&self, event: builder::StreamConnectError);
         ///Publishes a `EndpointInitialized` event to the publisher's subscriber
@@ -10661,6 +10760,13 @@ mod traits {
         fn on_stream_connect(&self, event: builder::StreamConnect) {
             let event = event.into_event();
             self.subscriber.on_stream_connect(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_connect_skipped(&self, event: builder::StreamConnectSkipped) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_connect_skipped(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11445,6 +11551,7 @@ pub mod testing {
             pub stream_tls_connect: AtomicU64,
             pub stream_tls_connect_error: AtomicU64,
             pub stream_connect: AtomicU64,
+            pub stream_connect_skipped: AtomicU64,
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
             pub dc_connection_timeout: AtomicU64,
@@ -11543,6 +11650,7 @@ pub mod testing {
                     stream_tls_connect: AtomicU64::new(0),
                     stream_tls_connect_error: AtomicU64::new(0),
                     stream_connect: AtomicU64::new(0),
+                    stream_connect_skipped: AtomicU64::new(0),
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
                     dc_connection_timeout: AtomicU64::new(0),
@@ -11912,6 +12020,17 @@ pub mod testing {
             }
             fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
                 self.stream_connect.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_stream_connect_skipped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::StreamConnectSkipped,
+            ) {
+                self.stream_connect_skipped.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -12430,6 +12549,7 @@ pub mod testing {
         pub stream_tls_connect: AtomicU64,
         pub stream_tls_connect_error: AtomicU64,
         pub stream_connect: AtomicU64,
+        pub stream_connect_skipped: AtomicU64,
         pub stream_connect_error: AtomicU64,
         pub stream_packet_transmitted: AtomicU64,
         pub stream_probe_transmitted: AtomicU64,
@@ -12561,6 +12681,7 @@ pub mod testing {
                 stream_tls_connect: AtomicU64::new(0),
                 stream_tls_connect_error: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
+                stream_connect_skipped: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
                 stream_packet_transmitted: AtomicU64::new(0),
                 stream_probe_transmitted: AtomicU64::new(0),
@@ -13223,6 +13344,17 @@ pub mod testing {
         }
         fn on_stream_connect(&self, meta: &api::EndpointMeta, event: &api::StreamConnect) {
             self.stream_connect.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_connect_skipped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::StreamConnectSkipped,
+        ) {
+            self.stream_connect_skipped.fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
             let out = format!("{meta:?} {event:?}");
@@ -13929,6 +14061,7 @@ pub mod testing {
         pub stream_tls_connect: AtomicU64,
         pub stream_tls_connect_error: AtomicU64,
         pub stream_connect: AtomicU64,
+        pub stream_connect_skipped: AtomicU64,
         pub stream_connect_error: AtomicU64,
         pub stream_packet_transmitted: AtomicU64,
         pub stream_probe_transmitted: AtomicU64,
@@ -14050,6 +14183,7 @@ pub mod testing {
                 stream_tls_connect: AtomicU64::new(0),
                 stream_tls_connect_error: AtomicU64::new(0),
                 stream_connect: AtomicU64::new(0),
+                stream_connect_skipped: AtomicU64::new(0),
                 stream_connect_error: AtomicU64::new(0),
                 stream_packet_transmitted: AtomicU64::new(0),
                 stream_probe_transmitted: AtomicU64::new(0),
@@ -14332,6 +14466,13 @@ pub mod testing {
         }
         fn on_stream_connect(&self, event: builder::StreamConnect) {
             self.stream_connect.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_stream_connect_skipped(&self, event: builder::StreamConnectSkipped) {
+            self.stream_connect_skipped.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

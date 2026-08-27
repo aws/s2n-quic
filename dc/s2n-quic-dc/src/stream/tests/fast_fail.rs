@@ -12,6 +12,14 @@ use crate::{
     testing::{init_tracing, server_name, NoopSubscriber, TestTlsProvider},
 };
 use s2n_quic_core::time::StdClock;
+use std::{
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tokio::net::TcpListener;
 
 fn build_client(fail_fast: bool) -> (ClientTokio<ClientProvider, NoopSubscriber>, Map) {
     let tls_materials_provider = TestTlsProvider {};
@@ -53,7 +61,7 @@ fn is_fast_fail(err: &std::io::Error) -> bool {
 }
 
 /// Flag enabled + no cached PSK: connect must fail immediately rather than block on a handshake,
-/// and the `io::Error` must carry the typed `PeerPskMissing` reason (surfaced as `WouldBlock`).
+/// and the `io::Error` must carry the typed `PeerPskMissing` reason (surfaced as `NotFound`).
 #[tokio::test]
 async fn connect_fails_fast_when_psk_missing() {
     init_tracing();
@@ -68,7 +76,7 @@ async fn connect_fails_fast_when_psk_missing() {
         .await
         .expect_err("connect should fail fast when no PSK is cached");
 
-    assert_eq!(err.kind(), std::io::ErrorKind::WouldBlock);
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
     assert!(
         is_fast_fail(&err),
         "expected a recoverable PeerPskMissing connect error, got: {err:?}",
@@ -92,5 +100,45 @@ async fn connect_succeeds_when_psk_cached() {
         result.is_ok(),
         "connect should succeed once a PSK is cached, got: {:?}",
         result.err(),
+    );
+}
+
+/// A fail-fast connect must not open a TCP connection. A plaintext TCP acceptor actively accepting
+/// in a background task must observe zero connections after the connect fails fast.
+#[tokio::test]
+async fn fail_fast_does_not_open_tcp_connection() {
+    init_tracing();
+
+    let acceptor = TcpListener::bind("127.0.0.1:0").await.expect("bind acceptor");
+    let acceptor_addr = acceptor.local_addr().expect("acceptor local_addr");
+    let accepted = Arc::new(AtomicUsize::new(0));
+    let accepted_count = accepted.clone();
+    tokio::spawn(async move {
+        loop {
+            match acceptor.accept().await {
+                Ok(_conn) => {
+                    accepted_count.fetch_add(1, Ordering::SeqCst);
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let (client, _map) = build_client(true);
+    let handshake_addr = "127.0.0.1:1337".parse().unwrap();
+
+    let err = client
+        .connect(handshake_addr, acceptor_addr, server_name())
+        .await
+        .expect_err("connect should fail fast when no PSK is cached");
+    assert!(is_fast_fail(&err), "expected PeerPskMissing, got: {err:?}");
+
+    // give any erroneous TCP connect attempt time to reach the acceptor
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert_eq!(
+        0,
+        accepted.load(Ordering::SeqCst),
+        "fail-fast connect must not open a TCP connection to the acceptor",
     );
 }

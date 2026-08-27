@@ -117,21 +117,38 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Ok(kind)
     }
 
+    /// Enforces the fail-fast policy before a connection attempt commits any resources.
+    ///
+    /// When `fail_fast_on_missing_psk` is set and no path secret is cached for the peer, this kicks
+    /// off a background handshake, emits a transport-agnostic connect-skipped event, and returns
+    /// `PeerPskMissing`.
+    #[inline]
+    fn fail_fast_if_psk_missing(
+        &self,
+        remote_handshake_addr: SocketAddr,
+        server_name: &Name,
+    ) -> io::Result<()> {
+        if self.fail_fast_on_missing_psk && !self.handshake.map().contains(&remote_handshake_addr) {
+            let _ = self
+                .handshake
+                .background_handshake_with(remote_handshake_addr, server_name.clone());
+            self.env
+                .endpoint_publisher()
+                .on_stream_connect_skipped(event::builder::StreamConnectSkipped {
+                    reason: event::builder::StreamConnectSkippedReason::PeerPskMissing,
+                    latency: Duration::ZERO,
+                });
+            return Err(client_error::Kind::PeerPskMissing.err().into());
+        }
+        Ok(())
+    }
+
     #[inline]
     async fn handshake_for_connect(
         &self,
         remote_handshake_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<secret::map::Peer> {
-        if self.fail_fast_on_missing_psk {
-            if let Some(entry) = self.handshake.map().get_tracked(remote_handshake_addr) {
-                return Ok(entry);
-            }
-            let _ = self
-                .handshake
-                .background_handshake_with(remote_handshake_addr, server_name);
-            return Err(client_error::Kind::PeerPskMissing.err().into());
-        }
         let (peer, _kind) = self
             .handshake
             .handshake_with_entry(remote_handshake_addr, server_name)
@@ -212,6 +229,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -234,6 +252,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Req: rpc::Request,
         Res: rpc::Response,
     {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -249,6 +268,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -294,6 +314,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Req: rpc::Request,
         Res: rpc::Response,
     {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -329,6 +350,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         stream: TcpStream,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
         // ensure we have a secret for the peer
         let handshake = self
             .handshake_for_connect(handshake_addr, server_name)
@@ -591,12 +613,7 @@ where
                         };
                     },
                     Err(e) => {
-                        guard.reason = match client_error::Kind::from_io(&e) {
-                            Some(client_error::Kind::PeerPskMissing) => {
-                                Some(StreamTcpConnectErrorReason::PeerPskMissing)
-                            }
-                            _ => Some(StreamTcpConnectErrorReason::Handshake),
-                        };
+                        guard.reason = Some(StreamTcpConnectErrorReason::Handshake);
                         error = Some(e);
                         peer = Some(Err(()));
                     }

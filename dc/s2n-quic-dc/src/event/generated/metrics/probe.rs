@@ -184,6 +184,9 @@ mod id {
         STREAM_CONNECT__ERROR,
         STREAM_CONNECT__TCP,
         STREAM_CONNECT__HANDSHAKE,
+        STREAM_CONNECT_SKIPPED,
+        STREAM_CONNECT_SKIPPED__REASON,
+        STREAM_CONNECT_SKIPPED__LATENCY,
         STREAM_CONNECT_ERROR,
         STREAM_CONNECT_ERROR__REASON,
         STREAM_CONNECT_ERROR__LATENCY,
@@ -632,6 +635,11 @@ mod id {
     pub const STREAM_CONNECT__ERROR: usize = InfoId::STREAM_CONNECT__ERROR as usize;
     pub const STREAM_CONNECT__TCP: usize = InfoId::STREAM_CONNECT__TCP as usize;
     pub const STREAM_CONNECT__HANDSHAKE: usize = InfoId::STREAM_CONNECT__HANDSHAKE as usize;
+    pub const STREAM_CONNECT_SKIPPED: usize = InfoId::STREAM_CONNECT_SKIPPED as usize;
+    pub const STREAM_CONNECT_SKIPPED__REASON: usize =
+        InfoId::STREAM_CONNECT_SKIPPED__REASON as usize;
+    pub const STREAM_CONNECT_SKIPPED__LATENCY: usize =
+        InfoId::STREAM_CONNECT_SKIPPED__LATENCY as usize;
     pub const STREAM_CONNECT_ERROR: usize = InfoId::STREAM_CONNECT_ERROR as usize;
     pub const STREAM_CONNECT_ERROR__REASON: usize = InfoId::STREAM_CONNECT_ERROR__REASON as usize;
     pub const STREAM_CONNECT_ERROR__LATENCY: usize = InfoId::STREAM_CONNECT_ERROR__LATENCY as usize;
@@ -1018,6 +1026,7 @@ mod counter {
                 id::STREAM_TLS_CONNECT => Self(stream_tls_connect),
                 id::STREAM_TLS_CONNECT_ERROR => Self(stream_tls_connect_error),
                 id::STREAM_CONNECT => Self(stream_connect),
+                id::STREAM_CONNECT_SKIPPED => Self(stream_connect_skipped),
                 id::STREAM_CONNECT_ERROR => Self(stream_connect_error),
                 id::STREAM_PACKET_TRANSMITTED => Self(stream_packet_transmitted),
                 id::STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__TOTAL => {
@@ -1280,10 +1289,12 @@ mod counter {
             #[link_name =
         s2n_quic_dc__event__counter__stream_connect]
             fn stream_connect(value: u64);
-            #[link_name = s2n_quic_dc__event__counter__stream_connect_error]
-            fn stream_connect_error(value: u64);
+            #[link_name = s2n_quic_dc__event__counter__stream_connect_skipped]
+            fn stream_connect_skipped(value: u64);
             #[link_name =
-        s2n_quic_dc__event__counter__stream_packet_transmitted]
+        s2n_quic_dc__event__counter__stream_connect_error]
+            fn stream_connect_error(value: u64);
+            #[link_name = s2n_quic_dc__event__counter__stream_packet_transmitted]
             fn stream_packet_transmitted(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__stream_packet_transmitted__payload_len__total]
@@ -1638,6 +1649,7 @@ mod counter {
                     id::ACCEPTOR_STREAM_PRUNED__REASON => Self(acceptor_stream_pruned__reason),
                     id::STREAM_CONNECT__TCP => Self(stream_connect__tcp),
                     id::STREAM_CONNECT__HANDSHAKE => Self(stream_connect__handshake),
+                    id::STREAM_CONNECT_SKIPPED__REASON => Self(stream_connect_skipped__reason),
                     id::STREAM_CONNECT_ERROR__REASON => Self(stream_connect_error__reason),
                     id::STREAM_HANDSHAKE_PACKET_REJECTED__REASON => {
                         Self(stream_handshake_packet_rejected__reason)
@@ -1783,6 +1795,13 @@ mod counter {
                 #[link_name =
             s2n_quic_dc__event__counter__nominal__stream_connect__handshake]
                 fn stream_connect__handshake(value: u64, variant: u64, variant_name: &info::Str);
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__stream_connect_skipped__reason]
+                fn stream_connect_skipped__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
                 #[link_name =
             s2n_quic_dc__event__counter__nominal__stream_connect_error__reason]
                 fn stream_connect_error__reason(value: u64, variant: u64, variant_name: &info::Str);
@@ -2849,6 +2868,7 @@ mod timer {
                 id::STREAM_TCP_CONNECT__TCP_LATENCY => Self(stream_tcp_connect__tcp_latency),
                 id::STREAM_TLS_CONNECT__TCP_LATENCY => Self(stream_tls_connect__tcp_latency),
                 id::STREAM_TLS_CONNECT__TLS_LATENCY => Self(stream_tls_connect__tls_latency),
+                id::STREAM_CONNECT_SKIPPED__LATENCY => Self(stream_connect_skipped__latency),
                 id::STREAM_CONNECT_ERROR__LATENCY => Self(stream_connect_error__latency),
                 _ => unreachable!("invalid info: {info:?}"),
             }
@@ -2942,6 +2962,9 @@ mod timer {
             #[link_name =
         s2n_quic_dc__event__timer__stream_tls_connect__tls_latency]
             fn stream_tls_connect__tls_latency(value: core::time::Duration);
+            #[link_name =
+        s2n_quic_dc__event__timer__stream_connect_skipped__latency]
+            fn stream_connect_skipped__latency(value: core::time::Duration);
             #[link_name =
         s2n_quic_dc__event__timer__stream_connect_error__latency]
             fn stream_connect_error__latency(value: core::time::Duration);

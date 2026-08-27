@@ -349,6 +349,24 @@ enum MaybeBoolCounter {
     Aborted,
 }
 
+/// Tracks stream connects that are skipped before a connection is attempted, independent of the
+/// transport.
+#[event("stream:connect_skipped")]
+#[subject(endpoint)]
+pub struct StreamConnectSkipped {
+    #[nominal_counter("reason")]
+    reason: StreamConnectSkippedReason,
+
+    #[timer("latency")]
+    latency: core::time::Duration,
+}
+
+/// Reasons a stream connect can be skipped, independent of the transport.
+pub enum StreamConnectSkippedReason {
+    /// No PSK was cached for the peer and the stream did not attempt to connect.
+    PeerPskMissing,
+}
+
 /// Tracks stream connect errors.
 ///
 /// Currently only emitted in cases where dcQUIC owns the TCP connect too.
@@ -370,12 +388,6 @@ pub enum StreamTcpConnectErrorReason {
 
     /// Handshake failed to produce credentials.
     Handshake,
-
-    /// Fast-fail: no path secret (PSK) was cached for the peer.
-    ///
-    /// Emitted when `fail_fast_on_missing_psk` is enabled and the connect did not wait on a
-    /// handshake because no credentials were cached.
-    PeerPskMissing,
 
     /// When the connect future is dropped prior to returning any result.
     ///
