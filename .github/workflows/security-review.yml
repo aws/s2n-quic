@@ -164,7 +164,7 @@ jobs:
           ./.github/scripts/security-review-comment.sh \
             "$RESULT_JSON" "$REPOSITORY" "$PR_NUMBER" "$GITHUB_SERVER_URL"
 
-  # Closed PRs update the centralized findings index without running Claude.
+  # Closed PRs update the centralized findings index without running a new review.
   track-closure:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
