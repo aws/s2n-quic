@@ -34,18 +34,18 @@ fn v0(n: u16) -> DiskEntry {
     }
 }
 
-/// A controllable [`PacingTime`] backed by a shared cell. Simulated time advances only when
+/// A controllable [`PacingClock`] backed by a shared cell. Simulated time advances only when
 /// something explicitly moves it -- the pacer's own `sleep`, or a test's iterator/attempt via
 /// [`advance`] -- so pacing is exercised with no wall-clock dependency. Clone shares the same clock.
 ///
-/// [`advance`]: FakeTime::advance
+/// [`advance`]: FakeClock::advance
 #[derive(Clone)]
-struct FakeTime {
+struct FakeClock {
     at: Rc<Cell<Timestamp>>,
     allow_sleep: bool,
 }
 
-impl FakeTime {
+impl FakeClock {
     fn new() -> Self {
         // Safety: the duration is non-zero.
         let base = unsafe { Timestamp::from_duration(Duration::from_secs(3600)) };
@@ -63,17 +63,23 @@ impl FakeTime {
         }
     }
 
+    fn now(&self) -> Timestamp {
+        self.at.get()
+    }
+
     fn advance(&self, by: Duration) {
         self.at.set(self.at.get() + by);
     }
 }
 
-impl PacingTime for FakeTime {
-    fn now(&self) -> Timestamp {
+impl Clock for FakeClock {
+    fn get_time(&self) -> Timestamp {
         self.at.get()
     }
+}
 
-    fn sleep(&mut self, dur: Duration) {
+impl PacingClock for FakeClock {
+    fn sleep(&self, dur: Duration) {
         assert!(self.allow_sleep, "the pacer must not sleep in this test");
         self.at.set(self.at.get() + dur);
     }
@@ -92,7 +98,7 @@ fn assert_partitions(stats: &SendStats, total: usize) {
 fn v0_entries_are_skipped_not_attempted() {
     // Interleave v0 (None) and v1 (Some) entries.
     let entries = vec![v0(1), v0(2), v1(3), v0(4), v1(5)];
-    let mut time = FakeTime::frozen();
+    let time = FakeClock::frozen();
     let deadline = time.now() + Duration::from_secs(30);
 
     let mut attempts = 0;
@@ -100,7 +106,7 @@ fn v0_entries_are_skipped_not_attempted() {
         &mut entries.into_iter(),
         nz(1_000_000),
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| {
             attempts += 1;
             true
@@ -126,14 +132,14 @@ fn all_v0_file_drains_without_pacing() {
     // proves it; a few entries suffice (no need to allocate a whole file or measure wall time).
     let entries: Vec<_> = (0..5).map(v0).collect();
     let total = entries.len();
-    let mut time = FakeTime::frozen();
+    let time = FakeClock::frozen();
     let deadline = time.now() + Duration::from_secs(30);
 
     let stats = pace_attempts(
         &mut entries.into_iter(),
         nz(1), // 1/sec -- would pace forever if v0 entries consumed budget
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| unreachable!("no sends for a v0-only file"),
     );
 
@@ -152,7 +158,7 @@ fn all_v0_file_drains_without_pacing() {
 fn per_entry_failure_is_counted_not_fatal() {
     let entries: Vec<_> = (0..20).map(v1).collect();
     let total = entries.len();
-    let mut time = FakeTime::frozen();
+    let time = FakeClock::frozen();
     let deadline = time.now() + Duration::from_secs(30);
 
     // Fail every third attempt; the run must continue past each failure.
@@ -161,7 +167,7 @@ fn per_entry_failure_is_counted_not_fatal() {
         &mut entries.into_iter(),
         nz(1_000_000),
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| {
             let fail = n.is_multiple_of(3); // indices 0,3,6,9,12,15,18 -> 7 failures
             n += 1;
@@ -186,19 +192,19 @@ fn deadline_cuts_run_short() {
     // a short deadline attempts only a bounded prefix and reports the rest as `remaining`.
     let entries: Vec<_> = (0..500).map(|n| v1((n % 250) as u8)).collect();
     let total = entries.len();
-    let mut time = FakeTime::new();
+    let time = FakeClock::new();
     let deadline = time.now() + Duration::from_millis(50);
 
     let stats = pace_attempts(
         &mut entries.into_iter(),
         nz(1_000),
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| true,
     );
 
-    // At 1000/sec the bucket is 5 tokens per 5ms tick; a batch is sent at t = 0, 5, .. 45ms
-    // (10 ticks) before t = 50ms crosses the deadline -- 50 sent, the rest left as remaining.
+    // At 1000/sec the batch is 5 sends per 5ms tick, at t = 0, 5, .. 45ms (10 ticks) before
+    // t = 50ms crosses the deadline -- 50 sent, the rest left as remaining.
     assert_eq!(
         stats,
         SendStats {
@@ -212,18 +218,18 @@ fn deadline_cuts_run_short() {
 
 #[test]
 fn low_rate_is_not_quantized_up() {
-    // A rate below 1 / MIN_TICK (200/sec) must be honored, not rounded up. At 100/sec over
-    // 100ms exactly 10 attempts occur (a fixed-5ms-tick pacer would instead send ~20).
+    // A rate below 1 / MIN_TICK (200/sec) must be honored, not rounded up. At 100/sec the tick is
+    // one packet per 10ms; 10 land within the 100ms window (a fixed-5ms-tick pacer would send ~20).
     let entries: Vec<_> = (0..1000).map(|n| v1((n % 250) as u8)).collect();
     let total = entries.len();
-    let mut time = FakeTime::new();
+    let time = FakeClock::new();
     let deadline = time.now() + Duration::from_millis(100);
 
     let stats = pace_attempts(
         &mut entries.into_iter(),
         nz(100),
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| true,
     );
 
@@ -239,25 +245,24 @@ fn low_rate_is_not_quantized_up() {
 }
 
 #[test]
-fn token_accounting_sustains_target_rate() {
-    // Deterministic token accounting: simulated time advances only when the pacer sleeps, so a
-    // rate far above the ~20-30K/sec sleep-per-packet ceiling still yields ~rate * window
-    // attempts. A broken pacer (unpaced burst, or stuck below the ceiling) lands far outside the
-    // band.
+fn pacing_sustains_target_rate() {
+    // Deterministic pacing: simulated time advances only when the pacer sleeps, so a rate far
+    // above the ~20-30K/sec sleep-per-packet ceiling still yields ~rate * window attempts. A
+    // broken pacer (unpaced burst, or stuck below the ceiling) lands far outside the band.
     let target = 40_000u32;
     let window = Duration::from_millis(100);
     let expected = (u64::from(target) * window.as_millis() as u64 / 1000) as usize; // 4_000
 
     // More entries than the window can drain, so the deadline (not the iterator) bounds the run.
     let entries: Vec<_> = (0..(expected * 4)).map(|n| v1((n % 251) as u8)).collect();
-    let mut time = FakeTime::new();
+    let time = FakeClock::new();
     let deadline = time.now() + window;
 
     let stats = pace_attempts(
         &mut entries.into_iter(),
         nz(target),
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| true,
     );
 
@@ -271,20 +276,20 @@ fn token_accounting_sustains_target_rate() {
 
 #[test]
 fn first_batch_is_immediate() {
-    // The initial token allowance must let the first batch go out before the pacer ever sleeps.
-    // With fewer entries than one tick's budget, all of them send in the first batch and the
-    // frozen clock (whose `sleep` panics) is never touched.
+    // The first batch must go out before the pacer ever sleeps. With fewer entries than one tick's
+    // budget, all of them send in that batch and the frozen clock (whose `sleep` panics) is never
+    // touched.
     let rate = nz(100_000); // per-tick budget = 100_000 * MIN_TICK(5ms) = 500
     let entries: Vec<_> = (0..100).map(v1).collect(); // 100 < 500, fits the first batch
     let total = entries.len();
-    let mut time = FakeTime::frozen();
+    let time = FakeClock::frozen();
     let deadline = time.now() + Duration::from_secs(5);
 
     let stats = pace_attempts(
         &mut entries.into_iter(),
         rate,
         deadline,
-        &mut time,
+        &time,
         |_id, _peer| true,
     );
 
@@ -301,7 +306,7 @@ fn does_not_send_after_deadline_crossed_while_queuing() {
     // iterator advances the clock past the deadline as it yields. The pre-send recheck must then
     // stop the run without attempting a send.
     struct AdvancingIter {
-        time: FakeTime,
+        time: FakeClock,
         items: std::vec::IntoIter<DiskEntry>,
         jump: Duration,
     }
@@ -321,7 +326,7 @@ fn does_not_send_after_deadline_crossed_while_queuing() {
         }
     }
 
-    let mut time = FakeTime::frozen(); // tokens are available; the deadline, not budget, stops us
+    let time = FakeClock::frozen(); // the first batch has capacity; the deadline stops us
     let mut entries = AdvancingIter {
         time: time.clone(),
         items: vec![v1(1), v1(2)].into_iter(),
@@ -331,16 +336,10 @@ fn does_not_send_after_deadline_crossed_while_queuing() {
     let deadline = time.now() + Duration::from_millis(10);
 
     let mut attempts = 0;
-    let stats = pace_attempts(
-        &mut entries,
-        nz(100_000),
-        deadline,
-        &mut time,
-        |_id, _peer| {
-            attempts += 1;
-            true
-        },
-    );
+    let stats = pace_attempts(&mut entries, nz(100_000), deadline, &time, |_id, _peer| {
+        attempts += 1;
+        true
+    });
 
     assert_eq!(
         attempts, 0,
@@ -356,7 +355,7 @@ fn v0_after_deadline_counts_remaining_not_skipped() {
     // The send crosses the deadline (the attempt advances the clock past it); the *following*
     // v0 entry must then be counted as `remaining` -- the loop must not advance the iterator to
     // fetch and skip it after the deadline.
-    let mut time = FakeTime::frozen();
+    let time = FakeClock::frozen();
     let attempt = {
         let time = time.clone();
         move |_id, _peer| {
@@ -370,7 +369,7 @@ fn v0_after_deadline_counts_remaining_not_skipped() {
         &mut vec![v1(1), v0(2)].into_iter(),
         nz(100_000),
         deadline,
-        &mut time,
+        &time,
         attempt,
     );
 
