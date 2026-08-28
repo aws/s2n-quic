@@ -188,9 +188,6 @@ mod id {
         STREAM_CONNECT__ERROR,
         STREAM_CONNECT__TCP,
         STREAM_CONNECT__HANDSHAKE,
-        STREAM_CONNECT_SKIPPED,
-        STREAM_CONNECT_SKIPPED__REASON,
-        STREAM_CONNECT_SKIPPED__LATENCY,
         STREAM_CONNECT_ERROR,
         STREAM_CONNECT_ERROR__REASON,
         STREAM_CONNECT_ERROR__LATENCY,
@@ -639,11 +636,6 @@ mod id {
     pub const STREAM_CONNECT__ERROR: usize = InfoId::STREAM_CONNECT__ERROR as usize;
     pub const STREAM_CONNECT__TCP: usize = InfoId::STREAM_CONNECT__TCP as usize;
     pub const STREAM_CONNECT__HANDSHAKE: usize = InfoId::STREAM_CONNECT__HANDSHAKE as usize;
-    pub const STREAM_CONNECT_SKIPPED: usize = InfoId::STREAM_CONNECT_SKIPPED as usize;
-    pub const STREAM_CONNECT_SKIPPED__REASON: usize =
-        InfoId::STREAM_CONNECT_SKIPPED__REASON as usize;
-    pub const STREAM_CONNECT_SKIPPED__LATENCY: usize =
-        InfoId::STREAM_CONNECT_SKIPPED__LATENCY as usize;
     pub const STREAM_CONNECT_ERROR: usize = InfoId::STREAM_CONNECT_ERROR as usize;
     pub const STREAM_CONNECT_ERROR__REASON: usize = InfoId::STREAM_CONNECT_ERROR__REASON as usize;
     pub const STREAM_CONNECT_ERROR__LATENCY: usize = InfoId::STREAM_CONNECT_ERROR__LATENCY as usize;
@@ -1008,7 +1000,6 @@ mod id {
         COUNTERS_STREAM_TLS_CONNECT,
         COUNTERS_STREAM_TLS_CONNECT_ERROR,
         COUNTERS_STREAM_CONNECT,
-        COUNTERS_STREAM_CONNECT_SKIPPED,
         COUNTERS_STREAM_CONNECT_ERROR,
         COUNTERS_STREAM_PACKET_TRANSMITTED,
         COUNTERS_STREAM_PACKET_TRANSMITTED__PAYLOAD_LEN__TOTAL,
@@ -1172,8 +1163,6 @@ mod id {
     pub const COUNTERS_STREAM_TLS_CONNECT_ERROR: usize =
         Counters::COUNTERS_STREAM_TLS_CONNECT_ERROR as usize;
     pub const COUNTERS_STREAM_CONNECT: usize = Counters::COUNTERS_STREAM_CONNECT as usize;
-    pub const COUNTERS_STREAM_CONNECT_SKIPPED: usize =
-        Counters::COUNTERS_STREAM_CONNECT_SKIPPED as usize;
     pub const COUNTERS_STREAM_CONNECT_ERROR: usize =
         Counters::COUNTERS_STREAM_CONNECT_ERROR as usize;
     pub const COUNTERS_STREAM_PACKET_TRANSMITTED: usize =
@@ -1380,7 +1369,6 @@ mod id {
         NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON,
         NOMINAL_COUNTERS_STREAM_CONNECT__TCP,
         NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE,
-        NOMINAL_COUNTERS_STREAM_CONNECT_SKIPPED__REASON,
         NOMINAL_COUNTERS_STREAM_CONNECT_ERROR__REASON,
         NOMINAL_COUNTERS_STREAM_HANDSHAKE_PACKET_REJECTED__REASON,
         NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL,
@@ -1426,8 +1414,6 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_STREAM_CONNECT__TCP as usize;
     pub const NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE: usize =
         NominalCounters::NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE as usize;
-    pub const NOMINAL_COUNTERS_STREAM_CONNECT_SKIPPED__REASON: usize =
-        NominalCounters::NOMINAL_COUNTERS_STREAM_CONNECT_SKIPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_STREAM_CONNECT_ERROR__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_STREAM_CONNECT_ERROR__REASON as usize;
     pub const NOMINAL_COUNTERS_STREAM_HANDSHAKE_PACKET_REJECTED__REASON: usize =
@@ -1952,7 +1938,6 @@ mod id {
         TIMERS_STREAM_TCP_CONNECT__TCP_LATENCY,
         TIMERS_STREAM_TLS_CONNECT__TCP_LATENCY,
         TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY,
-        TIMERS_STREAM_CONNECT_SKIPPED__LATENCY,
         TIMERS_STREAM_CONNECT_ERROR__LATENCY,
     }
     pub const TIMERS_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION: usize =
@@ -2009,12 +1994,10 @@ mod id {
         Timers::TIMERS_STREAM_TLS_CONNECT__TCP_LATENCY as usize;
     pub const TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY: usize =
         Timers::TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY as usize;
-    pub const TIMERS_STREAM_CONNECT_SKIPPED__LATENCY: usize =
-        Timers::TIMERS_STREAM_CONNECT_SKIPPED__LATENCY as usize;
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 344usize] = &[
+static INFO: &[Info; 341usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -3039,24 +3022,6 @@ static INFO: &[Info; 344usize] = &[
         id: id::STREAM_CONNECT__HANDSHAKE,
         name: Str::new("stream_connect.handshake\0"),
         units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: id::STREAM_CONNECT_SKIPPED,
-        name: Str::new("stream_connect_skipped\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: id::STREAM_CONNECT_SKIPPED__REASON,
-        name: Str::new("stream_connect_skipped.reason\0"),
-        units: Units::None,
-    }
-    .build(),
-    info::Builder {
-        id: id::STREAM_CONNECT_SKIPPED__LATENCY,
-        name: Str::new("stream_connect_skipped.latency\0"),
-        units: Units::Duration,
     }
     .build(),
     info::Builder {
@@ -4117,19 +4082,19 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 115usize]>,
+    counters: Box<[R::Counter; 114usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 38usize]>,
+    nominal_counter_offsets: Box<[usize; 37usize]>,
     #[allow(dead_code)]
     measures: Box<[R::Measure; 137usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 29usize]>,
+    timers: Box<[R::Timer; 28usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -4152,13 +4117,13 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(115usize);
+        let mut counters = Vec::with_capacity(114usize);
         let mut bool_counters = Vec::with_capacity(25usize);
-        let mut nominal_counters = Vec::with_capacity(38usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(38usize);
+        let mut nominal_counters = Vec::with_capacity(37usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(37usize);
         let mut measures = Vec::with_capacity(137usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(29usize);
+        let mut timers = Vec::with_capacity(28usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STARTED]));
@@ -4223,7 +4188,6 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::STREAM_TLS_CONNECT]));
         counters.push(registry.register_counter(&INFO[id::STREAM_TLS_CONNECT_ERROR]));
         counters.push(registry.register_counter(&INFO[id::STREAM_CONNECT]));
-        counters.push(registry.register_counter(&INFO[id::STREAM_CONNECT_SKIPPED]));
         counters.push(registry.register_counter(&INFO[id::STREAM_CONNECT_ERROR]));
         counters.push(registry.register_counter(&INFO[id::STREAM_PACKET_TRANSMITTED]));
         counters.push(
@@ -4450,19 +4414,6 @@ impl<R: Registry> Subscriber<R> {
                             variant,
                         ),
                     );
-                    count += 1;
-                }
-                debug_assert_ne!(count, 0, "field type needs at least one variant");
-                nominal_counter_offsets.push(offset);
-            }
-            {
-                let offset = nominal_counters.len();
-                let mut count = 0;
-                for variant in <StreamConnectSkippedReason as AsVariant>::VARIANTS.iter() {
-                    nominal_counters.push(registry.register_nominal_counter(
-                        &INFO[id::STREAM_CONNECT_SKIPPED__REASON],
-                        variant,
-                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -5196,7 +5147,6 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[id::STREAM_TCP_CONNECT__TCP_LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_TLS_CONNECT__TCP_LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_TLS_CONNECT__TLS_LATENCY]));
-        timers.push(registry.register_timer(&INFO[id::STREAM_CONNECT_SKIPPED__LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_CONNECT_ERROR__LATENCY]));
         {
             #[allow(unused_imports)]
@@ -5357,7 +5307,6 @@ impl<R: Registry> Subscriber<R> {
                     (&INFO[id::STREAM_TLS_CONNECT_ERROR], entry)
                 }
                 id::COUNTERS_STREAM_CONNECT => (&INFO[id::STREAM_CONNECT], entry),
-                id::COUNTERS_STREAM_CONNECT_SKIPPED => (&INFO[id::STREAM_CONNECT_SKIPPED], entry),
                 id::COUNTERS_STREAM_CONNECT_ERROR => (&INFO[id::STREAM_CONNECT_ERROR], entry),
                 id::COUNTERS_STREAM_PACKET_TRANSMITTED => {
                     (&INFO[id::STREAM_PACKET_TRANSMITTED], entry)
@@ -5702,13 +5651,6 @@ impl<R: Registry> Subscriber<R> {
                         let entries = &self
                             .nominal_counters[offset..offset + variants.len()];
                         (&INFO[id::STREAM_CONNECT__HANDSHAKE], entries, variants)
-                    }
-                    id::NOMINAL_COUNTERS_STREAM_CONNECT_SKIPPED__REASON => {
-                        let offset = *entry;
-                        let variants = <StreamConnectSkippedReason as AsVariant>::VARIANTS;
-                        let entries = &self
-                            .nominal_counters[offset..offset + variants.len()];
-                        (&INFO[id::STREAM_CONNECT_SKIPPED__REASON], entries, variants)
                     }
                     id::NOMINAL_COUNTERS_STREAM_CONNECT_ERROR__REASON => {
                         let offset = *entry;
@@ -6700,9 +6642,6 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY => {
                     (&INFO[id::STREAM_TLS_CONNECT__TLS_LATENCY], entry)
-                }
-                id::TIMERS_STREAM_CONNECT_SKIPPED__LATENCY => {
-                    (&INFO[id::STREAM_CONNECT_SKIPPED__LATENCY], entry)
                 }
                 id::TIMERS_STREAM_CONNECT_ERROR__LATENCY => {
                     (&INFO[id::STREAM_CONNECT_ERROR__LATENCY], entry)
@@ -8112,32 +8051,6 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::STREAM_CONNECT__HANDSHAKE,
             id::NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE,
             &event.handshake_success,
-        );
-        let _ = event;
-        let _ = meta;
-    }
-    #[inline]
-    fn on_stream_connect_skipped(
-        &self,
-        meta: &api::EndpointMeta,
-        event: &api::StreamConnectSkipped,
-    ) {
-        #[allow(unused_imports)]
-        use api::*;
-        self.count(
-            id::STREAM_CONNECT_SKIPPED,
-            id::COUNTERS_STREAM_CONNECT_SKIPPED,
-            1usize,
-        );
-        self.count_nominal(
-            id::STREAM_CONNECT_SKIPPED__REASON,
-            id::NOMINAL_COUNTERS_STREAM_CONNECT_SKIPPED__REASON,
-            &event.reason,
-        );
-        self.time(
-            id::STREAM_CONNECT_SKIPPED__LATENCY,
-            id::TIMERS_STREAM_CONNECT_SKIPPED__LATENCY,
-            event.latency,
         );
         let _ = event;
         let _ = meta;

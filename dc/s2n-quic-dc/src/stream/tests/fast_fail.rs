@@ -109,18 +109,15 @@ async fn connect_succeeds_when_psk_cached() {
 async fn fail_fast_does_not_open_tcp_connection() {
     init_tracing();
 
-    let acceptor = TcpListener::bind("127.0.0.1:0").await.expect("bind acceptor");
+    let acceptor = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind acceptor");
     let acceptor_addr = acceptor.local_addr().expect("acceptor local_addr");
     let accepted = Arc::new(AtomicUsize::new(0));
     let accepted_count = accepted.clone();
-    tokio::spawn(async move {
-        loop {
-            match acceptor.accept().await {
-                Ok(_conn) => {
-                    accepted_count.fetch_add(1, Ordering::SeqCst);
-                }
-                Err(_) => break,
-            }
+    let acceptor_task = tokio::spawn(async move {
+        while acceptor.accept().await.is_ok() {
+            accepted_count.fetch_add(1, Ordering::SeqCst);
         }
     });
 
@@ -135,6 +132,7 @@ async fn fail_fast_does_not_open_tcp_connection() {
 
     // give any erroneous TCP connect attempt time to reach the acceptor
     tokio::time::sleep(Duration::from_millis(100)).await;
+    acceptor_task.abort();
 
     assert_eq!(
         0,

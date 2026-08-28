@@ -117,27 +117,27 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Ok(kind)
     }
 
-    /// Enforces the fail-fast policy before a connection attempt commits any resources.
-    ///
-    /// When `fail_fast_on_missing_psk` is set and no path secret is cached for the peer, this kicks
-    /// off a background handshake, emits a transport-agnostic connect-skipped event, and returns
-    /// `PeerPskMissing`.
+    /// When fail_fast_on_missing_psk is set and no path secret is cached for the peer, this kicks
+    /// off a background handshake and returns PeerPskMissing. Also, for TCP it emits events.
     #[inline]
     fn fail_fast_if_psk_missing(
         &self,
         remote_handshake_addr: SocketAddr,
         server_name: &Name,
+        protocol: socket::Protocol,
     ) -> io::Result<()> {
         if self.fail_fast_on_missing_psk && !self.handshake.map().contains(&remote_handshake_addr) {
             let _ = self
                 .handshake
                 .background_handshake_with(remote_handshake_addr, server_name.clone());
-            self.env
-                .endpoint_publisher()
-                .on_stream_connect_skipped(event::builder::StreamConnectSkipped {
-                    reason: event::builder::StreamConnectSkippedReason::PeerPskMissing,
-                    latency: Duration::ZERO,
-                });
+            if matches!(protocol, socket::Protocol::Tcp) {
+                self.env.endpoint_publisher().on_stream_connect_error(
+                    event::builder::StreamConnectError {
+                        reason: StreamTcpConnectErrorReason::PeerPskMissing,
+                        latency: Duration::ZERO,
+                    },
+                );
+            }
             return Err(client_error::Kind::PeerPskMissing.err().into());
         }
         Ok(())
@@ -229,7 +229,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
-        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Udp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -252,7 +252,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Req: rpc::Request,
         Res: rpc::Response,
     {
-        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Udp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -268,7 +268,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
-        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Tcp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -314,7 +314,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Req: rpc::Request,
         Res: rpc::Response,
     {
-        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Tcp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -350,7 +350,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         stream: TcpStream,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
-        self.fail_fast_if_psk_missing(handshake_addr, &server_name)?;
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Tcp)?;
         // ensure we have a secret for the peer
         let handshake = self
             .handshake_for_connect(handshake_addr, server_name)

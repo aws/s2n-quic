@@ -101,4 +101,3 @@ impl Kind {
         Error::from_io(err).map(Error::kind)
     }
 }
-
