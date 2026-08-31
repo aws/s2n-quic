@@ -217,7 +217,8 @@ impl Limits {
         /// longer than the minimum of the max_idle_timeout value advertised by both endpoints.
         with_max_idle_timeout,
         max_idle_timeout,
-        Duration);
+        Duration
+    );
 
     /// Sets both the max local and remote limits for bidirectional streams.
     #[deprecated(
@@ -321,7 +322,8 @@ impl Limits {
         /// this value is used to prevent middleboxes from losing state for UDP flows.
         with_max_keep_alive_period,
         max_keep_alive_period,
-        Duration);
+        Duration
+    );
     /// Sets whether active connection migration is supported for a server endpoint (default: true)
     ///
     /// If set to false, the `disable_active_migration` transport parameter will be sent to the
