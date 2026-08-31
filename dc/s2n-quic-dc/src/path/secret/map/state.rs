@@ -624,6 +624,12 @@ where
 
         // Order by access recency (newest first), so the most-active peers come first regardless
         // of when they were created.
+        //
+        // Caching the key is required for correctness, not just speed: entries are still live and
+        // `accessed_at_epoch` can change concurrently (and `upgrade()` can start failing) while we
+        // sort. Recomputing the key on every comparison would then violate the total order the
+        // sort requires, which is allowed to panic. Caching reads each key exactly once, sorting a
+        // consistent snapshot.
         entries.sort_by_cached_key(|weak| {
             core::cmp::Reverse(
                 weak.upgrade()
