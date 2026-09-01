@@ -337,7 +337,12 @@ impl Client {
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
-            .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
+            .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?
+            // Packet buffering on the client avoids dropping LossRecoveryProbing handshake frames
+            //
+            // This is primarily needed with large ServerHellos (e.g., with PQ), but should be
+            // harmless even without it.
+            .with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
