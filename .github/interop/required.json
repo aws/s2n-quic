@@ -303,7 +303,9 @@
       "client",
       "server"
     ],
-    "kwik": [],
+    "kwik": [
+      "server"
+    ],
     "lsquic": [
       "client",
       "server"
@@ -626,7 +628,9 @@
     "lsquic": [
       "server"
     ],
-    "msquic": [],
+    "msquic": [
+      "server"
+    ],
     "mvfst": [],
     "neqo": [
       "client",
@@ -724,7 +728,9 @@
     "aioquic": [
       "client"
     ],
-    "kwik": [],
+    "kwik": [
+      "client"
+    ],
     "lsquic": [
       "client",
       "server"
@@ -963,7 +969,8 @@
       "server"
     ],
     "kwik": [
-      "client"
+      "client",
+      "server"
     ],
     "lsquic": [
       "client",

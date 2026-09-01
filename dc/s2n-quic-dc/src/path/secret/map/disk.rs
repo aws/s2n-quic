@@ -3,7 +3,7 @@
 
 //! This module implements on-disk persistence for the path secret map.
 //!
-//! Only part of the information is persisted (today, just entry socket addresses).
+//! Only part of the information is persisted (today, entry socket addresses and credential IDs).
 
 use std::{
     fmt,
@@ -15,12 +15,38 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::path::secret::map::{cleaner::CLEANER_CYCLE, Entry, Epoch};
+use crate::{
+    credentials,
+    path::secret::map::{cleaner::CLEANER_CYCLE, Entry, Epoch},
+};
 
 const HEADER: &str = "s2n-quic-dc path secret map";
 
-/// The version identifier written immediately after the [`HEADER`].
-const VERSION: &[u8] = b"v0";
+/// Peer address per entry.
+const VERSION_V0: &[u8] = b"v0";
+/// Adds the credential id.
+const VERSION_V1: &[u8] = b"v1";
+
+/// The version new files are written in: always the latest.
+const VERSION: &[u8] = VERSION_V1;
+
+/// The format version of a file being read, recovered from its version tag.
+/// Carried so per-entry decoding knows which fields are present.
+#[derive(Clone, Copy)]
+enum Version {
+    V0,
+    V1,
+}
+
+impl Version {
+    fn from_tag(tag: &[u8]) -> Option<Version> {
+        match tag {
+            _ if tag == VERSION_V0 => Some(Version::V0),
+            _ if tag == VERSION_V1 => Some(Version::V1),
+            _ => None,
+        }
+    }
+}
 
 /// Maximum size of a persisted file we are willing to read into memory.
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
@@ -299,6 +325,8 @@ impl Serializer {
                     }
                 }
             }
+
+            output.write_all(&entry.id()[..])?;
         }
 
         output.flush()?;
@@ -326,8 +354,12 @@ pub(crate) struct SerializeStats {
 /// A single entry read back from a persisted file.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
+#[non_exhaustive]
 pub struct DiskEntry {
     pub peer: SocketAddr,
+    /// The peer's credential id, or `None` for an entry read from a v0 file,
+    /// which predates credential ids.
+    pub id: Option<credentials::Id>,
 }
 
 /// Reads the file at `path` fully into memory and returns an iterator yielding the entries it
@@ -357,9 +389,8 @@ pub fn deserialize(path: &Path) -> io::Result<Entries> {
     if reader.take(HEADER.len())? != HEADER.as_bytes() {
         return Err(invalid_data("missing or invalid header"));
     }
-    if reader.take(VERSION.len())? != VERSION {
-        return Err(invalid_data("missing or unsupported version"));
-    }
+    let version = Version::from_tag(reader.take(VERSION.len())?)
+        .ok_or_else(|| invalid_data("missing or unsupported version"))?;
 
     let started_at = {
         let secs = u64::from_le_bytes(reader.take_array::<8>()?);
@@ -376,6 +407,7 @@ pub fn deserialize(path: &Path) -> io::Result<Entries> {
         bytes,
         pos,
         started_at,
+        version,
     })
 }
 
@@ -387,6 +419,7 @@ pub struct Entries {
     pos: usize,
     /// The time at which the file started being written, as recorded in its header.
     pub started_at: SystemTime,
+    version: Version,
 }
 
 impl Iterator for Entries {
@@ -400,7 +433,7 @@ impl Iterator for Entries {
         let mut reader = Reader {
             bytes: &self.bytes[self.pos..],
         };
-        let result = read_entry(&mut reader);
+        let result = read_entry(&mut reader, self.version);
         // Advance past whatever was consumed. On error we jump to the end so iteration stops
         // rather than spinning on the same malformed bytes.
         self.pos = if result.is_ok() {
@@ -413,7 +446,7 @@ impl Iterator for Entries {
 }
 
 /// Decodes a single entry from `reader`.
-fn read_entry(reader: &mut Reader) -> io::Result<DiskEntry> {
+fn read_entry(reader: &mut Reader, version: Version) -> io::Result<DiskEntry> {
     let tag = reader.take(1)?[0];
     let peer = match tag {
         0 => {
@@ -437,7 +470,12 @@ fn read_entry(reader: &mut Reader) -> io::Result<DiskEntry> {
         other => return Err(invalid_data(format!("unknown peer tag {other}"))),
     };
 
-    Ok(DiskEntry { peer })
+    let id = match version {
+        Version::V0 => None,
+        Version::V1 => Some(credentials::Id::from(reader.take_array::<16>()?)),
+    };
+
+    Ok(DiskEntry { peer, id })
 }
 
 /// A cursor over an in-memory byte buffer.
