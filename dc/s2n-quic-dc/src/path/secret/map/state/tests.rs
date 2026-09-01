@@ -485,3 +485,61 @@ fn unknown_path_secret_evicts() {
     assert!(!map.ids.contains_key(entry.id()), "{:?}", map.ids);
     assert!(!map.peers.contains_key(entry.peer()), "{:?}", map.peers);
 }
+
+/// Builds a `State` whose signer uses `secret`, with background processing stopped.
+fn state_with_secret(secret: &[u8]) -> Arc<State<Clock, tracing::Subscriber>> {
+    let map = State::builder()
+        .with_signer(stateless_reset::Signer::new(secret))
+        .with_capacity(64)
+        .with_clock(Clock)
+        .with_subscriber(tracing::Subscriber::default())
+        .build()
+        .unwrap();
+    map.cleaner.stop();
+    map
+}
+
+fn disk_entry(port: u16, id: Option<u8>) -> DiskEntry {
+    DiskEntry {
+        peer: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port)),
+        id: id.map(|b| Id::from([b; 16])),
+    }
+}
+
+#[test]
+fn send_unknown_path_secrets_over_control_socket_ok() {
+    use core::num::NonZeroU32;
+    use std::time::Duration;
+
+    // Exercises the real control-socket send path. Packets go to loopback discard ports; the call
+    // should succeed and the counters should partition the input.
+    let map = state_with_secret(b"secret");
+    let entries: Vec<DiskEntry> = (0..16)
+        .map(|n| disk_entry(5000 + n, Some(n as u8)))
+        .collect();
+    let total = entries.len();
+
+    let result = map.send_unknown_path_secrets(
+        &mut entries.into_iter(),
+        NonZeroU32::new(100_000).unwrap(),
+        Duration::from_secs(5),
+    );
+
+    match result {
+        Ok(stats) => {
+            assert_eq!(
+                stats.sent + stats.failed + stats.skipped + stats.remaining,
+                total
+            );
+            assert_eq!(stats.skipped, 0);
+            assert_eq!(stats.remaining, 0);
+        }
+        // Some environments (e.g. sandboxes) can't create the UDP control socket, in which case
+        // there is nothing to send on. That is a supported outcome, not a test failure -- the
+        // socket-independent behavior is covered by the `proactive_unknown_path_secret` unit tests.
+        Err(err) if err.kind() == std::io::ErrorKind::NotConnected => {
+            eprintln!("skipping: no control socket available in this environment ({err})");
+        }
+        Err(err) => panic!("unexpected error: {err}"),
+    }
+}

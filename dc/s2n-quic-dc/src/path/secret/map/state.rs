@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
+    ApplicationDataError, DiskEntry, Entry, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -1255,6 +1256,38 @@ where
                 tracing::warn!("Failed to send control packet to {:?}: {:?}", dst, e);
             }
         }
+    }
+
+    fn send_unknown_path_secrets(
+        &self,
+        entries: &mut dyn ExactSizeIterator<Item = DiskEntry>,
+        rate: core::num::NonZeroU32,
+        timeout: Duration,
+    ) -> std::io::Result<SendStats> {
+        let Some(control_socket) = self.control_socket.clone() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "path secret map has no control socket to send on",
+            ));
+        };
+
+        Ok(proactive_unknown_path_secret::emit_packets(
+            entries,
+            rate,
+            timeout,
+            &self.signer,
+            |id, bytes, peer| {
+                control_socket.send_to(bytes, peer)?;
+                // On success only (matching the reactive path in `send_control_packet`).
+                self.subscriber().on_unknown_path_secret_packet_sent(
+                    event::builder::UnknownPathSecretPacketSent {
+                        peer_address: SocketAddress::from(*peer).into_event(),
+                        credential_id: id.into_event(),
+                    },
+                );
+                Ok(())
+            },
+        ))
     }
 
     fn rehandshake_period(&self) -> Duration {
