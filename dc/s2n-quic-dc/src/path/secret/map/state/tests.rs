@@ -105,18 +105,19 @@ fn serialize_to_disk_writes_configured_entries() {
     map.test_insert(first.clone());
     map.test_insert(second.clone());
 
+    // Access `second` so it is more recently used than `first`, despite being inserted later (and
+    // so sitting behind `first` in the FIFO eviction queue).
+    assert!(map.get_by_addr_tracked(second.peer()).is_some());
+
     map.serialize_to_disk().unwrap();
 
-    let mut decoded: Vec<SocketAddr> = disk::deserialize(&path)
+    // Both entries are written, ordered most-recently-accessed first: `second` ahead of the
+    // never-accessed `first` -- i.e. by access recency, not eviction (FIFO) order.
+    let decoded: Vec<SocketAddr> = disk::deserialize(&path)
         .unwrap()
         .map(|e| e.unwrap().peer)
         .collect();
-    decoded.sort();
-
-    let mut expected = vec![*first.peer(), *second.peer()];
-    expected.sort();
-
-    assert_eq!(decoded, expected);
+    assert_eq!(decoded, vec![*second.peer(), *first.peer()]);
 }
 
 #[test]
