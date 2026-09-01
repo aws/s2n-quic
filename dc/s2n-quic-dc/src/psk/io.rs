@@ -130,9 +130,19 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
+        // If the initial packet exceeds base MTU, s2n-quic's ability to recover from losing that
+        // packet is impaired on both client and server. This is especially true if the ClientHello
+        // is larger than the base MTU.
+        //
+        // We are turning off probing fully (base = initial = max MTU) while we work through
+        // improved test coverage.
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
-            .with_internal_recv_buffer_size(BUFFER_SIZE)?;
+            .with_internal_recv_buffer_size(BUFFER_SIZE)?
+            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .build()?;
 
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
@@ -193,13 +203,6 @@ impl Server {
                 .with_executor(TokioExecutor { runtime, monitor })
                 .build();
 
-            // We're temporarily turning off MTU probing when the offloading feature is on.
-            let io = io
-                .with_base_mtu(DEFAULT_BASE_MTU)?
-                .with_initial_mtu(DEFAULT_BASE_MTU)?
-                .with_max_mtu(DEFAULT_BASE_MTU)?
-                .build()?;
-
             // We need packet storage when offloading is turned on due to this issue:
             // https://github.com/aws/s2n-quic/issues/2601. The size needs to be large enough
             // to store a packet with the given MTU.
@@ -208,11 +211,6 @@ impl Server {
 
             build_and_start!(tls, connection_limits, io)
         } else {
-            let io = io
-                .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-                .with_initial_mtu(builder.mtu)?
-                .with_max_mtu(builder.mtu)?
-                .build()?;
             build_and_start!(tls_materials_provider, connection_limits, io)
         };
 
@@ -322,11 +320,12 @@ impl Client {
         subscriber: Subscriber,
         builder: client::Builder<Event>,
     ) -> Result<Self, Error> {
+        // For MTU configuration, see the comment on Server's io configuration.
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
             .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(builder.mtu)?
-            .with_max_mtu(builder.mtu)?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .build()?;
 
@@ -1039,14 +1038,48 @@ mod tests {
         );
     }
 
+    /// Confirm that without offloading (default configuration) we don't perform MTU probing.
+    #[tokio::test]
+    async fn no_mtu_probing() {
+        const MIN_MTU: u16 = 1200;
+        let mtu_recorder = MtuRecorder::default();
+        let server_builder =
+            crate::psk::server::Builder::default().with_event_subscriber(mtu_recorder.clone());
+
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        setup
+            .client
+            .connect(setup.server_addr, HandshakeReason::User, server_name)
+            .await
+            .unwrap();
+
+        // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
+        // DEFAULT_BASE_MTU.
+        let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
+
+        // The MTU reported by the event is the maximum QUIC datagram size, which excludes the UDP
+        // and IP headers, so derive the expected value from DEFAULT_BASE_MTU the same way.
+        let peer_address: SocketAddress = setup.server_addr.into();
+        let expected_mtu = s2n_quic_core::path::InitialMtu::try_from(DEFAULT_BASE_MTU)
+            .unwrap()
+            .max_datagram_size(&peer_address);
+
+        if cfg!(target_os = "linux") {
+            assert_eq!(mtu, expected_mtu);
+        } else {
+            assert_eq!(mtu, MIN_MTU);
+        }
+    }
+
     /// Sanity check that a server with offloading enabled can successfully complete a dc-quic handshake
     #[tokio::test]
     async fn server_offloading() {
-        const TEST_THREAD_COUNT: usize = 8;
         const MIN_MTU: u16 = 1200;
         let mtu_recorder = MtuRecorder::default();
         let server_builder = crate::psk::server::Builder::default()
-            .with_thread_count(TEST_THREAD_COUNT)
+            .with_thread_count(2)
             .with_event_subscriber(mtu_recorder.clone());
 
         let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
