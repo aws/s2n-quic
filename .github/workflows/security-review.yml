@@ -46,7 +46,7 @@ jobs:
           source_version="refs/pull/$PR_NUMBER/head^{$PR_HEAD_SHA}"
           echo "$PR_AUTHOR has permission '$permission'."
           case "$permission" in
-            admin|write|triage)
+            admin|write)
               eligible="true"
               ;;
             *)

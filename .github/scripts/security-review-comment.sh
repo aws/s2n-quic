@@ -51,8 +51,6 @@ $COMMENT_MARKER
 
 ## 🔒 Security review
 
-**Latest result:** $result_label for [\`$short_sha\`]($commit_url)
-
 | Commit | Result | Report |
 |---|---|---|
 | [\`$short_sha\`]($commit_url) | $result_label | [View report]($report_url) |
@@ -67,19 +65,14 @@ fi
 
 comment_id="$(jq -er '.id' <<< "$comment_json")"
 body="$(jq -er '.body' <<< "$comment_json")"
-latest="**Latest result:** $result_label for [\`$short_sha\`]($commit_url)"
 row="| [\`$short_sha\`]($commit_url) | $result_label | [View report]($report_url) |"
 updated_body=""
 separator=""
-latest_count=0
 row_found=false
 
 # Replace an existing SHA row, or append a new one before the footer.
 while IFS= read -r line || [[ -n "$line" ]]; do
-    if [[ "$line" == "**Latest result:**"* ]]; then
-        line="$latest"
-        latest_count=$((latest_count + 1))
-    elif [[ "$line" == *"($report_url)"* ]]; then
+    if [[ "$line" == *"($report_url)"* ]]; then
         line="$row"
         row_found=true
     fi
@@ -88,7 +81,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     separator=$'\n'
 done <<< "$body"
 
-if [[ "$latest_count" -ne 1 || "$updated_body" != *"$COMMENT_FOOTER" ]]; then
+if [[ "$updated_body" != *"$COMMENT_FOOTER" ]]; then
     echo "The existing security review history has an unexpected format." >&2
     exit 1
 fi
