@@ -1,0 +1,52 @@
+name: Security review diagnostic
+
+on:
+  pull_request:
+    branches: [WesleyRosenblum/securityreviewer]
+    types: [synchronize]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  inspect:
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'WesleyRosenblum/securityreviewer-test'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get credentials
+        uses: aws-actions/configure-aws-credentials@v6.2.3
+        with:
+          role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
+          role-session-name: diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          aws-region: us-west-2
+
+      - name: Inspect failed build
+        env:
+          BUILD_ID: SecurityReview-s2n-quic:d4cbf9b9-52f3-43f3-b06e-c4ba3f8bbd3a
+        run: |
+          build="$(aws --region us-west-2 codebuild batch-get-builds \
+            --ids "$BUILD_ID" --output json)"
+          jq '{
+            builds: [.builds[] | {
+              id,
+              buildStatus,
+              sourceVersion,
+              resolvedSourceVersion,
+              currentPhase,
+              phases: [.phases[]? | {
+                phaseType,
+                phaseStatus,
+                durationInSeconds,
+                contexts
+              }],
+              logs: {
+                deepLink: .logs.deepLink,
+                groupName: .logs.groupName,
+                streamName: .logs.streamName
+              }
+            }],
+            buildsNotFound
+          }' <<< "$build"
