@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
+    ApplicationDataError, DiskEntry, Entry, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -614,13 +615,28 @@ where
         };
 
         // Clone the weak references out under the lock so we don't hold it across the write.
-        let entries: Vec<Weak<Entry>> = {
+        let mut entries: Vec<Weak<Entry>> = {
             let queue = self
                 .eviction_queue
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             queue.iter().cloned().collect()
         };
+
+        // Order by access recency (newest first), so the most-active peers come first regardless
+        // of when they were created.
+        //
+        // Caching the key is required for correctness, not just speed: entries are still live and
+        // `accessed_at_epoch` can change concurrently (and `upgrade()` can start failing) while we
+        // sort. Recomputing the key on every comparison would then violate the total order the
+        // sort requires, which is allowed to panic. Caching reads each key exactly once, sorting a
+        // consistent snapshot.
+        entries.sort_by_cached_key(|weak| {
+            core::cmp::Reverse(
+                weak.upgrade()
+                    .map_or(0, |entry| entry.accessed_at_epoch().get()),
+            )
+        });
 
         let start = self.clock.get_time();
         let result = serializer.serialize(&entries, self.cleaner.epoch());
@@ -1240,6 +1256,38 @@ where
                 tracing::warn!("Failed to send control packet to {:?}: {:?}", dst, e);
             }
         }
+    }
+
+    fn send_unknown_path_secrets(
+        &self,
+        entries: &mut dyn ExactSizeIterator<Item = DiskEntry>,
+        rate: core::num::NonZeroU32,
+        timeout: Duration,
+    ) -> std::io::Result<SendStats> {
+        let Some(control_socket) = self.control_socket.clone() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "path secret map has no control socket to send on",
+            ));
+        };
+
+        Ok(proactive_unknown_path_secret::emit_packets(
+            entries,
+            rate,
+            timeout,
+            &self.signer,
+            |id, bytes, peer| {
+                control_socket.send_to(bytes, peer)?;
+                // On success only (matching the reactive path in `send_control_packet`).
+                self.subscriber().on_unknown_path_secret_packet_sent(
+                    event::builder::UnknownPathSecretPacketSent {
+                        peer_address: SocketAddress::from(*peer).into_event(),
+                        credential_id: id.into_event(),
+                    },
+                );
+                Ok(())
+            },
+        ))
     }
 
     fn rehandshake_period(&self) -> Duration {

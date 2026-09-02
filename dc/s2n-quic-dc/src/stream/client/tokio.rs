@@ -8,7 +8,7 @@ use crate::{
     path::secret,
     stream::{
         application::Stream,
-        client::{rpc as rpc_internal, tokio as client},
+        client::{error as client_error, rpc as rpc_internal, tokio as client},
         endpoint,
         environment::{
             tokio::{self as env, Environment},
@@ -37,6 +37,13 @@ pub trait Handshake: Clone {
         server_name: Name,
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)>;
 
+    /// Initiates a handshake with the remote peer in the background, returning immediately.
+    fn background_handshake_with(
+        &self,
+        remote_handshake_addr: SocketAddr,
+        server_name: Name,
+    ) -> std::io::Result<secret::HandshakeKind>;
+
     fn local_addr(&self) -> std::io::Result<SocketAddr>;
 
     fn map(&self) -> &secret::Map;
@@ -50,6 +57,14 @@ impl Handshake for crate::psk::client::Provider {
     ) -> std::io::Result<(secret::map::Peer, secret::HandshakeKind)> {
         self.handshake_with_entry(remote_handshake_addr, server_name)
             .await
+    }
+
+    fn background_handshake_with(
+        &self,
+        remote_handshake_addr: SocketAddr,
+        server_name: Name,
+    ) -> std::io::Result<secret::HandshakeKind> {
+        self.background_handshake_with(remote_handshake_addr, server_name)
     }
 
     fn local_addr(&self) -> std::io::Result<SocketAddr> {
@@ -67,6 +82,7 @@ pub struct Client<H: Handshake + Clone, S: event::Subscriber + Clone> {
     handshake: H,
     default_protocol: socket::Protocol,
     linger: Option<Duration>,
+    fail_fast_on_missing_psk: bool,
 }
 
 impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
@@ -99,6 +115,32 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
             .handshake_with_entry(remote_handshake_addr, server_name)
             .await?;
         Ok(kind)
+    }
+
+    /// When fail_fast_on_missing_psk is set and no path secret is cached for the peer, this kicks
+    /// off a background handshake and returns PeerPskMissing. Also, for TCP it emits events.
+    #[inline]
+    fn fail_fast_if_psk_missing(
+        &self,
+        remote_handshake_addr: SocketAddr,
+        server_name: &Name,
+        protocol: socket::Protocol,
+    ) -> io::Result<()> {
+        if self.fail_fast_on_missing_psk && !self.handshake.map().contains(&remote_handshake_addr) {
+            let _ = self
+                .handshake
+                .background_handshake_with(remote_handshake_addr, server_name.clone());
+            if matches!(protocol, socket::Protocol::Tcp) {
+                self.env.endpoint_publisher().on_stream_connect_error(
+                    event::builder::StreamConnectError {
+                        reason: StreamTcpConnectErrorReason::PeerPskMissing,
+                        latency: Duration::ZERO,
+                    },
+                );
+            }
+            return Err(client_error::Kind::PeerPskMissing.err().into());
+        }
+        Ok(())
     }
 
     #[inline]
@@ -187,6 +229,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Udp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -209,6 +252,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Req: rpc::Request,
         Res: rpc::Response,
     {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Udp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -224,6 +268,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         acceptor_addr: SocketAddr,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Tcp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -269,6 +314,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         Req: rpc::Request,
         Res: rpc::Response,
     {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Tcp)?;
         // ensure we have a secret for the peer
         let handshake = self.handshake_for_connect(handshake_addr, server_name);
 
@@ -304,6 +350,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         stream: TcpStream,
         server_name: Name,
     ) -> io::Result<Stream<S>> {
+        self.fail_fast_if_psk_missing(handshake_addr, &server_name, socket::Protocol::Tcp)?;
         // ensure we have a secret for the peer
         let handshake = self
             .handshake_for_connect(handshake_addr, server_name)
@@ -333,6 +380,7 @@ pub struct Builder {
     linger: Option<Duration>,
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
+    fail_fast_on_missing_psk: bool,
 }
 
 impl Builder {
@@ -389,6 +437,15 @@ impl Builder {
         self
     }
 
+    /// Fail fast when the peer's path secret (PSK) is not cached locally.
+    ///
+    /// When enabled, connect attempts do not block on a handshake: if no path secret is cached for
+    /// the peer, a background handshake is initiated and the connect fails fast.
+    pub fn with_fail_fast_on_missing_psk(mut self, fail_fast_on_missing_psk: bool) -> Self {
+        self.fail_fast_on_missing_psk = fail_fast_on_missing_psk;
+        self
+    }
+
     #[inline]
     pub fn build<H: Handshake + Clone, S: event::Subscriber + Clone>(
         self,
@@ -423,6 +480,7 @@ impl Builder {
             handshake,
             default_protocol,
             linger,
+            fail_fast_on_missing_psk: self.fail_fast_on_missing_psk,
         })
     }
 }

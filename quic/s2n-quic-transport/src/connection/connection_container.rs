@@ -32,7 +32,6 @@ use intrusive_collections::{
     intrusive_adapter, KeyAdapter, LinkedList, LinkedListLink, RBTree, RBTreeLink,
 };
 use s2n_quic_core::{
-    application,
     application::ServerName,
     event::supervisor,
     inet::SocketAddress,
@@ -296,7 +295,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionApiProvider for Con
         }
     }
 
-    fn close_connection(&self, error: Option<application::Error>) {
+    fn close_connection(&self, error: Option<connection::Error>) {
         let _: Result<(), connection::Error> = self.api_write_call(|conn| {
             conn.application_close(error);
             Ok(())
@@ -1143,6 +1142,17 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         debug_assert!(remove_result.is_some());
 
         self.interest_lists.remove_node(connection);
+    }
+}
+
+impl<C: connection::Trait, L: connection::Lock<C>> Drop for ConnectionContainer<C, L> {
+    // ConnectionContainer dropped means Endpoint is dropped. Close all connections.
+    fn drop(&mut self) {
+        let mut cursor = self.connection_map.front();
+        while let Some(node) = cursor.get() {
+            node.close_connection(Some(connection::Error::endpoint_closing()));
+            cursor.move_next();
+        }
     }
 }
 
