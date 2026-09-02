@@ -73,6 +73,8 @@ mod fips;
 #[cfg(s2n_tls_provider)]
 mod mtls;
 #[cfg(s2n_tls_provider)]
+mod pq_initial_mtu;
+#[cfg(s2n_tls_provider)]
 mod signature_scheme;
 // This test uses real OS sockets, which conflicts with bach's simulated time scope on Windows.
 #[cfg(not(target_os = "windows"))]
