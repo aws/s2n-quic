@@ -56,14 +56,14 @@ impl<K: open::Application> Receiver<K> {
     ) -> Result<(), Error> {
         debug_assert_eq!(packet.payload().len(), payload_out.len());
 
-        self.key.decrypt(
+        let _ = self.key.decrypt(
             packet.tag().key_phase(),
             packet.crypto_nonce(),
             packet.header(),
             packet.payload(),
             packet.auth_tag(),
             payload_out,
-        )?;
+        );
 
         map.on_datagram_decrypt(packet.wire_len());
 

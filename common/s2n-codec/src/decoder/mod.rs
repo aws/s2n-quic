@@ -143,8 +143,7 @@ macro_rules! impl_buffer {
                     self,
                 ) -> $result<'a, T> {
                     let (slice, buffer) = self.decode_slice_with_len_prefix::<Length>()?;
-                    let (value, slice) = slice.decode::<T>()?;
-                    slice.ensure_empty()?;
+                    let (value, _slice) = slice.decode::<T>()?;
                     Ok((value, buffer))
                 }
             }

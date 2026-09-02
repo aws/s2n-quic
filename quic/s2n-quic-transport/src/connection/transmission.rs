@@ -81,12 +81,6 @@ impl<Config: endpoint::Config> tx::Message for ConnectionTransmission<'_, '_, Co
             return false;
         }
 
-        if let Some(min_packet_len) = self.context.min_packet_len {
-            if segment_len < min_packet_len {
-                return false;
-            }
-        }
-
         if let Some(send_quantum) = self.context.path().congestion_controller.send_quantum() {
             if segment_len * segment_count >= send_quantum {
                 return false;
