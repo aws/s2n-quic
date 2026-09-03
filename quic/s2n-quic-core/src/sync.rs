@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(feature = "alloc")]
-mod primitive;
+pub(crate) mod primitive;
 
 #[cfg(feature = "crossbeam-utils")]
 pub use crossbeam_utils::CachePadded;
