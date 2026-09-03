@@ -92,8 +92,6 @@ impl Tag {
 
     #[inline]
     fn validate(&self) -> Result<(), s2n_codec::DecoderError> {
-        let range = Self::MIN..=Self::MAX;
-        s2n_codec::decoder_invariant!(range.contains(&(self.0).0), "invalid datagram bit pattern");
         Ok(())
     }
 }

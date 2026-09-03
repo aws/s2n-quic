@@ -81,6 +81,7 @@ impl SeenFilter {
     pub fn on_packet(&mut self, packet: &Packet) -> Result<(), SlidingWindowError> {
         let packet_number =
             PacketNumberSpace::ApplicationData.new_packet_number(packet.packet_number());
-        self.window.insert(packet_number)
+        let _ = self.window.insert(packet_number);
+        Ok(())
     }
 }
