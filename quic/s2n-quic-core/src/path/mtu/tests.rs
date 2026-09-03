@@ -151,7 +151,10 @@ fn mtu_manager() {
     };
     assert!(!mtu_provider.is_valid());
     let mut manager: Manager<Config> = Manager::new(mtu_provider);
-    assert_eq!(manager.config(&remote).unwrap_err(), MtuError);
+    let err = manager.config(&remote).unwrap_err();
+    assert_eq!(err.remote_addr, remote);
+    assert_eq!(err.conn_config, mtu_provider);
+    assert_eq!(err.endpoint_config, Default::default());
 
     // invalid: mtu_provider.max_mtu > endpoint_config.max_mtu
     let mtu_provider = mtu::Config::builder()
@@ -161,7 +164,12 @@ fn mtu_manager() {
         .unwrap();
     assert!(mtu_provider.is_valid());
     let mut manager: Manager<Config> = Manager::new(mtu_provider);
-    assert_eq!(manager.config(&remote).unwrap_err(), MtuError);
+    let err = manager.config(&remote).unwrap_err();
+    assert_eq!(err.remote_addr, remote);
+    assert_eq!(err.conn_config, mtu_provider);
+    assert_eq!(err.endpoint_config, Default::default());
+    // Verify it's the "exceeds endpoint max" case
+    assert!(err.conn_config.max_mtu() > err.endpoint_config.max_mtu());
 }
 
 #[test]
