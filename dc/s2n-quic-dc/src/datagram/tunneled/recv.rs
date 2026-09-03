@@ -56,14 +56,14 @@ impl<K: open::Application> Receiver<K> {
     ) -> Result<(), Error> {
         debug_assert_eq!(packet.payload().len(), payload_out.len());
 
-        let _ = self.key.decrypt(
+        self.key.decrypt(
             packet.tag().key_phase(),
             packet.crypto_nonce(),
             packet.header(),
             packet.payload(),
             packet.auth_tag(),
             payload_out,
-        );
+        )?;
 
         map.on_datagram_decrypt(packet.wire_len());
 
@@ -81,7 +81,6 @@ impl SeenFilter {
     pub fn on_packet(&mut self, packet: &Packet) -> Result<(), SlidingWindowError> {
         let packet_number =
             PacketNumberSpace::ApplicationData.new_packet_number(packet.packet_number());
-        let _ = self.window.insert(packet_number);
-        Ok(())
+        self.window.insert(packet_number)
     }
 }

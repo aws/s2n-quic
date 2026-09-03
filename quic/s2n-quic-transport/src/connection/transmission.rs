@@ -81,6 +81,12 @@ impl<Config: endpoint::Config> tx::Message for ConnectionTransmission<'_, '_, Co
             return false;
         }
 
+        if let Some(min_packet_len) = self.context.min_packet_len {
+            if segment_len < min_packet_len {
+                return false;
+            }
+        }
+
         if let Some(send_quantum) = self.context.path().congestion_controller.send_quantum() {
             if segment_len * segment_count >= send_quantum {
                 return false;
@@ -355,7 +361,7 @@ impl<Config: endpoint::Config> tx::Message for ConnectionTransmission<'_, '_, Co
                 // We need to check is_validated because it is possible to receive a PATH_CHALLENGE on
                 // an active path for Off-Path Packet Forwarding prevention. However, we would only
                 // like to pad when validating the MTU.
-                if path.is_validated() && path.has_transmission_interest() {
+                if !path.is_validated() && path.has_transmission_interest() {
                     self.context.min_packet_len = Some(encoder.capacity());
                 }
 

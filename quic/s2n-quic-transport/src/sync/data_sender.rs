@@ -403,7 +403,7 @@ impl<FlowController: OutgoingDataFlowController, Writer: FrameWriter>
 
         let starting_transmission_offset = self.transmission_offset;
 
-        if !is_blocked && self.transmission_offset < total_len {
+        if !is_blocked && constraint.can_transmit() && self.transmission_offset < total_len {
             let mut viewer = self.buffer.viewer();
             self.transmission_offset = self
                 .transmissions

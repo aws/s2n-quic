@@ -30,6 +30,8 @@ macro_rules! impl_buffer {
 
                 #[inline]
                 pub fn decode_slice(self, count: usize) -> $result<'a, $name<'a>> {
+                    self.ensure_len(count)?;
+
                     let (slice, remaining) = self.bytes.$split(count);
 
                     Ok((Self::new(slice), Self::new(remaining)))
@@ -141,7 +143,8 @@ macro_rules! impl_buffer {
                     self,
                 ) -> $result<'a, T> {
                     let (slice, buffer) = self.decode_slice_with_len_prefix::<Length>()?;
-                    let (value, _slice) = slice.decode::<T>()?;
+                    let (value, slice) = slice.decode::<T>()?;
+                    slice.ensure_empty()?;
                     Ok((value, buffer))
                 }
             }

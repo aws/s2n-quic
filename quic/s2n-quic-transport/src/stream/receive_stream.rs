@@ -222,12 +222,7 @@ impl ReceiveStreamFlowController {
         //# more data than the largest maximum stream data that it has sent for
         //# the affected stream.  This includes violations of remembered limits
         //# in Early Data; see Section 7.4.1.
-        if offset
-            > self
-                .read_window_sync
-                .latest_value()
-                .saturating_add(VarInt::from_u32(1))
-        {
+        if offset > self.read_window_sync.latest_value() {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-4.1
             //# A receiver MUST close the connection with an error of type
             //# FLOW_CONTROL_ERROR if the sender violates the advertised connection
