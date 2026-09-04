@@ -19,7 +19,7 @@ use s2n_quic_core::{
     event::{
         api::{
             ConnectionMeta, DatagramDropReason, DcState, EndpointDatagramDropped, EndpointMeta,
-            Frame, MtuUpdated, PacketHeader, Subject,
+            Frame, MtuUpdated, PacketHeader, Subject, TransmissionMode,
         },
         metrics::aggregate,
         snapshot::Location,
@@ -585,6 +585,182 @@ fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
     Ok(())
 }
 
+// Verifies that the bimodal MTU search keeps probe traffic low.
+// Bimodal probes only the max size, so it sends at most MAX_PROBES (3) probe packets
+#[test]
+fn bimodal_probe_reduction() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
+
+    const MAX_PROBES: usize = 3;
+    let client_probes = client_events.mtu_probe_packets_sent();
+    let server_probes = server_events.mtu_probe_packets_sent();
+    assert!(
+        client_probes <= MAX_PROBES,
+        "client sent {client_probes} MTU probe packets, expected at most {MAX_PROBES}"
+    );
+    assert!(
+        server_probes <= MAX_PROBES,
+        "server sent {server_probes} MTU probe packets, expected at most {MAX_PROBES}"
+    );
+
+    Ok(())
+}
+
+// Verifies the bimodal fallback end-to-end: when the network cannot support the max probe,
+// bimodal search falls back to the base MTU and the connection still completes.
+#[test]
+fn bimodal_jumbo_not_supported() -> Result<()> {
+    // Endpoints allow jumbo, but the network only carries base-sized packets
+    const BASE_MTU: u16 = 1450;
+    const MAX_MTU: u16 = 8940;
+    const NETWORK_MAX_UDP_PAYLOAD: u16 = 1500;
+    // Base MTU minus IPv4 + UDP headers.
+    const EXPECTED_MTU: u16 = BASE_MTU - 28;
+
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    model.set_delay(rtt / 2);
+    // The network drops anything larger than a base-sized packet, failing the jumbo probe.
+    model.set_max_udp_payload(NETWORK_MAX_UDP_PAYLOAD);
+
+    let server_subscriber = DcRecorder::new();
+    let server_events = server_subscriber.clone();
+    let client_subscriber = DcRecorder::new();
+    let client_events = client_subscriber.clone();
+
+    test(model.clone(), |handle| {
+        // Jumbo max MTU with base/initial at BASE_MTU so probing is enabled (base < max).
+        let mtu_io = |handle: &s2n_quic::provider::io::testing::Handle| {
+            handle
+                .builder()
+                .with_base_mtu(BASE_MTU)
+                .with_initial_mtu(BASE_MTU)
+                .with_max_mtu(MAX_MTU)
+                .build()
+        };
+
+        let mut server = server
+            .with_io(mtu_io(handle)?)?
+            // with_blocklist=false: the failed jumbo probes are dropped on purpose.
+            .with_event((
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (tracing_events(false, model.clone()), server_subscriber),
+            ))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = server.local_addr()?;
+
+        spawn(async move {
+            if let Some(mut conn) = server.accept().await {
+                assert!(dc::ConfirmComplete::wait_ready(&mut conn).await.is_ok());
+                dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            }
+        });
+
+        let client = client
+            .with_io(mtu_io(handle)?)?
+            .with_event((
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (tracing_events(false, model.clone()), client_subscriber),
+            ))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(addr)
+                .with_server_name("localhost")
+                .with_deduplicate(true);
+            let mut conn = client.connect(connect).await.unwrap();
+            assert!(dc::ConfirmComplete::wait_ready(&mut conn).await.is_ok());
+            dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            delay(Duration::from_millis(100)).await;
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    // Both sides must complete their MTU search at the base MTU after the jumbo probe fails.
+    let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
+    let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
+    assert_mtu_probing_completed(&client_mtu_events, EXPECTED_MTU);
+    assert_mtu_probing_completed(&server_mtu_events, EXPECTED_MTU);
+
+    // Fallback still stays within the bimodal probe budget.
+    const MAX_PROBES: usize = 3;
+    assert!(client_events.mtu_probe_packets_sent() <= MAX_PROBES);
+    assert!(server_events.mtu_probe_packets_sent() <= MAX_PROBES);
+
+    Ok(())
+}
+
+// Bimodal search runs only after the handshake, so it must not affect handshake latency.
+// The DC handshake should still complete at the usual RTT multiples (client 2 RTT, server 2.5 RTT).
+#[test]
+fn bimodal_no_handshake_delay() -> Result<()> {
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
+
+    // rtt in self_test_inner is 100ms; the DC Complete state is the last dc_state event.
+    let rtt = Duration::from_millis(100);
+    let client_dc = client_events
+        .dc_state_changed_events()
+        .lock()
+        .unwrap()
+        .clone();
+    let server_dc = server_events
+        .dc_state_changed_events()
+        .lock()
+        .unwrap()
+        .clone();
+
+    let client_complete = client_dc.last().unwrap().timestamp.duration_since_start();
+    let server_complete = server_dc.last().unwrap().timestamp.duration_since_start();
+
+    assert_eq!(
+        client_complete,
+        rtt * 2,
+        "bimodal search should not change client handshake latency"
+    );
+    assert_eq!(
+        server_complete,
+        rtt.mul_f32(2.5),
+        "bimodal search should not change server handshake latency"
+    );
+
+    Ok(())
+}
+
 #[test]
 fn dc_secret_control_packet() -> Result<()> {
     dc_possible_secret_control_packet(|| true)
@@ -1025,6 +1201,7 @@ struct DcRecorder {
     pub mtu_probing_complete_received_events: Arc<Mutex<Vec<MtuProbingCompleteReceivedEvent>>>,
     pub endpoint_datagram_dropped_events: Arc<Mutex<Vec<EndpointDatagramDropped>>>,
     pub peer_mtu_probing_complete_support: Arc<Mutex<Option<bool>>>,
+    pub mtu_probe_packets_sent: Arc<Mutex<usize>>,
 }
 impl DcRecorder {
     pub fn new() -> Self {
@@ -1043,6 +1220,10 @@ impl DcRecorder {
 
     pub fn peer_mtu_probing_complete_support(&self) -> Arc<Mutex<Option<bool>>> {
         self.peer_mtu_probing_complete_support.clone()
+    }
+
+    pub fn mtu_probe_packets_sent(&self) -> usize {
+        *self.mtu_probe_packets_sent.lock().unwrap()
     }
 }
 
@@ -1090,6 +1271,17 @@ impl events::Subscriber for DcRecorder {
         };
         let mut buffer = context.mtu_updated_events.lock().unwrap();
         store(meta, event, &mut buffer);
+    }
+
+    fn on_packet_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &ConnectionMeta,
+        event: &events::PacketSent,
+    ) {
+        if matches!(event.transmission_mode, TransmissionMode::MtuProbing { .. }) {
+            *context.mtu_probe_packets_sent.lock().unwrap() += 1;
+        }
     }
 
     fn on_mtu_probing_complete_received(
