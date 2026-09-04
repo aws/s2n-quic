@@ -784,6 +784,17 @@ impl Controller {
                             self.plpmtu, self.base_plpmtu,
                             "bimodal search must complete at the base MTU"
                         );
+
+                        publisher.on_mtu_updated(event::builder::MtuUpdated {
+                            path_id: path_id.into_event(),
+                            mtu: self.plpmtu,
+                            cause: MtuUpdatedCause::LargerProbesLost,
+                            search_complete: true,
+                        });
+
+                        // Return MtuUpdated so the caller notifies the congestion
+                        // controller and DC manager that the MTU dropped to the base.
+                        return MtuResult::MtuUpdated(self.plpmtu);
                     } else {
                         self.max_probe_size = self.probed_size;
                         self.update_probed_size();

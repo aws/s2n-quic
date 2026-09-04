@@ -1110,7 +1110,7 @@ fn bimodal_falls_back_to_base() {
     // The final max probe is lost -> the search completes at base.
     controller.state = State::Searching(pn, now);
     controller.probe_count = MAX_PROBES;
-    controller.on_packet_loss(
+    let result = controller.on_packet_loss(
         pn,
         controller.probed_size,
         false,
@@ -1119,6 +1119,8 @@ fn bimodal_falls_back_to_base() {
         path::Id::test_id(),
         &mut publisher,
     );
+    // Must report the MTU drop so the caller notifies the congestion controller / DC manager.
+    assert_eq!(MtuResult::MtuUpdated(base_plpmtu), result);
     assert_eq!(base_plpmtu, controller.plpmtu);
     assert_eq!(State::SearchComplete, controller.state);
 }
@@ -1148,7 +1150,7 @@ fn bimodal_falls_back_from_odd_initial_mtu() {
     // The final max probe is lost -> the search completes at base.
     controller.state = State::Searching(pn, now);
     controller.probe_count = MAX_PROBES;
-    controller.on_packet_loss(
+    let result = controller.on_packet_loss(
         pn,
         controller.probed_size,
         false,
@@ -1157,6 +1159,9 @@ fn bimodal_falls_back_from_odd_initial_mtu() {
         path::Id::test_id(),
         &mut publisher,
     );
+    // Must report the MTU drop from the higher initial MTU down to base, so the caller
+    // notifies the congestion controller / DC manager instead of retaining the stale value.
+    assert_eq!(MtuResult::MtuUpdated(base_plpmtu), result);
     assert_eq!(base_plpmtu, controller.plpmtu);
     assert_eq!(State::SearchComplete, controller.state);
 }
