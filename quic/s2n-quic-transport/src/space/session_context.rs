@@ -474,12 +474,12 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.publisher
                 .on_dc_path_created(DcPathCreated { path: &dc_path });
 
-            // Use the two-candidate search (probe the max size, else stay at base)
+            // Use the bimodal search (probe the max size, else stay at base)
             // on all DC Quic connections.
             self.path_manager
                 .active_path_mut()
                 .mtu_controller
-                .enable_two_candidate_search();
+                .enable_bimodal_search();
 
             // Only enable MtuProbingComplete if both local DC endpoint has MTU probing complete support enabled
             // and peer indicates they support receiving MtuProbingComplete frames via transport parameter
