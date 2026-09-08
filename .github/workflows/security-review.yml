@@ -103,7 +103,7 @@ jobs:
 
       - name: Get credentials
         if: steps.preflight.outputs.review == 'true'
-        uses: aws-actions/configure-aws-credentials@v6.2.3
+        uses: aws-actions/configure-aws-credentials@v6.2.4
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: ${{ github.run_id }}-${{ github.run_attempt }}
@@ -176,7 +176,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Get credentials
-        uses: aws-actions/configure-aws-credentials@v6.2.3
+        uses: aws-actions/configure-aws-credentials@v6.2.4
         with:
           role-to-assume: arn:aws:iam::003495580562:role/GitHubOIDCRole
           role-session-name: ${{ github.run_id }}-${{ github.run_attempt }}
