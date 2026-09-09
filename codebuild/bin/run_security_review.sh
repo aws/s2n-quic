@@ -11,6 +11,7 @@ readonly PROJECT="SecurityReview-s2n-quic"
 readonly MAX_POLLS=60 # 30 minutes at the production interval
 
 RESULT_RESOLVED_SHA=""
+RESULT_FINDINGS_COUNT="null"
 
 usage() {
     cat <<'EOF'
@@ -30,11 +31,13 @@ finish_result() {
         --arg outcome "$outcome" \
         --arg resolved_sha "$RESULT_RESOLVED_SHA" \
         --arg error "$error_message" \
-        '{outcome: $outcome, resolved_sha: $resolved_sha, error: $error}'
+        --argjson findings_count "$RESULT_FINDINGS_COUNT" \
+        '{outcome: $outcome, resolved_sha: $resolved_sha, error: $error, findings_count: $findings_count}'
     exit "$exit_code"
 }
 
 finish_error() {
+    RESULT_FINDINGS_COUNT="null"
     finish_result 1 error "$1"
 }
 
@@ -62,6 +65,7 @@ run_security_review() {
     local build_id=""
     local candidate_sha=""
     local build_status=""
+    local review_outputs=""
     local review_status=""
     local poll=""
     local poll_interval="${SECURITY_REVIEW_POLL_INTERVAL_SECONDS:-30}"
@@ -172,24 +176,37 @@ run_security_review() {
                     finish_tracked
                 fi
 
-                review_status="$(jq -r '
-                    if (.exportedEnvironmentVariables | type) != "array" then
-                        empty
-                    else
-                        [.exportedEnvironmentVariables[]
-                          | select(type == "object")
-                          | select(.name == "REVIEW_STATUS")]
-                        | if length == 1 and (.[0].value | type) == "string"
-                          then .[0].value
-                          else empty
-                          end
-                    end
-                ' <<< "$build_json" 2>/dev/null || true)"
+                if ! review_outputs="$(jq -ce '
+                    .exportedEnvironmentVariables
+                    | select(type == "array")
+                    | (map(select(type == "object" and .name == "REVIEW_STATUS"))) as $statuses
+                    | (map(select(type == "object" and .name == "REVIEW_FINDINGS_COUNT"))) as $counts
+                    | select(
+                        ($statuses | length) == 1 and
+                        ($statuses[0].value | type) == "string" and
+                        ($counts | length) == 1 and
+                        ($counts[0].value | type) == "string" and
+                        ($counts[0].value | test("^(0|[1-9][0-9]*)$"))
+                      )
+                    | {
+                        status: $statuses[0].value,
+                        findings_count: ($counts[0].value | tonumber)
+                      }
+                ' <<< "$build_json")"; then
+                    finish_error "missing or invalid review outputs"
+                fi
 
+                review_status="$(jq -r '.status' <<< "$review_outputs")"
+                RESULT_FINDINGS_COUNT="$(jq -r '.findings_count' <<< "$review_outputs")"
                 case "$review_status" in
                     PASS) finish_pass ;;
-                    BLOCKING) finish_blocking ;;
-                    *) finish_error "missing or unknown review verdict" ;;
+                    BLOCKING)
+                        if ((RESULT_FINDINGS_COUNT == 0)); then
+                            finish_error "blocking verdict reported without findings"
+                        fi
+                        finish_blocking
+                        ;;
+                    *) finish_error "unknown review verdict" ;;
                 esac
                 ;;
             FAILED|FAULT|STOPPED|TIMED_OUT)
