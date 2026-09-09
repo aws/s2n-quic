@@ -16,6 +16,29 @@ use crate::{
 use core::ops;
 use s2n_codec::EncoderBuffer;
 
+/// s2n-quic keeps track of two keys at all times, the current key in use
+/// as well as the next key that will be used after a key update is initiated.
+/// We keep the older key around for a short while after a key update, which
+/// enables us to read older messages that might have been lost around the time
+/// of the key update. Once the timer expires the older key is dropped and a new
+/// key is generated that will start being used at the next key update.
+///
+/// To further explain, lets say we track a keyset: k[0] = 'a', k[1] = 'b'. 'a' is currently
+/// being used for decryption. Incoming packets signal that they can be decrypted by 'a'
+/// with the key phase bit in their packet header.
+/// P1 k[0]
+/// P2 k[0]
+/// P3 k[0]
+/// ...
+/// P10 k[1]        --> Once we receive a packet with the key phase bit changed, we use 'b' for
+/// -> Timer set        decryption. This also begins a timer to rotate the old key.
+///
+/// P8 k[0]         --> We are still able to decrypt packets with the old key, 'a', if they arrive in
+///                     this period.
+///
+/// -> Timer expires --> We now generate a new k[0] = 'c'. Any packets that arrive encrypted with k[0] = 'a'
+///                      will fail to decrypt since we no longer store that key. Now k[1] = 'b' is our
+///                      current key and k[0] = c is our future key.
 pub struct KeySet<K> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
@@ -35,6 +58,14 @@ pub struct KeySet<K> {
     crypto: KeyArray<K>,
 
     limits: limited::Limits,
+
+    /// The largest packet number that has been successfully authenticated.
+    ///
+    /// This is used to distinguish a genuine key update from a reordered or
+    /// replayed packet carrying the opposite Key Phase bit: only a packet whose
+    /// number is higher than any previously authenticated packet may initiate a
+    /// key-phase rotation (RFC 9001 Section 6.5).
+    largest_authenticated_packet_number: Option<PacketNumber>,
 }
 
 impl<K: OneRttKey> KeySet<K> {
@@ -68,6 +99,7 @@ impl<K: OneRttKey> KeySet<K> {
             generation: 0,
             crypto: KeyArray([active_key, next_key]),
             limits,
+            largest_authenticated_packet_number: None,
         }
     }
 
@@ -113,34 +145,21 @@ impl<K: OneRttKey> KeySet<K> {
     pub fn decrypt_packet<'a>(
         &mut self,
         packet: EncryptedShort<'a>,
-        largest_acknowledged_packet_number: PacketNumber,
         pto: Timestamp,
     ) -> Result<(CleartextShort<'a>, Option<u16>), ProcessingError> {
-        let mut phase_to_use = self.key_phase() as u8;
         let packet_phase = packet.key_phase();
-        let phase_switch = phase_to_use != (packet_phase as u8);
-        phase_to_use ^= phase_switch as u8;
+        let packet_number = packet.packet_number;
+        let phase_switch = packet_phase != self.key_phase();
 
-        if self.key_update_in_progress() && phase_switch {
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
-            //# An endpoint MAY allow a period of approximately the Probe Timeout
-            //# (PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
-            //# keys to be current before it creates the subsequent set of packet
-            //# protection keys.
-
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
-            //# Packets with higher packet numbers MUST be protected with either the
-            //# same or newer packet protection keys than packets with lower packet
-            //# numbers.
-            // During this PTO we can still process delayed packets, reducing retransmits
-            // required from the peer. We know the packets are delayed because they have a
-            // lower packet number than expected and the old key phase.
-            if packet.packet_number < largest_acknowledged_packet_number {
-                phase_to_use = packet.key_phase() as u8;
-            }
-        }
-
-        let key = &mut self.crypto[phase_to_use.into()];
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+        //# Alternatively, endpoints can retain only two sets of packet
+        //# protection keys, swapping previous for next after enough time has
+        //# passed to allow for reordering in the network.  In this case, the Key
+        //# Phase bit alone can be used to select keys.
+        // We retain exactly two key sets, so the packet's Key Phase bit selects
+        // the key directly: the current key when the phase matches, and the
+        // adjacent (retired or next) key when it differs.
+        let key = &mut self.crypto[packet_phase];
 
         let result = packet.decrypt(key.key_mut());
 
@@ -148,7 +167,39 @@ impl<K: OneRttKey> KeySet<K> {
 
         match result {
             Ok(packet) => {
-                let generation = if packet_phase != self.key_phase() {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                //# A recovered packet number that is lower than any packet number from
+                //# the current key phase uses the previous packet protection keys; a
+                //# recovered packet number that is higher than any packet number from
+                //# the current key phase requires the use of the next packet protection
+                //# keys.
+                // A key-phase rotation is only initiated when an opposite-phase packet
+                // advances the packet number beyond anything previously authenticated.
+                // A reordered or replayed packet carrying the previous phase (i.e. a
+                // lower packet number) was decrypted with the retained previous keys and
+                // MUST NOT change the key phase, generation, or derivation timer.
+                let advances_packet_number = self
+                    .largest_authenticated_packet_number
+                    .is_none_or(|largest| packet_number > largest);
+
+                let generation = if phase_switch && advances_packet_number {
+                    if self.key_update_in_progress() {
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+                        //# An endpoint that successfully removes protection with old
+                        //# keys when newer keys were used for packets with lower packet
+                        //# numbers MUST treat this as a connection error of type
+                        //# KEY_UPDATE_ERROR.
+                        // A key update is in progress, so the opposite-phase slot still
+                        // holds the retired keys. An opposite-phase packet with a higher
+                        // packet number was therefore protected with old keys, which is
+                        // illegal.
+                        return Err(transport::Error::KEY_UPDATE_ERROR
+                            .with_reason(
+                                "packet protected with old keys carried a larger packet number",
+                            )
+                            .into());
+                    }
+
                     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
                     //# Sending keys MUST be updated before sending an
                     //# acknowledgement for the packet that was received with updated keys.
@@ -177,6 +228,16 @@ impl<K: OneRttKey> KeySet<K> {
                 } else {
                     None
                 };
+
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                //# For receiving packets during a key update, packets protected with
+                //# older keys might arrive if they were delayed by the network.
+                // Record the largest authenticated packet number so that later
+                // delayed or replayed packets cannot be mistaken for a key update.
+                self.largest_authenticated_packet_number = Some(
+                    self.largest_authenticated_packet_number
+                        .map_or(packet_number, |largest| largest.max(packet_number)),
+                );
 
                 Ok((packet, generation))
             }
@@ -330,7 +391,9 @@ mod tests {
         },
         inet::SocketAddress,
         packet::{
-            encoding::PacketEncodingError, number::PacketNumberSpace, short::ProtectedShort,
+            encoding::PacketEncodingError,
+            number::PacketNumberSpace,
+            short::{EncryptedShort, ProtectedShort},
             KeyPhase,
         },
         time::{testing::Clock, Clock as _},
@@ -429,11 +492,7 @@ mod tests {
 
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(keyset
-            .decrypt_packet(
-                encrypted_packet,
-                PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                clock.get_time(),
-            )
+            .decrypt_packet(encrypted_packet, clock.get_time(),)
             .is_err());
         assert_eq!(keyset.decryption_error_count(), 1);
     }
@@ -472,11 +531,7 @@ mod tests {
         assert_eq!(keyset.decryption_error_count(), 0);
         assert_eq!(
             keyset
-                .decrypt_packet(
-                    encrypted_packet,
-                    PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                    clock.get_time(),
-                )
+                .decrypt_packet(encrypted_packet, clock.get_time(),)
                 .err(),
             Some(ProcessingError::ConnectionError(
                 (transport::Error::AEAD_LIMIT_REACHED).into()
@@ -595,5 +650,114 @@ mod tests {
             }),
             Err(PacketEncodingError::AeadLimitReached(_))
         ));
+    }
+
+    /// Builds an `EncryptedShort` (1-RTT) packet whose key-phase bit and packet
+    /// number can be controlled, using the all-zero test crypto so decryption
+    /// always succeeds (modeling an authentic, captured packet).
+    fn make_short_packet(
+        data: &mut [u8; 128],
+        key_phase_one: bool,
+        wire_pn: u8,
+    ) -> EncryptedShort<'_> {
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
+        // The Key Phase bit is 0x04 of the first (tag) byte of a short header.
+        const KEY_PHASE_BIT: u8 = 0x04;
+
+        let tag = if key_phase_one { KEY_PHASE_BIT } else { 0 };
+        // Header layout: 1 tag byte, then a 20-byte DCID (see the `&20` validator
+        // below), so the 1-byte packet number lives at offset 21.
+        data[0] = tag;
+        data[21] = wire_pn;
+
+        let remote_address = SocketAddress::default();
+        let connection_info = ConnectionInfo::new(&remote_address);
+        let decoder_buffer = DecoderBufferMut::new(data);
+
+        let (protected, _remaining) =
+            ProtectedShort::decode(tag, decoder_buffer, &connection_info, &20).unwrap();
+
+        // Expanding the truncated packet number against a largest-acknowledged of
+        // 0 yields the wire value verbatim for these small numbers.
+        protected
+            .unprotect(
+                &TestHeaderKey::default(),
+                PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
+            )
+            .unwrap()
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+    //= type=test
+    //# A recovered packet number that is lower than any packet number from
+    //# the current key phase uses the previous packet protection keys; a
+    //# recovered packet number that is higher than any packet number from
+    //# the current key phase requires the use of the next packet protection
+    //# keys.
+    //
+    // Regression test: after a legitimate key update, a reordered or replayed
+    // OLD-phase packet (lower packet number, decrypted with the retained retired
+    // key) must NOT rewind the endpoint's key phase, bump the generation, or
+    // re-arm the derivation timer. It should still decrypt successfully.
+    #[test]
+    fn replayed_packets_do_not_rotate_keys() {
+        let clock = Clock::default();
+        let pto = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
+
+        // Start in phase Zero, generation 0, with no update in progress.
+        assert_eq!(keyset.key_phase(), KeyPhase::Zero);
+        assert_eq!(keyset.generation, 0);
+        assert!(!keyset.key_update_in_progress());
+
+        // 1. Legitimate key update: a NEW-phase (One) packet with a higher packet
+        //    number. This rotates the endpoint to phase One, bumps the generation,
+        //    and arms the derivation timer while retaining the old (phase Zero) key.
+        let mut update_bytes = [0u8; 128];
+        let update = make_short_packet(&mut update_bytes, true, 10);
+        let (_pkt, gen) = keyset.decrypt_packet(update, pto).unwrap();
+        assert_eq!(gen, Some(1));
+        assert_eq!(keyset.key_phase(), KeyPhase::One);
+        assert_eq!(keyset.generation, 1);
+        assert!(keyset.key_update_in_progress());
+
+        // 2. Reordered/replayed OLD-phase (Zero) packet with a LOWER packet number,
+        //    delivered within the PTO window while the retired key is still held.
+        let mut replay_bytes = [0u8; 128];
+        let replay = make_short_packet(&mut replay_bytes, false, 7);
+        let (_pkt, gen) = keyset.decrypt_packet(replay, pto).unwrap();
+
+        // The replayed packet still authenticates...
+        // ...but it MUST NOT drive the key-update state machine:
+        assert_eq!(
+            gen, None,
+            "a replayed old-phase packet must not report a new generation"
+        );
+        assert_eq!(
+            keyset.key_phase(),
+            KeyPhase::One,
+            "the send key phase must not rewind to the retired generation"
+        );
+        assert_eq!(
+            keyset.generation, 1,
+            "the generation counter must not advance on a replayed old-phase packet"
+        );
+
+        // 3. OLD-phase (Zero) packet with a HIGHER packet number. This is an error case as it indicates
+        // a bad peer who is encrypting newer packets with old keys.
+        let mut replay_bytes = [0u8; 128];
+        let replay = make_short_packet(&mut replay_bytes, false, 12);
+        let err = keyset
+            .decrypt_packet(replay, pto)
+            .expect_err("Higher packet number should not be accepted with older key");
+
+        assert_eq!(
+            err,
+            ProcessingError::ConnectionError(
+                transport::Error::KEY_UPDATE_ERROR
+                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .into()
+            )
+        );
     }
 }
