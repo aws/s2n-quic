@@ -56,6 +56,7 @@ impl<K: open::Application> Receiver<K> {
     ) -> Result<(), Error> {
         debug_assert_eq!(packet.payload().len(), payload_out.len());
 
+        // Propagate authentication failures before recording the packet as decrypted.
         self.key.decrypt(
             packet.tag().key_phase(),
             packet.crypto_nonce(),
