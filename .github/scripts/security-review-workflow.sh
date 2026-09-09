@@ -38,15 +38,19 @@ run_review() {
 
     capture_runner "$source_version" "$pr_number"
 
-    # Accept one result object whose exit code agrees with its outcome.
+    # Accept one result object whose exit code and finding count agree with its outcome.
     if result="$(jq -cse --argjson runner_exit "$RUNNER_EXIT" '
         if length == 1 then .[0] else empty end |
+        (.findings_count |
+          type == "number" and floor == . and . >= 0) as $valid_count |
         select(
           ([.outcome, .resolved_sha, .error] | all(type == "string")) and
           (
-            ($runner_exit == 0 and .outcome == "pass") or
-            ($runner_exit == 2 and .outcome == "blocking") or
-            ($runner_exit == 1 and .outcome == "error" and (.error | length > 0))
+            ($runner_exit == 0 and .outcome == "pass" and $valid_count) or
+            ($runner_exit == 2 and .outcome == "blocking" and
+              $valid_count and .findings_count > 0) or
+            ($runner_exit == 1 and .outcome == "error" and
+              (.error | length > 0))
           )
         )
       ' <<< "$RUNNER_RESULT")"; then

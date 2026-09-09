@@ -14,20 +14,36 @@ repository="${2:?repository is required}"
 pr_number="${3:?pull request number is required}"
 server_url="${4:?server URL is required}"
 
-outcome="$(jq -er '.outcome | select(. == "pass" or . == "blocking")' <<< "$result_json" 2>/dev/null || true)"
-if [[ -z "$outcome" ]]; then
+review_result="$(jq -cer '
+    select(
+      (.outcome == "pass" and
+        (.findings_count | type == "number" and floor == . and . >= 0)) or
+      (.outcome == "blocking" and
+        (.findings_count | type == "number" and floor == . and . > 0))
+    )
+    | {outcome, findings_count}
+  ' <<< "$result_json" 2>/dev/null || true)"
+if [[ -z "$review_result" ]]; then
     echo "No completed security review verdict to add to the report history."
     exit 0
 fi
 
+outcome="$(jq -r '.outcome' <<< "$review_result")"
+findings_count="$(jq -r '.findings_count' <<< "$review_result")"
 resolved_sha="$(jq -er '.resolved_sha | select(test("^[0-9a-f]{40}$"))' <<< "$result_json")"
 report_url="$FINDINGS_ROOT/s2n-quic/findings.html?pr=$pr_number&commit=$resolved_sha"
 
 short_sha="${resolved_sha:0:12}"
 commit_url="$server_url/$repository/commit/$resolved_sha"
 case "$outcome" in
-    pass) result_label="✅ Passed" ;;
-    blocking) result_label="❌ Blocking" ;;
+    pass)
+        if ((findings_count > 0)); then
+            result_label="⚠️ Findings to review"
+        else
+            result_label="✅ No findings"
+        fi
+        ;;
+    blocking) result_label="❌ Blocking findings" ;;
 esac
 
 # Ignore marker text in contributor comments; only Actions owns this comment.
@@ -41,8 +57,8 @@ comment_json="$(jq -cs --arg marker "$COMMENT_MARKER" '
 
 if [[ -z "$comment_json" ]]; then
     # A clean PR stays quiet until its first finding-producing review.
-    if [[ "$outcome" != "blocking" ]]; then
-        echo "No blocking review history exists; not creating a comment for a passing review."
+    if ((findings_count == 0)); then
+        echo "No review history exists; not creating a comment for a review without findings."
         exit 0
     fi
 
