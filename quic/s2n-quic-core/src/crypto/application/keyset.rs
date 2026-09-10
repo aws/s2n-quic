@@ -38,7 +38,7 @@ use s2n_codec::EncoderBuffer;
 ///
 /// -> Timer expires --> We now generate a new k[0] = 'c'. Any packets that arrive encrypted with k[0] = 'a'
 ///                      will fail to decrypt since we no longer store that key. Now k[1] = 'b' is our
-///                      current key and k[0] = c is our future key.
+///                      current key and k[0] = 'c' is our future key.
 pub struct KeySet<K> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
@@ -727,8 +727,7 @@ mod tests {
         let replay = make_short_packet(&mut replay_bytes, false, 7);
         let (_pkt, gen) = keyset.decrypt_packet(replay, pto).unwrap();
 
-        // The replayed packet still authenticates...
-        // ...but it MUST NOT drive the key-update state machine:
+        // The replayed packet still authenticates but does not drive the key-update state machine:
         assert_eq!(
             gen, None,
             "a replayed old-phase packet must not report a new generation"
@@ -744,7 +743,7 @@ mod tests {
         );
 
         // 3. OLD-phase (Zero) packet with a HIGHER packet number. This is an error case as it indicates
-        // a bad peer who is encrypting newer packets with old keys.
+        //    a bad peer who is encrypting newer packets with old keys.
         let mut replay_bytes = [0u8; 128];
         let replay = make_short_packet(&mut replay_bytes, false, 12);
         let err = keyset
