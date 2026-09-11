@@ -1068,3 +1068,100 @@ fn on_transmit_probe() {
     assert!(write_context.frame_buffer.is_empty());
     assert_eq!(State::Searching(packet_number, now), controller.state);
 }
+
+#[test]
+fn bimodal_jumbo_acked() {
+    let mut controller = new_controller(8940);
+    let max_udp_payload = controller.max_udp_payload;
+    let pn = pn(1);
+    let mut cc = CongestionController::default();
+    let now = now();
+    let mut publisher = Publisher::no_snapshot();
+    controller.enable_bimodal_search();
+    controller.enable();
+    assert_eq!(max_udp_payload, controller.probed_size);
+
+    // The max probe is ACKed -> MTU confirmed at max and the search completes.
+    controller.state = State::Searching(pn, now);
+    controller.on_packet_ack(
+        pn,
+        controller.probed_size,
+        &mut cc,
+        path::Id::test_id(),
+        &mut publisher,
+    );
+    assert_eq!(max_udp_payload, controller.plpmtu);
+    assert_eq!(State::SearchComplete, controller.state);
+}
+
+#[test]
+fn bimodal_falls_back_to_base() {
+    let mut controller = new_controller(8940);
+    let max_udp_payload = controller.max_udp_payload;
+    let base_plpmtu = controller.base_plpmtu;
+    let pn = pn(1);
+    let mut cc = CongestionController::default();
+    let now = now();
+    let mut publisher = Publisher::no_snapshot();
+    controller.enable_bimodal_search();
+    controller.enable();
+    assert_eq!(max_udp_payload, controller.probed_size);
+
+    // The final max probe is lost -> the search completes at base.
+    controller.state = State::Searching(pn, now);
+    controller.probe_count = MAX_PROBES;
+    let result = controller.on_packet_loss(
+        pn,
+        controller.probed_size,
+        false,
+        now,
+        &mut cc,
+        path::Id::test_id(),
+        &mut publisher,
+    );
+    // Must report the MTU drop so the caller notifies the congestion controller / DC manager.
+    assert_eq!(MtuResult::MtuUpdated(base_plpmtu), result);
+    assert_eq!(base_plpmtu, controller.plpmtu);
+    assert_eq!(State::SearchComplete, controller.state);
+}
+
+#[test]
+fn bimodal_falls_back_from_odd_initial_mtu() {
+    let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();
+    let mut controller = Controller::new(
+        Config {
+            initial_mtu: 4675.try_into().unwrap(),
+            base_mtu: 1450.try_into().unwrap(),
+            max_mtu: 8940.try_into().unwrap(),
+        },
+        &addr.into(),
+    );
+    let max_udp_payload = controller.max_udp_payload;
+    let base_plpmtu = controller.base_plpmtu;
+    let pn = pn(1);
+    let mut cc = CongestionController::default();
+    let now = now();
+    let mut publisher = Publisher::no_snapshot();
+    controller.enable_bimodal_search();
+    controller.enable();
+    // Regardless of the initial MTU(4675), the only size probed is the max.
+    assert_eq!(max_udp_payload, controller.probed_size);
+
+    // The final max probe is lost -> the search completes at base.
+    controller.state = State::Searching(pn, now);
+    controller.probe_count = MAX_PROBES;
+    let result = controller.on_packet_loss(
+        pn,
+        controller.probed_size,
+        false,
+        now,
+        &mut cc,
+        path::Id::test_id(),
+        &mut publisher,
+    );
+    // Must report the MTU drop from the higher initial MTU down to base, so the caller
+    // notifies the congestion controller / DC manager instead of retaining the stale value.
+    assert_eq!(MtuResult::MtuUpdated(base_plpmtu), result);
+    assert_eq!(base_plpmtu, controller.plpmtu);
+    assert_eq!(State::SearchComplete, controller.state);
+}
