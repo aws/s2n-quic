@@ -222,6 +222,10 @@ impl Handle {
             queue_send_buffer_size: None,
         }
     }
+
+    pub fn close_buffers(&self) {
+        self.buffers.close();
+    }
 }
 
 pub struct Builder {

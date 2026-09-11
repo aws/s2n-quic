@@ -654,6 +654,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         endpoint_context.event_subscriber,
                         endpoint_context.packet_interceptor,
                     );
+                    return Err(());
                 }
 
                 if let Err(err) = conn.handle_remaining_packets(

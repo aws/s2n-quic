@@ -125,8 +125,16 @@ impl Region {
         // first create the descriptor layout
         let descriptor = Layout::new::<DescriptorInner>();
         // extend it with the address value
+        #[expect(
+            clippy::unwrap_used,
+            reason = "compile-time known layouts cannot fail in production"
+        )]
         let (header, addr_offset) = descriptor.extend(Layout::new::<Addr>()).unwrap();
         // finally place the packet data at the end
+        #[expect(
+            clippy::unwrap_used,
+            reason = "max_packet_size is a u16 so the array layout and extension cannot overflow isize"
+        )]
         let (packet, packet_offset) = header
             .extend(Layout::array::<u8>(max_packet_size as usize).unwrap())
             .unwrap();
@@ -139,6 +147,10 @@ impl Region {
         let padding_len = packet.size() - without_padding_len;
         max_packet_size = max_packet_size.saturating_add(padding_len as u16);
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "FIXME: checked_mul on user-supplied packet_count can overflow"
+        )]
         let packets = {
             // TODO use `packet.repeat(packet_count)` once stable
             // https://doc.rust-lang.org/stable/core/alloc/struct.Layout.html#method.repeat
@@ -206,6 +218,11 @@ impl Free {
     }
 
     #[inline]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     fn alloc(&self) -> Option<Unfilled> {
         let mut inner = self.0.lock().unwrap();
         let desc = inner.descriptors.pop()?;
@@ -217,6 +234,10 @@ impl Free {
 
     #[inline]
     fn record_region(&self, region: Region, mut descriptors: Vec<Descriptor>) {
+        #[allow(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
         let mut inner = self.0.lock().unwrap();
         inner.regions.push(region);
         let prev = inner.total;
@@ -232,6 +253,11 @@ impl Free {
     }
 
     #[inline]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     fn close(&self) -> Option<FreeInner> {
         let mut inner = self.0.lock().unwrap();
         inner.open = false;
@@ -241,6 +267,11 @@ impl Free {
 
 impl FreeList for Free {
     #[inline]
+    #[allow(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
     fn free(&self, descriptor: Descriptor) -> Option<Box<dyn 'static + Send>> {
         let mut inner = self.0.lock().unwrap();
 

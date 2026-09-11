@@ -16,7 +16,7 @@ use s2n_quic::{
     Client, Server,
 };
 use s2n_quic_core::{crypto::tls::testing::certificates, havoc, stream::testing::Data};
-use std::net::SocketAddr;
+use std::{collections::HashSet, net::SocketAddr};
 
 pub mod recorder;
 #[cfg(test)]
@@ -28,6 +28,7 @@ pub static SERVER_CERTS: (&str, &str) = (certificates::CERT_PEM, certificates::K
 pub struct BlocklistSubscriber {
     blocklist_enabled: bool,
     network_env: Model,
+    closed_connections: HashSet<u64>,
 }
 
 impl BlocklistSubscriber {
@@ -35,6 +36,7 @@ impl BlocklistSubscriber {
         Self {
             blocklist_enabled,
             network_env,
+            closed_connections: HashSet::default(),
         }
     }
 
@@ -138,6 +140,25 @@ impl event::Subscriber for BlocklistSubscriber {
                 event
             );
         }
+    }
+
+    fn on_connection_closed(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        _event: &events::ConnectionClosed,
+    ) {
+        self.closed_connections.insert(meta.id);
+    }
+
+    fn on_frame_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        meta: &events::ConnectionMeta,
+        _event: &events::FrameReceived,
+    ) {
+        // Closed connections should not be reading frames
+        assert!(!self.closed_connections.contains(&meta.id));
     }
 }
 
@@ -342,7 +363,13 @@ impl s2n_quic::provider::random::Generator for Random {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+// mTLS is only wired up for the s2n-tls provider. On the `s2n_tls_provider` targets (unix and
+// Windows GNU/MinGW) `tls::default` resolves to s2n-tls, so gate on that cfg and go through the
+// default provider.
+//
+// TODO: https://github.com/aws/s2n-quic/issues/1726
+// Build the rustls provider with mTLS enabled so these tests can run against either provider.
+#[cfg(s2n_tls_provider)]
 mod mtls {
     use super::*;
     use s2n_quic::provider::tls;
@@ -393,7 +420,8 @@ mod slow_tls {
     }
 }
 
-#[cfg(unix)]
+// Session resumption is only wired up for the s2n-tls provider.
+#[cfg(s2n_tls_provider)]
 pub mod resumption {
     use super::*;
     use s2n_quic::provider::tls::{
@@ -472,7 +500,7 @@ pub mod resumption {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
 pub use mtls::*;
 
 pub use slow_tls::SlowTlsProvider;

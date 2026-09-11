@@ -2,17 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{certificate, client, server};
+use aws_lc_rs::{
+    digest::{self, Digest},
+    signature::{EcdsaKeyPair, ECDSA_P256_SHA256_ASN1_SIGNING},
+};
 use core::{
     sync::atomic::{AtomicBool, AtomicU8, Ordering},
     task::Poll,
 };
-use openssl::{ec::EcKey, ecdsa::EcdsaSig};
 use pin_project::pin_project;
 use s2n_quic_core::{
     crypto::tls::{
         self,
         testing::{
-            certificates::{CERT_PEM, KEY_PEM, UNTRUSTED_CERT_PEM, UNTRUSTED_KEY_PEM},
+            certificates::{CERT_PEM, KEY_DER, KEY_PEM, UNTRUSTED_CERT_PEM, UNTRUSTED_KEY_PEM},
             server_params,
         },
         ConnectionInfo, Endpoint,
@@ -146,12 +149,15 @@ impl ConnectionFuture for MyPrivateKeyFuture {
         let mut in_buf = vec![0; in_buf_size];
         op.input(&mut in_buf)?;
 
-        let key = EcKey::private_key_from_pem(KEY_PEM.as_bytes())
-            .expect("Failed to create EcKey from pem");
-        let sig = EcdsaSig::sign(&in_buf, &key).expect("Failed to sign input");
-        let out = sig.to_der().expect("Failed to convert signature to der");
+        let key = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, KEY_DER)
+            .expect("Failed to create EcdsaKeyPair from pkcs8");
+        // s2n-tls hands us the already-computed digest, so import it and sign it
+        // directly rather than re-hashing the input.
+        let digest =
+            Digest::import_less_safe(&in_buf, &digest::SHA256).expect("Failed to import digest");
+        let sig = key.sign_digest(&digest).expect("Failed to sign input");
 
-        op.set_output(conn, &out)?;
+        op.set_output(conn, sig.as_ref())?;
         Poll::Ready(Ok(()))
     }
 }

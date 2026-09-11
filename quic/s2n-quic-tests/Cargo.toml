@@ -5,7 +5,7 @@ version = "0.1.0"
 description = "Integration tests for s2n-quic"
 authors = ["AWS s2n"]
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.92"
 license = "Apache-2.0"
 # this only contains internal tests and should not be published
 publish = false
@@ -25,14 +25,9 @@ tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 
-# quiche does not currently build on 32-bit platforms
-# see https://github.com/cloudflare/quiche/issues/2097
-[target.'cfg(not(target_arch = "x86"))'.dependencies]
+# quiche depends on BoringSSL, which builds on unix and on Windows MSVC, but not with the Windows MinGW-family toolchains.
+[target.'cfg(not(all(target_os = "windows", not(target_env = "msvc"))))'.dependencies]
 quiche = "0.29"
 
-# s2n-tls is required by ch_callback_server_local_address_test and doesn't build on Windows
-[target.'cfg(not(target_os = "windows"))'.dependencies]
-s2n-tls = "0.3.31"
-
-[target.'cfg(unix)'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-s2n", "unstable-provider-io-testing", "unstable-provider-dc", "unstable-provider-packet-interceptor", "unstable-provider-random", "unstable-offload-tls", "unstable_client_hello"] }
+[target.'cfg(any(unix, all(target_os = "windows", target_env = "gnu")))'.dependencies]
+s2n-quic = { path = "../s2n-quic", features = ["provider-tls-s2n", "unstable_client_hello"] }

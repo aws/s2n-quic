@@ -229,6 +229,10 @@ pub struct Unfilled {
 }
 
 impl fmt::Debug for Unfilled {
+    #[expect(
+        clippy::expect_used,
+        reason = "desc is always Some except transiently during recv_with/drop, so it is present here"
+    )]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let desc = self.desc.as_ref().expect("invalid state");
         f.debug_struct("Unfilled").field("id", &desc.id()).finish()
@@ -244,6 +248,10 @@ impl Unfilled {
 
     /// Fills the packet with the given callback, if the callback is successful
     #[inline]
+    #[allow(
+        clippy::unwrap_in_result,
+        reason = "desc is always Some except transiently during recv_with/drop, so it is present here"
+    )]
     pub fn recv_with<F, E>(mut self, f: F) -> Result<Segments, (Self, E)>
     where
         F: FnOnce(&mut Addr, &mut cmsg::Receiver, IoSliceMut) -> Result<usize, E>,

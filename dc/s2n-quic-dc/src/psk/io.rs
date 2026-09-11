@@ -13,6 +13,7 @@ use s2n_quic::{
     server::Name,
 };
 use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_dc_metrics::TaskMonitor;
 use std::{
     any::Any,
     hash::BuildHasher,
@@ -37,6 +38,16 @@ pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
 pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
 const DC_QUIC_VERSION: u32 = 0;
+/// Application error codes the client uses to close a connection whose dcQUIC handshake did not
+/// complete. Both must be non-zero so the close is emitted as an application `CONNECTION_CLOSE`
+/// rather than the clean, no-error close produced by dropping the connection handle.
+/// Distinct codes let the peer/operator tell the two failure modes apart.
+///
+/// `ConfirmComplete::wait_ready` reported an error before the dc handshake completed.
+const DC_HANDSHAKE_INCOMPLETE_ERROR: u32 = 1;
+/// `ConfirmComplete::wait_ready` did not resolve before the handshake deadline elapsed.
+const DC_HANDSHAKE_TIMEOUT_ERROR: u32 = 2;
+
 /// Number of threads used to make progress on the TLS handshake
 pub const DEFAULT_THREAD_COUNT: usize = 0;
 
@@ -48,10 +59,15 @@ pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
 struct TokioExecutor {
     runtime: Runtime,
+    monitor: Option<TaskMonitor>,
 }
 impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
     fn spawn(&self, task: impl core::future::Future<Output = ()> + Send + 'static) {
-        self.runtime.spawn(task);
+        if let Some(monitor) = &self.monitor {
+            self.runtime.spawn(monitor.instrument(task));
+        } else {
+            self.runtime.spawn(task);
+        }
     }
 }
 #[derive(Clone)]
@@ -114,12 +130,18 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
+        // If the initial packet exceeds base MTU, s2n-quic's ability to recover from losing that
+        // packet is impaired on both client and server. This is especially true if the ClientHello
+        // is larger than the base MTU.
+        //
+        // We are turning off probing fully (base = initial = max MTU) while we work through
+        // improved test coverage.
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
-            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(builder.mtu)?
-            .with_max_mtu(builder.mtu)?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
+            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .build()?;
 
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
@@ -139,11 +161,11 @@ impl Server {
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         macro_rules! build_and_start {
-            ($tls:expr) => {{
+            ($tls:expr, $limits:expr, $io:expr) => {{
                 let s = s2n_quic::Server::builder()
-                    .with_io(io)?
+                    .with_io($io)?
                     .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
-                    .with_limits(connection_limits)?
+                    .with_limits($limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
                     .with_tls($tls)?;
@@ -167,6 +189,10 @@ impl Server {
                 .enable_all()
                 .build()?;
 
+            let monitor = builder
+                .registry
+                .map(|registry| registry.register_task_monitor("HsOffload"));
+
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
                 .with_exporter(DCExporter {
@@ -174,12 +200,18 @@ impl Server {
                     endpoint_type: Type::Server,
                     map: map.clone(),
                 })
-                .with_executor(TokioExecutor { runtime })
+                .with_executor(TokioExecutor { runtime, monitor })
                 .build();
 
-            build_and_start!(tls)
+            // We need packet storage when offloading is turned on due to this issue:
+            // https://github.com/aws/s2n-quic/issues/2601. The size needs to be large enough
+            // to store a packet with the given MTU.
+            let connection_limits =
+                connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
+
+            build_and_start!(tls, connection_limits, io)
         } else {
-            build_and_start!(tls_materials_provider)
+            build_and_start!(tls_materials_provider, connection_limits, io)
         };
 
         Ok(Self { server })
@@ -214,11 +246,21 @@ pub(super) async fn server<
         Err(e) => {
             tracing::error!("failed to bind server to {:?}: {:?}", address, e);
             let _ = on_ready.send(Err(e));
+            // Bail early, we're failing startup.
             return;
         }
     };
 
-    let _ = on_ready.send(Ok(server.local_addr().unwrap()));
+    match server.local_addr() {
+        Ok(addr) => {
+            let _ = on_ready.send(Ok(addr));
+        }
+        Err(err) => {
+            let _ = on_ready.send(Err(err.into()));
+            // Bail early, we're failing startup.
+            return;
+        }
+    }
 
     while let Some(mut connection) = server.server.accept().await {
         let map_clone = map.clone();
@@ -278,11 +320,12 @@ impl Client {
         subscriber: Subscriber,
         builder: client::Builder<Event>,
     ) -> Result<Self, Error> {
+        // For MTU configuration, see the comment on Server's io configuration.
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
             .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(builder.mtu)?
-            .with_max_mtu(builder.mtu)?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .build()?;
 
@@ -294,7 +337,12 @@ impl Client {
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(builder.data_window)?
             .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
-            .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
+            .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?
+            // Packet buffering on the client avoids dropping LossRecoveryProbing handshake frames
+            //
+            // This is primarily needed with large ServerHellos (e.g., with PQ), but should be
+            // harmless even without it.
+            .with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
@@ -352,6 +400,9 @@ pub(crate) struct HandshakeQueueConfig {
     /// Upper bound on the jitter delay after a successful handshake before allowing
     /// another handshake with the same peer.
     pub(crate) success_jitter: Duration,
+    /// Upper bound on the jitter delay after a failed handshake before allowing
+    /// another handshake with the same peer.
+    pub(crate) error_jitter: Duration,
     /// Maximum number of TLS handshakes that can be started concurrently.
     ///
     /// TLS handshakes have high CPU cost (~1ms) which stalls out the endpoint, so we
@@ -363,14 +414,17 @@ pub(crate) struct HandshakeQueueConfig {
     /// Keeping this bounded helps avoid unbounded work ongoing in s2n-quic (which
     /// implies unbounded packet transmit/receive work).
     pub(crate) inflight_limit: usize,
+    pub(crate) await_dedup_removal: bool,
 }
 
 impl Default for HandshakeQueueConfig {
     fn default() -> Self {
         Self {
             success_jitter: Duration::from_secs(60),
+            error_jitter: Duration::from_secs(120),
             start_limit: 5,
             inflight_limit: 750,
+            await_dedup_removal: false,
         }
     }
 }
@@ -380,6 +434,8 @@ struct HandshakeQueue {
     limiter_start: Semaphore,
     limiter_inflight: Arc<Semaphore>,
     success_jitter: Duration,
+    error_jitter: Duration,
+    await_dedup_removal: bool,
     hasher: std::collections::hash_map::RandomState,
 }
 
@@ -391,6 +447,8 @@ impl HandshakeQueue {
             success_jitter: config.success_jitter,
             inner: Default::default(),
             hasher: Default::default(),
+            error_jitter: config.error_jitter,
+            await_dedup_removal: config.await_dedup_removal,
         }
     }
 
@@ -508,10 +566,23 @@ impl HandshakeQueue {
                 }
                 Ok(Err(e)) => {
                     // ConfirmComplete::wait_ready failed. We should treat the handshake as failed.
+                    //
+                    // Explicitly close instead of letting `connection` drop, which would emit a
+                    // clean (no-error) CONNECTION_CLOSE. A clean close is the signal the server
+                    // uses to complete the dc handshake when the token ACK is lost; since the
+                    // handshake did not complete here, we must not send it. Any explicit close is
+                    // emitted as an application CONNECTION_CLOSE (`connection::Error::Application`),
+                    // which the server does not treat as completion. If the connection is already
+                    // closed this is a no-op.
+                    connection.close(DC_HANDSHAKE_INCOMPLETE_ERROR.into());
                     return Err(e);
                 }
                 Err(_elapsed) => {
                     // Handshake timeout occurred. We should treat the handshake as failed.
+                    //
+                    // Close with an explicit error, as in the failure case above, but with a
+                    // distinct code so a timeout can be distinguished from other failures.
+                    connection.close(DC_HANDSHAKE_TIMEOUT_ERROR.into());
                     return Err(io::Error::new(
                         io::ErrorKind::TimedOut,
                         "ConfirmComplete handshake timeout",
@@ -530,7 +601,7 @@ impl HandshakeQueue {
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             let map_clone = map.clone();
-            tokio::spawn(async move {
+            let cleanup = tokio::spawn(async move {
                 // Use the same deadline for MTU probing - any remaining time from the 10s budget
                 if tokio::time::timeout_at(
                     deadline,
@@ -566,6 +637,10 @@ impl HandshakeQueue {
                 this.remove_entry(&entry);
             });
 
+            if self.await_dedup_removal {
+                let _ = cleanup.await;
+            }
+
             Ok::<_, io::Error>(())
         };
 
@@ -579,31 +654,38 @@ impl HandshakeQueue {
                     // eventually, but keeping it for parity for now.
                     tracing::error!("handshake with {peer} failed: {e}");
 
-                    let this = self.clone();
-                    tokio::spawn(async move {
-                        // Delay deleting the entry by a random time, up to 2 minutes.
-                        //
-                        // This avoids aggressively reconnecting to a given peer if handshakes
-                        // fail (instead we keep returning the cached error). This is good both for
-                        // fast failure (e.g., certificate issues) and for slow errors (timeouts).
-                        // In the first case, it's very unlikely the issue will be fixed within
-                        // seconds, so backing off is natural to keep aggregate handshake volume
-                        // more bounded. For the latter, backing off avoids generating undue load
-                        // on the network or server. The specific duration is not chosen
-                        // with any particular rationale, mostly intended to be a relatively small
-                        // amount (to avoid significantly extending recovery times if the server
-                        // was temporarily overloaded) while still significantly reducing handshake
-                        // volume (>60x for fast-failing handshakes and >10x for timeouts).
-                        let duration = {
-                            let mut rng = rand::rng();
-                            rng.random_range(1000..120_000)
-                        };
-                        tokio::time::sleep(Duration::from_millis(duration)).await;
+                    // Delay deleting the entry by a random time, up to 2 minutes.
+                    //
+                    // This avoids aggressively reconnecting to a given peer if handshakes
+                    // fail (instead we keep returning the cached error). This is good both for
+                    // fast failure (e.g., certificate issues) and for slow errors (timeouts).
+                    // In the first case, it's very unlikely the issue will be fixed within
+                    // seconds, so backing off is natural to keep aggregate handshake volume
+                    // more bounded. For the latter, backing off avoids generating undue load
+                    // on the network or server. The specific duration is not chosen
+                    // with any particular rationale, mostly intended to be a relatively small
+                    // amount (to avoid significantly extending recovery times if the server
+                    // was temporarily overloaded) while still significantly reducing handshake
+                    // volume (>60x for fast-failing handshakes and >10x for timeouts).
+                    if self.error_jitter.is_zero() {
+                        self.remove_entry(&entry3);
+                    } else {
+                        let this = self.clone();
+                        let error_jitter = self.error_jitter;
+                        let cleanup = tokio::spawn(async move {
+                            let duration = {
+                                let mut rng = rand::rng();
+                                let min = 1000.min(error_jitter.as_millis() as u64);
+                                rng.random_range(min..=error_jitter.as_millis() as u64)
+                            };
+                            tokio::time::sleep(Duration::from_millis(duration)).await;
+                            this.remove_entry(&entry3);
+                        });
 
-                        // If the handshake fails, we also remove the entry from the map.
-                        // This permits another handshake to start for the same peer.
-                        this.remove_entry(&entry3);
-                    });
+                        if self.await_dedup_removal {
+                            let _ = cleanup.await;
+                        }
+                    }
 
                     Err(HandshakeFailed(e))
                 } else {
@@ -680,6 +762,32 @@ mod tests {
         }
     }
 
+    /// A test event subscriber that records the maximum MTU reported by `MtuUpdated` events.
+    #[derive(Clone, Default)]
+    struct MtuRecorder {
+        max_mtu: Arc<AtomicU16>,
+    }
+
+    impl s2n_quic::provider::event::Subscriber for MtuRecorder {
+        type ConnectionContext = ();
+
+        fn create_connection_context(
+            &mut self,
+            _meta: &s2n_quic::provider::event::ConnectionMeta,
+            _info: &s2n_quic::provider::event::ConnectionInfo,
+        ) -> Self::ConnectionContext {
+        }
+
+        fn on_mtu_updated(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            _meta: &s2n_quic::provider::event::ConnectionMeta,
+            event: &s2n_quic::provider::event::events::MtuUpdated,
+        ) {
+            self.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
+        }
+    }
+
     /// Helper to set up a test client and server
     struct TestSetup {
         client: Client,
@@ -689,9 +797,13 @@ mod tests {
 
     impl TestSetup {
         /// Creates a test setup with an optional endpoint limiter for the server
-        async fn new<L>(endpoint_limits: Option<L>, server_builder: server::Builder) -> Self
+        async fn new<L, Event>(
+            endpoint_limits: Option<L>,
+            server_builder: server::Builder<Event>,
+        ) -> Self
         where
             L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
+            Event: s2n_quic::provider::event::Subscriber + Send + Sync + 'static,
         {
             init_tracing();
 
@@ -722,7 +834,8 @@ mod tests {
                     subscriber.clone(),
                     server_builder,
                 )
-            };
+            }
+            .unwrap();
 
             let client_map = Map::new(
                 Signer::new(b"default"),
@@ -766,7 +879,7 @@ mod tests {
     #[tokio::test]
     async fn mtu_probing_complete_no_delay_test() {
         let server_builder = crate::psk::server::Builder::default();
-        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         // First handshake
@@ -890,7 +1003,8 @@ mod tests {
             tls.clone(),
             subscriber.clone(),
             server_builder,
-        );
+        )
+        .unwrap();
 
         let client_map = Map::new(
             Signer::new(b"default"),
@@ -929,14 +1043,15 @@ mod tests {
         );
     }
 
-    /// Sanity check that a server with offloading enabled can successfully complete a dc-quic handshake
+    /// Confirm that without offloading (default configuration) we don't perform MTU probing.
     #[tokio::test]
-    async fn server_offloading() {
-        const TEST_THREAD_COUNT: usize = 8;
+    async fn no_mtu_probing() {
+        const MIN_MTU: u16 = 1200;
+        let mtu_recorder = MtuRecorder::default();
         let server_builder =
-            crate::psk::server::Builder::default().with_thread_count(TEST_THREAD_COUNT);
+            crate::psk::server::Builder::default().with_event_subscriber(mtu_recorder.clone());
 
-        let setup = TestSetup::new::<CloseAllConnectionsLimiter>(None, server_builder).await;
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
         let server_name: s2n_quic::server::Name = "localhost".into();
 
         setup
@@ -944,5 +1059,58 @@ mod tests {
             .connect(setup.server_addr, HandshakeReason::User, server_name)
             .await
             .unwrap();
+
+        // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
+        // DEFAULT_BASE_MTU.
+        let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
+
+        // The MTU reported by the event is the maximum QUIC datagram size, which excludes the UDP
+        // and IP headers, so derive the expected value from DEFAULT_BASE_MTU the same way.
+        let peer_address: SocketAddress = setup.server_addr.into();
+        let expected_mtu = s2n_quic_core::path::InitialMtu::try_from(DEFAULT_BASE_MTU)
+            .unwrap()
+            .max_datagram_size(&peer_address);
+
+        if cfg!(target_os = "linux") {
+            assert_eq!(mtu, expected_mtu);
+        } else {
+            assert_eq!(mtu, MIN_MTU);
+        }
+    }
+
+    /// Sanity check that a server with offloading enabled can successfully complete a dc-quic handshake
+    #[tokio::test]
+    async fn server_offloading() {
+        const MIN_MTU: u16 = 1200;
+        let mtu_recorder = MtuRecorder::default();
+        let server_builder = crate::psk::server::Builder::default()
+            .with_thread_count(2)
+            .with_event_subscriber(mtu_recorder.clone());
+
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(None, server_builder).await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        setup
+            .client
+            .connect(setup.server_addr, HandshakeReason::User, server_name)
+            .await
+            .unwrap();
+
+        // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
+        // DEFAULT_BASE_MTU.
+        let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
+
+        // The MTU reported by the event is the maximum QUIC datagram size, which excludes the UDP
+        // and IP headers, so derive the expected value from DEFAULT_BASE_MTU the same way.
+        let peer_address: SocketAddress = setup.server_addr.into();
+        let expected_mtu = s2n_quic_core::path::InitialMtu::try_from(DEFAULT_BASE_MTU)
+            .unwrap()
+            .max_datagram_size(&peer_address);
+
+        if cfg!(target_os = "linux") {
+            assert_eq!(mtu, expected_mtu);
+        } else {
+            assert_eq!(mtu, MIN_MTU);
+        }
     }
 }

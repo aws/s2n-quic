@@ -138,10 +138,11 @@ pub mod default {
             //# datagrams that match these patterns prior to validating the
             //# destination address.
 
-            // NOTE: this may cause reachability issues if a peer or NAT use different
-            //       port scopes for the same connection. Additional research may
-            //       be required to determine if this countermeasure needs to be relaxed.
-            if PortScope::new(active_addr.port()) != PortScope::new(packet_addr.port()) {
+            let active_port_scope = PortScope::new(active_addr.port());
+            let packet_port_scope = PortScope::new(packet_addr.port());
+            if active_port_scope.is_system() != packet_port_scope.is_system() {
+                // Changing port scope from the system to a non-system (user or dynamic) scope
+                // and vice versa is rejected. Any other combination is allowed.
                 return Outcome::Deny(DenyReason::PortScopeChanged);
             }
 
@@ -191,6 +192,11 @@ pub mod default {
                 1024..=49151 => Self::User,
                 49152..=65535 => Self::Dynamic,
             }
+        }
+
+        #[inline]
+        pub fn is_system(&self) -> bool {
+            self == &PortScope::System
         }
     }
 

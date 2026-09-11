@@ -175,7 +175,7 @@ impl Packet {
             let mut offset = offset as u16;
 
             // Fragment offsets are specified in multiples of 8.
-            assert!(offset % 8 == 0);
+            assert!(offset.is_multiple_of(8));
             offset /= 8;
 
             // set more fragments bit if we expect there to be further packets.

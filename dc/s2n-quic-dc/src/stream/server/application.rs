@@ -73,6 +73,10 @@ impl Default for Builder {
 impl Builder {
     common_builder_methods!();
 
+    /// The provided path will be used to unlink + bind a Unix socket. Users on the local system
+    /// that can connect to this socket can send traffic to the application with no additional
+    /// authentication being performed, so appropriate access controls should be enforced. These
+    /// are the responsibility of the application owner.
     pub fn with_socket_path(mut self, path: &Path) -> Self {
         self.socket_path = Some(path.to_path_buf());
         self
@@ -87,7 +91,16 @@ impl Builder {
             ))
         );
 
-        let env = env::Builder::new(subscriber).build()?;
+        let mut env = env::Builder::new(subscriber);
+
+        if !self.enable_udp {
+            // If we only have TCP, there shouldn't be significant load on the background worker
+            // threads, so reduce thread count. Only the background shutdowns get sent there for
+            // TCP workloads.
+            env = env.with_threads(1);
+        }
+
+        let env = env.build()?;
 
         let mut span = self.span.unwrap_or_else(tracing::span::Span::current);
         if span.is_none() {

@@ -62,6 +62,11 @@ where
         }
     }
 
+    pub fn with_thread_name_prefix(mut self, prefix: String) -> Self {
+        self.thread_name_prefix = Some(prefix);
+        self
+    }
+
     pub fn with_threads(mut self, threads: usize) -> Self {
         self.threads = Some(threads);
         self
@@ -156,16 +161,6 @@ pub struct Environment<Sub> {
     writer_rt: runtime::Shared<Sub>,
     subscriber: Sub,
     recv_pool: Option<Arc<pool::Pool>>,
-}
-
-impl<Sub> Default for Environment<Sub>
-where
-    Sub: event::Subscriber + Clone + Default,
-{
-    #[inline]
-    fn default() -> Self {
-        Self::builder().build().unwrap()
-    }
 }
 
 impl<Sub> Environment<Sub>

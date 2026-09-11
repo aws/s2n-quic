@@ -207,6 +207,11 @@ impl<'a> TlsSession<'a> {
     pub fn cipher_suite(&self) -> crate::event::api::CipherSuite {
         self.session.cipher_suite().into_event()
     }
+
+    /// The signature scheme used to authenticate the server for this connection
+    pub fn signature_scheme(&self) -> Option<&'static str> {
+        self.session.signature_scheme()
+    }
 }
 
 impl<'a> crate::event::IntoEvent<TlsSession<'a>> for TlsSession<'a> {

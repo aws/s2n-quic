@@ -197,6 +197,10 @@ impl<T> Queue<T> {
     }
 
     #[inline]
+    #[expect(
+        clippy::panic_in_result_fn,
+        reason = "the panics are debug-only assertions guarding internal invariants (correct half ordering and that no receiver is already open)"
+    )]
     pub fn open_receivers(&self, control: &Self) -> Result<(), Closed> {
         #[cfg(debug_assertions)]
         {

@@ -559,6 +559,15 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         &mut self,
         session: &impl tls::TlsSession,
     ) -> Result<(), transport::Error> {
+        // The signature scheme is only available once the handshake is complete, since
+        // it depends on the peer's CertificateVerify message having been processed.
+        if let Some(signature_scheme) = session.signature_scheme() {
+            self.publisher
+                .on_signature_scheme(event::builder::SignatureScheme {
+                    chosen_signature_scheme: signature_scheme,
+                });
+        }
+
         self.application
             .as_mut()
             .expect("application keys should be ready before the tls exporter")

@@ -44,6 +44,10 @@ where
 {
     /// Builds the stream and emits an event indicating that the stream was built
     #[inline]
+    #[allow(
+        clippy::unwrap_in_result,
+        reason = "app_queue_time is always set by accept_stream before accept() is called on a server stream"
+    )]
     pub(crate) fn accept(self) -> io::Result<(Stream<Sub>, AcceptInfo)> {
         let kernel_start_time = self.kernel_start_time;
         let app_queue_time = self.app_queue_time.expect("set by accept_stream");

@@ -23,6 +23,32 @@ use s2n_tls::{connection::Connection, error::Fallible, ffi::*};
 /// s2n-tls sends small chunks
 const SEND_BUFFER_CAPACITY: usize = 2048;
 
+/// Signals a "would block" to s2n-tls's C IO layer by setting the CRT `errno`
+/// to `EWOULDBLOCK`. `s2n_io.c` reads `errno` to distinguish a retriable blocked
+/// read from a fatal IO error.
+fn set_recv_would_block() {
+    // On non-Windows targets the `errno` crate writes the CRT `errno`, which is
+    // what s2n-tls reads.
+    #[cfg(not(target_os = "windows"))]
+    errno::set_errno(errno::Errno(libc::EWOULDBLOCK));
+
+    // On Windows the `errno` crate writes the Win32 last-error (via
+    // `SetLastError`), not the CRT `errno` that s2n-tls reads, so set the CRT
+    // `errno` directly. s2n-tls and this crate share one statically linked CRT,
+    // so `_set_errno` and the `errno` s2n-tls reads hit the same thread-local
+    // variable.
+    #[cfg(target_os = "windows")]
+    {
+        extern "C" {
+            fn _set_errno(value: core::ffi::c_int) -> core::ffi::c_int;
+        }
+        // SAFETY: `_set_errno` only writes the thread-local CRT errno.
+        unsafe {
+            let _ = _set_errno(libc::EWOULDBLOCK);
+        }
+    }
+}
+
 /// Handles all callback contexts for each session
 pub struct Callback<'a, T, C> {
     pub context: &'a mut T,
@@ -349,7 +375,7 @@ where
             0 => {
                 // https://github.com/aws/s2n-tls/blob/main/docs/USAGE-GUIDE.md#s2n_connection_set_send_cb
                 // s2n-tls wants us to set the global errno to signal blocked
-                errno::set_errno(errno::Errno(libc::EWOULDBLOCK));
+                set_recv_would_block();
                 -1
             }
             len => len as _,

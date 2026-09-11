@@ -96,6 +96,10 @@ where
     if tag.is_connected() || tag.ack_eliciting() {
         unsafe {
             assume!(encoder.remaining_capacity() >= 8);
+            #[expect(
+                clippy::unwrap_used,
+                reason = "FIXME: change API to enforce both packet number and next_expected_control_packet either both passed or neither is passed"
+            )]
             encoder.encode(&packet_number.unwrap());
         }
     }

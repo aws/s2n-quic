@@ -1,27 +1,11 @@
 [advisories]
 yanked = "deny"
-ignore = [
-  # `atty` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
-  # https://github.com/aws/s2n-quic/issues/2324
-  "RUSTSEC-2021-0145",
-  # `atty` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
-  # https://github.com/aws/s2n-quic/issues/2324
-  "RUSTSEC-2024-0375",
-  # ` proc-macro-error` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
-  # https://github.com/aws/s2n-quic/issues/2324
-  "RUSTSEC-2024-0370",
-  # `ansi_term` is a dependency of `structopt` and only used in s2n-quic-qns and s2n-quic-sim
-  # https://github.com/aws/s2n-quic/issues/2324
-  "RUSTSEC-2021-0139"
-]
+ignore = []
 
 [bans]
 multiple-versions = "deny"
 
 skip-tree = [
-    # This dependency needs to be updated or removed (see https://github.com/axiomhq/rust-cuckoofilter/pull/53)
-    { name = "cuckoofilter" },
-
     # all of these are going to be just test dependencies
     { name = "bach" },
     { name = "bolero" },

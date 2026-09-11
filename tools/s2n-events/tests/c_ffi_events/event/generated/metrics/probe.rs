@@ -43,11 +43,13 @@ mod counter {
     }
     define!(
         extern "probe" {
-            # [link_name = c_ffi_events__event__counter__byte_array_event]
+            #[link_name = c_ffi_events__event__counter__byte_array_event]
             fn byte_array_event(value: u64);
-            # [link_name = c_ffi_events__event__counter__enum_event]
+            #[link_name =
+        c_ffi_events__event__counter__enum_event]
             fn enum_event(value: u64);
-            # [link_name = c_ffi_events__event__counter__count_event]
+            #[link_name
+        = c_ffi_events__event__counter__count_event]
             fn count_event(value: u64);
         }
     );

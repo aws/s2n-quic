@@ -2,34 +2,35 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
+use clap::Args;
 use s2n_quic::provider::io;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
+#[group(skip)]
 pub struct Server {
-    #[structopt(short, long, default_value = "::")]
+    #[clap(short, long, default_value = "::")]
     pub ip: std::net::IpAddr,
 
-    #[structopt(short, long, default_value = "443")]
+    #[clap(short, long, default_value = "443")]
     pub port: u16,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub disable_gso: bool,
 
-    #[structopt(long, default_value = "1280")]
+    #[clap(long, default_value = "1280")]
     pub initial_mtu: u16,
 
-    #[structopt(long, default_value = "9000")]
+    #[clap(long, default_value = "9000")]
     pub max_mtu: u16,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub queue_recv_buffer_size: Option<usize>,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub queue_send_buffer_size: Option<usize>,
 
     #[cfg(feature = "xdp")]
-    #[structopt(flatten)]
+    #[clap(flatten)]
     xdp: crate::xdp::Xdp,
 }
 
@@ -68,28 +69,29 @@ impl Server {
     }
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
+#[group(skip)]
 pub struct Client {
-    #[structopt(long)]
+    #[clap(long)]
     pub disable_gso: bool,
 
-    #[structopt(long, default_value = "1280")]
+    #[clap(long, default_value = "1280")]
     pub initial_mtu: u16,
 
-    #[structopt(long, default_value = "9000")]
+    #[clap(long, default_value = "9000")]
     pub max_mtu: u16,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub queue_recv_buffer_size: Option<usize>,
 
-    #[structopt(long)]
+    #[clap(long)]
     pub queue_send_buffer_size: Option<usize>,
 
-    #[structopt(short, long, default_value = "::")]
+    #[clap(short, long, default_value = "::")]
     pub local_ip: std::net::IpAddr,
 
     #[cfg(feature = "xdp")]
-    #[structopt(flatten)]
+    #[clap(flatten)]
     xdp: crate::xdp::Xdp,
 }
 

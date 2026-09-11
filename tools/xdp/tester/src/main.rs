@@ -3,7 +3,7 @@
 
 use anyhow::Context;
 use aya::{
-    programs::{Xdp, XdpFlags},
+    programs::{Xdp, XdpMode},
     Ebpf,
 };
 use aya_log::EbpfLogger;
@@ -42,11 +42,17 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let mut bpf = Ebpf::load(bpf)?;
 
-    if opt.trace {
-        if let Err(e) = EbpfLogger::init(&mut bpf) {
-            warn!("failed to initialize eBPF logger: {e}");
+    let logger = if opt.trace {
+        match EbpfLogger::init(&mut bpf) {
+            Ok(logger) => Some(logger),
+            Err(e) => {
+                warn!("failed to initialize eBPF logger: {e}");
+                None
+            }
         }
-    }
+    } else {
+        None
+    };
 
     let program: &mut Xdp = bpf
         .program_mut(s2n_quic_xdp::bpf::PROGRAM_NAME)
@@ -58,8 +64,24 @@ async fn main() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    program.attach(&opt.iface, XdpFlags::default())
-        .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
+    program.attach(&opt.iface, XdpMode::default())
+        .context("failed to attach the XDP program with default mode - try changing XdpMode::default() to XdpMode::Skb")?;
+
+    // Continuously drain the eBPF trace logs to the configured logger.
+    if let Some(logger) = logger {
+        let mut logger =
+            tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
+        tokio::spawn(async move {
+            loop {
+                let mut guard = logger
+                    .readable_mut()
+                    .await
+                    .expect("failed to poll eBPF logger");
+                guard.get_inner_mut().flush();
+                guard.clear_ready();
+            }
+        });
+    }
 
     info!("Waiting for Ctrl-C...");
     signal::ctrl_c().await?;

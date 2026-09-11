@@ -924,6 +924,10 @@ impl Controller {
             self.pmtu_raise_timer.set(timestamp);
         }
     }
+
+    pub fn completion_transmission_needed(&self) -> bool {
+        self.needs_to_send_completion
+    }
 }
 
 impl timer::Provider for Controller {
@@ -1018,7 +1022,7 @@ impl transmission::interest::Provider for Controller {
         &self,
         query: &mut Q,
     ) -> transmission::interest::Result {
-        if self.needs_to_send_completion {
+        if self.completion_transmission_needed() || self.probe_needed() {
             query.on_new_data()?;
         }
 

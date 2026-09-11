@@ -26,6 +26,7 @@ use std::{
 
 mod blackhole;
 mod buffer_limit;
+mod close_all_stream_after_endpoint_drop;
 mod connection_limits;
 mod connection_migration;
 mod deduplicate;
@@ -49,29 +50,32 @@ mod self_test;
 mod skip_packets;
 mod slow_tls;
 mod tls_context;
-// quiche does not currently build on 32-bit platforms
-// see https://github.com/cloudflare/quiche/issues/2097
-#[cfg(not(target_arch = "x86"))]
+// This test uses quiche, which depends on BoringSSL. See the `boringssl` cfg in build.rs.
+#[cfg(boringssl)]
 mod zero_length_cid_client_connection_migration;
 
-// The ClientHelloCallback trait is only available with s2n-tls
-#[cfg(not(target_os = "windows"))]
+// These tests use the s2n-tls provider specifically (the ClientHelloCallback trait, mTLS
+// providers). See the `s2n_tls_provider` cfg in build.rs.
+#[cfg(s2n_tls_provider)]
 mod ch_callback_connection_info;
-// TODO: https://github.com/aws/s2n-quic/issues/1726
-//
-// The rustls tls provider is used on windows and has different
-// build options than s2n-tls. We should build the rustls provider with
-// mTLS enabled and remove the `cfg(target_os("windows"))`.
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
 mod chain;
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
 mod client_handshake_confirm;
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
 mod dc;
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
+mod dc_connection_close;
+// The s2n-tls `fips` feature depends on aws-lc-fips-sys, which can't be built on Windows with the
+// MinGW toolchain. See: https://github.com/aws/aws-lc/issues/3207
+#[cfg(unix)]
 mod fips;
-#[cfg(not(target_os = "windows"))]
+#[cfg(s2n_tls_provider)]
 mod mtls;
+#[cfg(s2n_tls_provider)]
+mod pq_initial_mtu;
+#[cfg(s2n_tls_provider)]
+mod signature_scheme;
 // This test uses real OS sockets, which conflicts with bach's simulated time scope on Windows.
 #[cfg(not(target_os = "windows"))]
 mod prioritized_socket;

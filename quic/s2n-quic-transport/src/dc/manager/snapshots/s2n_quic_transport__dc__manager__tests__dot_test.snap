@@ -15,4 +15,5 @@ digraph {
   ClientPathSecretsReady -> Complete [label = "on_peer_stateless_reset_tokens"];
   ServerPathSecretsReady -> ServerTokensSent [label = "on_peer_stateless_reset_tokens"];
   ServerTokensSent -> Complete [label = "on_stateless_reset_tokens_acked"];
+  ServerTokensSent -> Complete [label = "on_peer_clean_close"];
 }

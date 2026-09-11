@@ -20,6 +20,7 @@ mod id {
         APPLICATION_PROTOCOL_INFORMATION,
         SERVER_NAME_INFORMATION,
         KEY_EXCHANGE_GROUP,
+        SIGNATURE_SCHEME,
         PACKET_SKIPPED,
         PACKET_SENT,
         PACKET_SENT__KIND,
@@ -64,6 +65,17 @@ mod id {
         ACK_RANGE_SENT__PACKET,
         PACKET_DROPPED,
         PACKET_DROPPED__REASON,
+        PACKET_BUFFERED,
+        PACKET_BUFFERED__PACKET_TYPE,
+        PACKET_BUFFERED__BYTES__TOTAL,
+        PACKET_BUFFERED__BYTES,
+        PACKET_BUFFERED__BUFFER_LEN,
+        PACKET_BUFFER_DRAINED,
+        PACKET_BUFFER_DRAINED__PACKET_TYPE,
+        PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+        PACKET_BUFFER_DRAINED__BYTES,
+        PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+        PACKET_BUFFER_ERROR,
         KEY_UPDATE,
         KEY_UPDATE__KEY_TYPE,
         KEY_UPDATE__CIPHER_SUITE,
@@ -140,6 +152,8 @@ mod id {
         DC_STATE_CHANGED__COMPLETE__LATENCY,
         DC_STATE_CHANGED__STATE,
         DC_PATH_CREATED,
+        DC_STATE_INCOMPLETE,
+        DC_STATE_INCOMPLETE__STATE,
         CONNECTION_CLOSED,
         CONNECTION_CLOSED__LATENCY,
         CONNECTION_CLOSED__ERROR,
@@ -196,6 +210,7 @@ mod id {
         InfoId::APPLICATION_PROTOCOL_INFORMATION as usize;
     pub const SERVER_NAME_INFORMATION: usize = InfoId::SERVER_NAME_INFORMATION as usize;
     pub const KEY_EXCHANGE_GROUP: usize = InfoId::KEY_EXCHANGE_GROUP as usize;
+    pub const SIGNATURE_SCHEME: usize = InfoId::SIGNATURE_SCHEME as usize;
     pub const PACKET_SKIPPED: usize = InfoId::PACKET_SKIPPED as usize;
     pub const PACKET_SENT: usize = InfoId::PACKET_SENT as usize;
     pub const PACKET_SENT__KIND: usize = InfoId::PACKET_SENT__KIND as usize;
@@ -249,6 +264,20 @@ mod id {
     pub const ACK_RANGE_SENT__PACKET: usize = InfoId::ACK_RANGE_SENT__PACKET as usize;
     pub const PACKET_DROPPED: usize = InfoId::PACKET_DROPPED as usize;
     pub const PACKET_DROPPED__REASON: usize = InfoId::PACKET_DROPPED__REASON as usize;
+    pub const PACKET_BUFFERED: usize = InfoId::PACKET_BUFFERED as usize;
+    pub const PACKET_BUFFERED__PACKET_TYPE: usize = InfoId::PACKET_BUFFERED__PACKET_TYPE as usize;
+    pub const PACKET_BUFFERED__BYTES__TOTAL: usize = InfoId::PACKET_BUFFERED__BYTES__TOTAL as usize;
+    pub const PACKET_BUFFERED__BYTES: usize = InfoId::PACKET_BUFFERED__BYTES as usize;
+    pub const PACKET_BUFFERED__BUFFER_LEN: usize = InfoId::PACKET_BUFFERED__BUFFER_LEN as usize;
+    pub const PACKET_BUFFER_DRAINED: usize = InfoId::PACKET_BUFFER_DRAINED as usize;
+    pub const PACKET_BUFFER_DRAINED__PACKET_TYPE: usize =
+        InfoId::PACKET_BUFFER_DRAINED__PACKET_TYPE as usize;
+    pub const PACKET_BUFFER_DRAINED__BYTES__TOTAL: usize =
+        InfoId::PACKET_BUFFER_DRAINED__BYTES__TOTAL as usize;
+    pub const PACKET_BUFFER_DRAINED__BYTES: usize = InfoId::PACKET_BUFFER_DRAINED__BYTES as usize;
+    pub const PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION: usize =
+        InfoId::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION as usize;
+    pub const PACKET_BUFFER_ERROR: usize = InfoId::PACKET_BUFFER_ERROR as usize;
     pub const KEY_UPDATE: usize = InfoId::KEY_UPDATE as usize;
     pub const KEY_UPDATE__KEY_TYPE: usize = InfoId::KEY_UPDATE__KEY_TYPE as usize;
     pub const KEY_UPDATE__CIPHER_SUITE: usize = InfoId::KEY_UPDATE__CIPHER_SUITE as usize;
@@ -350,6 +379,8 @@ mod id {
         InfoId::DC_STATE_CHANGED__COMPLETE__LATENCY as usize;
     pub const DC_STATE_CHANGED__STATE: usize = InfoId::DC_STATE_CHANGED__STATE as usize;
     pub const DC_PATH_CREATED: usize = InfoId::DC_PATH_CREATED as usize;
+    pub const DC_STATE_INCOMPLETE: usize = InfoId::DC_STATE_INCOMPLETE as usize;
+    pub const DC_STATE_INCOMPLETE__STATE: usize = InfoId::DC_STATE_INCOMPLETE__STATE as usize;
     pub const CONNECTION_CLOSED: usize = InfoId::CONNECTION_CLOSED as usize;
     pub const CONNECTION_CLOSED__LATENCY: usize = InfoId::CONNECTION_CLOSED__LATENCY as usize;
     pub const CONNECTION_CLOSED__ERROR: usize = InfoId::CONNECTION_CLOSED__ERROR as usize;
@@ -425,6 +456,7 @@ mod id {
         COUNTERS_APPLICATION_PROTOCOL_INFORMATION,
         COUNTERS_SERVER_NAME_INFORMATION,
         COUNTERS_KEY_EXCHANGE_GROUP,
+        COUNTERS_SIGNATURE_SCHEME,
         COUNTERS_PACKET_SKIPPED,
         COUNTERS_PACKET_SENT,
         COUNTERS_PACKET_SENT__BYTES__TOTAL,
@@ -443,6 +475,11 @@ mod id {
         COUNTERS_ACK_RANGE_RECEIVED,
         COUNTERS_ACK_RANGE_SENT,
         COUNTERS_PACKET_DROPPED,
+        COUNTERS_PACKET_BUFFERED,
+        COUNTERS_PACKET_BUFFERED__BYTES__TOTAL,
+        COUNTERS_PACKET_BUFFER_DRAINED,
+        COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+        COUNTERS_PACKET_BUFFER_ERROR,
         COUNTERS_KEY_UPDATE,
         COUNTERS_KEY_SPACE_DISCARDED,
         COUNTERS_CONNECTION_STARTED,
@@ -477,6 +514,7 @@ mod id {
         COUNTERS_BBR_STATE_CHANGED,
         COUNTERS_DC_STATE_CHANGED,
         COUNTERS_DC_PATH_CREATED,
+        COUNTERS_DC_STATE_INCOMPLETE,
         COUNTERS_CONNECTION_CLOSED,
         COUNTERS_VERSION_INFORMATION,
         COUNTERS_ENDPOINT_PACKET_SENT,
@@ -512,6 +550,7 @@ mod id {
     pub const COUNTERS_SERVER_NAME_INFORMATION: usize =
         Counters::COUNTERS_SERVER_NAME_INFORMATION as usize;
     pub const COUNTERS_KEY_EXCHANGE_GROUP: usize = Counters::COUNTERS_KEY_EXCHANGE_GROUP as usize;
+    pub const COUNTERS_SIGNATURE_SCHEME: usize = Counters::COUNTERS_SIGNATURE_SCHEME as usize;
     pub const COUNTERS_PACKET_SKIPPED: usize = Counters::COUNTERS_PACKET_SKIPPED as usize;
     pub const COUNTERS_PACKET_SENT: usize = Counters::COUNTERS_PACKET_SENT as usize;
     pub const COUNTERS_PACKET_SENT__BYTES__TOTAL: usize =
@@ -535,6 +574,14 @@ mod id {
     pub const COUNTERS_ACK_RANGE_RECEIVED: usize = Counters::COUNTERS_ACK_RANGE_RECEIVED as usize;
     pub const COUNTERS_ACK_RANGE_SENT: usize = Counters::COUNTERS_ACK_RANGE_SENT as usize;
     pub const COUNTERS_PACKET_DROPPED: usize = Counters::COUNTERS_PACKET_DROPPED as usize;
+    pub const COUNTERS_PACKET_BUFFERED: usize = Counters::COUNTERS_PACKET_BUFFERED as usize;
+    pub const COUNTERS_PACKET_BUFFERED__BYTES__TOTAL: usize =
+        Counters::COUNTERS_PACKET_BUFFERED__BYTES__TOTAL as usize;
+    pub const COUNTERS_PACKET_BUFFER_DRAINED: usize =
+        Counters::COUNTERS_PACKET_BUFFER_DRAINED as usize;
+    pub const COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL: usize =
+        Counters::COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL as usize;
+    pub const COUNTERS_PACKET_BUFFER_ERROR: usize = Counters::COUNTERS_PACKET_BUFFER_ERROR as usize;
     pub const COUNTERS_KEY_UPDATE: usize = Counters::COUNTERS_KEY_UPDATE as usize;
     pub const COUNTERS_KEY_SPACE_DISCARDED: usize = Counters::COUNTERS_KEY_SPACE_DISCARDED as usize;
     pub const COUNTERS_CONNECTION_STARTED: usize = Counters::COUNTERS_CONNECTION_STARTED as usize;
@@ -584,6 +631,7 @@ mod id {
     pub const COUNTERS_BBR_STATE_CHANGED: usize = Counters::COUNTERS_BBR_STATE_CHANGED as usize;
     pub const COUNTERS_DC_STATE_CHANGED: usize = Counters::COUNTERS_DC_STATE_CHANGED as usize;
     pub const COUNTERS_DC_PATH_CREATED: usize = Counters::COUNTERS_DC_PATH_CREATED as usize;
+    pub const COUNTERS_DC_STATE_INCOMPLETE: usize = Counters::COUNTERS_DC_STATE_INCOMPLETE as usize;
     pub const COUNTERS_CONNECTION_CLOSED: usize = Counters::COUNTERS_CONNECTION_CLOSED as usize;
     pub const COUNTERS_VERSION_INFORMATION: usize = Counters::COUNTERS_VERSION_INFORMATION as usize;
     pub const COUNTERS_ENDPOINT_PACKET_SENT: usize =
@@ -665,6 +713,8 @@ mod id {
         NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET,
         NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET,
         NOMINAL_COUNTERS_PACKET_DROPPED__REASON,
+        NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE,
+        NOMINAL_COUNTERS_PACKET_BUFFER_DRAINED__PACKET_TYPE,
         NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE,
         NOMINAL_COUNTERS_KEY_UPDATE__CIPHER_SUITE,
         NOMINAL_COUNTERS_KEY_SPACE_DISCARDED__SPACE,
@@ -680,6 +730,7 @@ mod id {
         NOMINAL_COUNTERS_SLOW_START_EXITED__CAUSE,
         NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE,
         NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE,
+        NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE,
         NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR,
         NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON,
         NOMINAL_COUNTERS_ENDPOINT_CONNECTION_ATTEMPT_FAILED__ERROR,
@@ -710,6 +761,10 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET as usize;
     pub const NOMINAL_COUNTERS_PACKET_DROPPED__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_PACKET_DROPPED__REASON as usize;
+    pub const NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE: usize =
+        NominalCounters::NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE as usize;
+    pub const NOMINAL_COUNTERS_PACKET_BUFFER_DRAINED__PACKET_TYPE: usize =
+        NominalCounters::NOMINAL_COUNTERS_PACKET_BUFFER_DRAINED__PACKET_TYPE as usize;
     pub const NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE: usize =
         NominalCounters::NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE as usize;
     pub const NOMINAL_COUNTERS_KEY_UPDATE__CIPHER_SUITE: usize =
@@ -740,6 +795,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_BBR_STATE_CHANGED__STATE as usize;
     pub const NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE: usize =
         NominalCounters::NOMINAL_COUNTERS_DC_STATE_CHANGED__STATE as usize;
+    pub const NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE: usize =
+        NominalCounters::NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE as usize;
     pub const NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR: usize =
         NominalCounters::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR as usize;
     pub const NOMINAL_COUNTERS_ENDPOINT_DATAGRAM_DROPPED__REASON: usize =
@@ -760,6 +817,9 @@ mod id {
         MEASURES_RECOVERY_METRICS__PTO_COUNT,
         MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW,
         MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT,
+        MEASURES_PACKET_BUFFERED__BYTES,
+        MEASURES_PACKET_BUFFERED__BUFFER_LEN,
+        MEASURES_PACKET_BUFFER_DRAINED__BYTES,
         MEASURES_DATAGRAM_SENT__BYTES,
         MEASURES_DATAGRAM_SENT__GSO_OFFSET,
         MEASURES_DATAGRAM_RECEIVED__BYTES,
@@ -810,6 +870,12 @@ mod id {
         Measures::MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW as usize;
     pub const MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT: usize =
         Measures::MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT as usize;
+    pub const MEASURES_PACKET_BUFFERED__BYTES: usize =
+        Measures::MEASURES_PACKET_BUFFERED__BYTES as usize;
+    pub const MEASURES_PACKET_BUFFERED__BUFFER_LEN: usize =
+        Measures::MEASURES_PACKET_BUFFERED__BUFFER_LEN as usize;
+    pub const MEASURES_PACKET_BUFFER_DRAINED__BYTES: usize =
+        Measures::MEASURES_PACKET_BUFFER_DRAINED__BYTES as usize;
     pub const MEASURES_DATAGRAM_SENT__BYTES: usize =
         Measures::MEASURES_DATAGRAM_SENT__BYTES as usize;
     pub const MEASURES_DATAGRAM_SENT__GSO_OFFSET: usize =
@@ -868,6 +934,7 @@ mod id {
     #[allow(non_camel_case_types)]
     #[allow(clippy::upper_case_acronyms)]
     enum Timers {
+        TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
         TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY,
         TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY,
         TIMERS_KEY_SPACE_DISCARDED__ONE_RTT__LATENCY,
@@ -884,6 +951,8 @@ mod id {
         TIMERS_CONNECTION_CLOSED__LATENCY,
         TIMERS_PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION,
     }
+    pub const TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION: usize =
+        Timers::TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION as usize;
     pub const TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY: usize =
         Timers::TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY as usize;
     pub const TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY: usize =
@@ -922,7 +991,7 @@ mod id {
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize =
         NominalTimers::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY as usize;
 }
-static INFO: &[Info; 174usize] = &[
+static INFO: &[Info; 188usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -938,6 +1007,12 @@ static INFO: &[Info; 174usize] = &[
     info::Builder {
         id: id::KEY_EXCHANGE_GROUP,
         name: Str::new("key_exchange_group\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::SIGNATURE_SCHEME,
+        name: Str::new("signature_scheme\0"),
         units: Units::None,
     }
     .build(),
@@ -1202,6 +1277,72 @@ static INFO: &[Info; 174usize] = &[
     info::Builder {
         id: id::PACKET_DROPPED__REASON,
         name: Str::new("packet_dropped.reason\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFERED,
+        name: Str::new("packet_buffered\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFERED__PACKET_TYPE,
+        name: Str::new("packet_buffered.packet_type\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFERED__BYTES__TOTAL,
+        name: Str::new("packet_buffered.bytes.total\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFERED__BYTES,
+        name: Str::new("packet_buffered.bytes\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFERED__BUFFER_LEN,
+        name: Str::new("packet_buffered.buffer_len\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_DRAINED,
+        name: Str::new("packet_buffer_drained\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_DRAINED__PACKET_TYPE,
+        name: Str::new("packet_buffer_drained.packet_type\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+        name: Str::new("packet_buffer_drained.bytes.total\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_DRAINED__BYTES,
+        name: Str::new("packet_buffer_drained.bytes\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+        name: Str::new("packet_buffer_drained.oldest_buffered_duration\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::PACKET_BUFFER_ERROR,
+        name: Str::new("packet_buffer_error\0"),
         units: Units::None,
     }
     .build(),
@@ -1662,6 +1803,18 @@ static INFO: &[Info; 174usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::DC_STATE_INCOMPLETE,
+        name: Str::new("dc_state_incomplete\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::DC_STATE_INCOMPLETE__STATE,
+        name: Str::new("dc_state_incomplete.state\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::CONNECTION_CLOSED,
         name: Str::new("connection_closed\0"),
         units: Units::None,
@@ -1975,19 +2128,19 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 84usize]>,
+    counters: Box<[R::Counter; 91usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 31usize]>,
+    nominal_counter_offsets: Box<[usize; 34usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 40usize]>,
+    measures: Box<[R::Measure; 43usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 15usize]>,
+    timers: Box<[R::Timer; 16usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -2001,27 +2154,28 @@ impl<R: Registry + Default> Default for Subscriber<R> {
     }
 }
 impl<R: Registry> Subscriber<R> {
-    #[doc = r" Creates a new subscriber with the given registry"]
-    #[doc = r""]
-    #[doc = r" # Note"]
-    #[doc = r""]
-    #[doc = r" All of the recorders are registered on initialization and cached for the lifetime"]
-    #[doc = r" of the subscriber."]
+    /// Creates a new subscriber with the given registry
+    ///
+    /// # Note
+    ///
+    /// All of the recorders are registered on initialization and cached for the lifetime
+    /// of the subscriber.
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(84usize);
+        let mut counters = Vec::with_capacity(91usize);
         let mut bool_counters = Vec::with_capacity(3usize);
-        let mut nominal_counters = Vec::with_capacity(31usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(31usize);
-        let mut measures = Vec::with_capacity(40usize);
+        let mut nominal_counters = Vec::with_capacity(34usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(34usize);
+        let mut measures = Vec::with_capacity(43usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(15usize);
+        let mut timers = Vec::with_capacity(16usize);
         let mut nominal_timers = Vec::with_capacity(1usize);
         let mut nominal_timer_offsets = Vec::with_capacity(1usize);
         counters.push(registry.register_counter(&INFO[id::APPLICATION_PROTOCOL_INFORMATION]));
         counters.push(registry.register_counter(&INFO[id::SERVER_NAME_INFORMATION]));
         counters.push(registry.register_counter(&INFO[id::KEY_EXCHANGE_GROUP]));
+        counters.push(registry.register_counter(&INFO[id::SIGNATURE_SCHEME]));
         counters.push(registry.register_counter(&INFO[id::PACKET_SKIPPED]));
         counters.push(registry.register_counter(&INFO[id::PACKET_SENT]));
         counters.push(registry.register_counter(&INFO[id::PACKET_SENT__BYTES__TOTAL]));
@@ -2040,6 +2194,11 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::ACK_RANGE_RECEIVED]));
         counters.push(registry.register_counter(&INFO[id::ACK_RANGE_SENT]));
         counters.push(registry.register_counter(&INFO[id::PACKET_DROPPED]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_BUFFERED]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_BUFFERED__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_BUFFER_DRAINED]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_BUFFER_DRAINED__BYTES__TOTAL]));
+        counters.push(registry.register_counter(&INFO[id::PACKET_BUFFER_ERROR]));
         counters.push(registry.register_counter(&INFO[id::KEY_UPDATE]));
         counters.push(registry.register_counter(&INFO[id::KEY_SPACE_DISCARDED]));
         counters.push(registry.register_counter(&INFO[id::CONNECTION_STARTED]));
@@ -2075,6 +2234,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::BBR_STATE_CHANGED]));
         counters.push(registry.register_counter(&INFO[id::DC_STATE_CHANGED]));
         counters.push(registry.register_counter(&INFO[id::DC_PATH_CREATED]));
+        counters.push(registry.register_counter(&INFO[id::DC_STATE_INCOMPLETE]));
         counters.push(registry.register_counter(&INFO[id::CONNECTION_CLOSED]));
         counters.push(registry.register_counter(&INFO[id::VERSION_INFORMATION]));
         counters.push(registry.register_counter(&INFO[id::ENDPOINT_PACKET_SENT]));
@@ -2282,6 +2442,32 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
+                for variant in <PacketType as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PACKET_BUFFERED__PACKET_TYPE],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <PacketType as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PACKET_BUFFER_DRAINED__PACKET_TYPE],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
                 for variant in <KeyType as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(
                         registry.register_nominal_counter(&INFO[id::KEY_UPDATE__KEY_TYPE], variant),
@@ -2477,6 +2663,21 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
+                for variant in <DcHandshakeState as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(
+                        registry.register_nominal_counter(
+                            &INFO[id::DC_STATE_INCOMPLETE__STATE],
+                            variant,
+                        ),
+                    );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
                 for variant in <crate::connection::Error as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(
                         registry
@@ -2525,6 +2726,9 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__PTO_COUNT]));
         measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__CONGESTION_WINDOW]));
         measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__BYTES_IN_FLIGHT]));
+        measures.push(registry.register_measure(&INFO[id::PACKET_BUFFERED__BYTES]));
+        measures.push(registry.register_measure(&INFO[id::PACKET_BUFFERED__BUFFER_LEN]));
+        measures.push(registry.register_measure(&INFO[id::PACKET_BUFFER_DRAINED__BYTES]));
         measures.push(registry.register_measure(&INFO[id::DATAGRAM_SENT__BYTES]));
         measures.push(registry.register_measure(&INFO[id::DATAGRAM_SENT__GSO_OFFSET]));
         measures.push(registry.register_measure(&INFO[id::DATAGRAM_RECEIVED__BYTES]));
@@ -2556,6 +2760,9 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__SYSCALLS__BLOCKED]));
         measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__ERRORS]));
         measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__ERRORS__DROPPED]));
+        timers.push(
+            registry.register_timer(&INFO[id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION]),
+        );
         timers.push(registry.register_timer(&INFO[id::KEY_SPACE_DISCARDED__INITIAL__LATENCY]));
         timers.push(registry.register_timer(&INFO[id::KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY]));
         timers.push(registry.register_timer(&INFO[id::KEY_SPACE_DISCARDED__ONE_RTT__LATENCY]));
@@ -2622,7 +2829,7 @@ impl<R: Registry> Subscriber<R> {
             registry,
         }
     }
-    #[doc = r" Returns all of the registered counters"]
+    /// Returns all of the registered counters
     #[inline]
     pub fn counters(&self) -> impl Iterator<Item = (&'static Info, &R::Counter)> + '_ {
         self.counters
@@ -2634,6 +2841,7 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::COUNTERS_SERVER_NAME_INFORMATION => (&INFO[id::SERVER_NAME_INFORMATION], entry),
                 id::COUNTERS_KEY_EXCHANGE_GROUP => (&INFO[id::KEY_EXCHANGE_GROUP], entry),
+                id::COUNTERS_SIGNATURE_SCHEME => (&INFO[id::SIGNATURE_SCHEME], entry),
                 id::COUNTERS_PACKET_SKIPPED => (&INFO[id::PACKET_SKIPPED], entry),
                 id::COUNTERS_PACKET_SENT => (&INFO[id::PACKET_SENT], entry),
                 id::COUNTERS_PACKET_SENT__BYTES__TOTAL => {
@@ -2660,6 +2868,15 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_ACK_RANGE_RECEIVED => (&INFO[id::ACK_RANGE_RECEIVED], entry),
                 id::COUNTERS_ACK_RANGE_SENT => (&INFO[id::ACK_RANGE_SENT], entry),
                 id::COUNTERS_PACKET_DROPPED => (&INFO[id::PACKET_DROPPED], entry),
+                id::COUNTERS_PACKET_BUFFERED => (&INFO[id::PACKET_BUFFERED], entry),
+                id::COUNTERS_PACKET_BUFFERED__BYTES__TOTAL => {
+                    (&INFO[id::PACKET_BUFFERED__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_PACKET_BUFFER_DRAINED => (&INFO[id::PACKET_BUFFER_DRAINED], entry),
+                id::COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL => {
+                    (&INFO[id::PACKET_BUFFER_DRAINED__BYTES__TOTAL], entry)
+                }
+                id::COUNTERS_PACKET_BUFFER_ERROR => (&INFO[id::PACKET_BUFFER_ERROR], entry),
                 id::COUNTERS_KEY_UPDATE => (&INFO[id::KEY_UPDATE], entry),
                 id::COUNTERS_KEY_SPACE_DISCARDED => (&INFO[id::KEY_SPACE_DISCARDED], entry),
                 id::COUNTERS_CONNECTION_STARTED => (&INFO[id::CONNECTION_STARTED], entry),
@@ -2716,6 +2933,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_BBR_STATE_CHANGED => (&INFO[id::BBR_STATE_CHANGED], entry),
                 id::COUNTERS_DC_STATE_CHANGED => (&INFO[id::DC_STATE_CHANGED], entry),
                 id::COUNTERS_DC_PATH_CREATED => (&INFO[id::DC_PATH_CREATED], entry),
+                id::COUNTERS_DC_STATE_INCOMPLETE => (&INFO[id::DC_STATE_INCOMPLETE], entry),
                 id::COUNTERS_CONNECTION_CLOSED => (&INFO[id::CONNECTION_CLOSED], entry),
                 id::COUNTERS_VERSION_INFORMATION => (&INFO[id::VERSION_INFORMATION], entry),
                 id::COUNTERS_ENDPOINT_PACKET_SENT => (&INFO[id::ENDPOINT_PACKET_SENT], entry),
@@ -2797,7 +3015,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.counters[id];
         counter.record(info, value);
     }
-    #[doc = r" Returns all of the registered bool counters"]
+    /// Returns all of the registered bool counters
     #[inline]
     pub fn bool_counters(&self) -> impl Iterator<Item = (&'static Info, &R::BoolCounter)> + '_ {
         self.bool_counters
@@ -2823,7 +3041,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.bool_counters[id];
         counter.record(info, value);
     }
-    #[doc = r" Returns all of the registered nominal counters"]
+    /// Returns all of the registered nominal counters
     #[inline]
     pub fn nominal_counters(
         &self,
@@ -2915,6 +3133,22 @@ impl<R: Registry> Subscriber<R> {
                     let variants = <PacketDropReason as AsVariant>::VARIANTS;
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[id::PACKET_DROPPED__REASON], entries, variants)
+                }
+                id::NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE => {
+                    let offset = *entry;
+                    let variants = <PacketType as AsVariant>::VARIANTS;
+                    let entries = &self.nominal_counters[offset..offset + variants.len()];
+                    (&INFO[id::PACKET_BUFFERED__PACKET_TYPE], entries, variants)
+                }
+                id::NOMINAL_COUNTERS_PACKET_BUFFER_DRAINED__PACKET_TYPE => {
+                    let offset = *entry;
+                    let variants = <PacketType as AsVariant>::VARIANTS;
+                    let entries = &self.nominal_counters[offset..offset + variants.len()];
+                    (
+                        &INFO[id::PACKET_BUFFER_DRAINED__PACKET_TYPE],
+                        entries,
+                        variants,
+                    )
                 }
                 id::NOMINAL_COUNTERS_KEY_UPDATE__KEY_TYPE => {
                     let offset = *entry;
@@ -3018,6 +3252,12 @@ impl<R: Registry> Subscriber<R> {
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[id::DC_STATE_CHANGED__STATE], entries, variants)
                 }
+                id::NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE => {
+                    let offset = *entry;
+                    let variants = <DcHandshakeState as AsVariant>::VARIANTS;
+                    let entries = &self.nominal_counters[offset..offset + variants.len()];
+                    (&INFO[id::DC_STATE_INCOMPLETE__STATE], entries, variants)
+                }
                 id::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR => {
                     let offset = *entry;
                     let variants = <crate::connection::Error as AsVariant>::VARIANTS;
@@ -3055,7 +3295,7 @@ impl<R: Registry> Subscriber<R> {
         let counter = &self.nominal_counters[idx];
         counter.record(info, value.as_variant(), 1usize);
     }
-    #[doc = r" Returns all of the registered measures"]
+    /// Returns all of the registered measures
     #[inline]
     pub fn measures(&self) -> impl Iterator<Item = (&'static Info, &R::Measure)> + '_ {
         self.measures
@@ -3088,6 +3328,13 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT => {
                     (&INFO[id::RECOVERY_METRICS__BYTES_IN_FLIGHT], entry)
+                }
+                id::MEASURES_PACKET_BUFFERED__BYTES => (&INFO[id::PACKET_BUFFERED__BYTES], entry),
+                id::MEASURES_PACKET_BUFFERED__BUFFER_LEN => {
+                    (&INFO[id::PACKET_BUFFERED__BUFFER_LEN], entry)
+                }
+                id::MEASURES_PACKET_BUFFER_DRAINED__BYTES => {
+                    (&INFO[id::PACKET_BUFFER_DRAINED__BYTES], entry)
                 }
                 id::MEASURES_DATAGRAM_SENT__BYTES => (&INFO[id::DATAGRAM_SENT__BYTES], entry),
                 id::MEASURES_DATAGRAM_SENT__GSO_OFFSET => {
@@ -3168,7 +3415,7 @@ impl<R: Registry> Subscriber<R> {
         let measure = &self.measures[id];
         measure.record(info, value);
     }
-    #[doc = r" Returns all of the registered gauges"]
+    /// Returns all of the registered gauges
     #[inline]
     pub fn gauges(&self) -> impl Iterator<Item = (&'static Info, &R::Gauge)> + '_ {
         core::iter::empty()
@@ -3180,13 +3427,17 @@ impl<R: Registry> Subscriber<R> {
         let gauge = &self.gauges[id];
         gauge.record(info, value);
     }
-    #[doc = r" Returns all of the registered timers"]
+    /// Returns all of the registered timers
     #[inline]
     pub fn timers(&self) -> impl Iterator<Item = (&'static Info, &R::Timer)> + '_ {
         self.timers
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
+                id::TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION => (
+                    &INFO[id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION],
+                    entry,
+                ),
                 id::TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY => {
                     (&INFO[id::KEY_SPACE_DISCARDED__INITIAL__LATENCY], entry)
                 }
@@ -3324,6 +3575,20 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::COUNTERS_KEY_EXCHANGE_GROUP,
             1usize,
         );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_signature_scheme(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::SignatureScheme,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(id::SIGNATURE_SCHEME, id::COUNTERS_SIGNATURE_SCHEME, 1usize);
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -3694,6 +3959,96 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PACKET_DROPPED__REASON,
             id::NOMINAL_COUNTERS_PACKET_DROPPED__REASON,
             &event.reason,
+        );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_packet_buffered(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBuffered,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(id::PACKET_BUFFERED, id::COUNTERS_PACKET_BUFFERED, 1usize);
+        self.count_nominal(
+            id::PACKET_BUFFERED__PACKET_TYPE,
+            id::NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE,
+            &event.packet_type,
+        );
+        self.count(
+            id::PACKET_BUFFERED__BYTES__TOTAL,
+            id::COUNTERS_PACKET_BUFFERED__BYTES__TOTAL,
+            event.packet_len,
+        );
+        self.measure(
+            id::PACKET_BUFFERED__BYTES,
+            id::MEASURES_PACKET_BUFFERED__BYTES,
+            event.packet_len,
+        );
+        self.measure(
+            id::PACKET_BUFFERED__BUFFER_LEN,
+            id::MEASURES_PACKET_BUFFERED__BUFFER_LEN,
+            event.buffer_len,
+        );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_packet_buffer_drained(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferDrained,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::PACKET_BUFFER_DRAINED,
+            id::COUNTERS_PACKET_BUFFER_DRAINED,
+            1usize,
+        );
+        self.count_nominal(
+            id::PACKET_BUFFER_DRAINED__PACKET_TYPE,
+            id::NOMINAL_COUNTERS_PACKET_BUFFER_DRAINED__PACKET_TYPE,
+            &event.packet_type,
+        );
+        self.count(
+            id::PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+            id::COUNTERS_PACKET_BUFFER_DRAINED__BYTES__TOTAL,
+            event.buffer_len,
+        );
+        self.measure(
+            id::PACKET_BUFFER_DRAINED__BYTES,
+            id::MEASURES_PACKET_BUFFER_DRAINED__BYTES,
+            event.buffer_len,
+        );
+        self.time(
+            id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+            id::TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
+            event.oldest_buffered_duration,
+        );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_packet_buffer_error(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferError,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::PACKET_BUFFER_ERROR,
+            id::COUNTERS_PACKET_BUFFER_ERROR,
+            1usize,
         );
         let _ = context;
         let _ = meta;
@@ -4487,6 +4842,29 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         #[allow(unused_imports)]
         use api::*;
         self.count(id::DC_PATH_CREATED, id::COUNTERS_DC_PATH_CREATED, 1usize);
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_dc_state_incomplete(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::DcStateIncomplete,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::DC_STATE_INCOMPLETE,
+            id::COUNTERS_DC_STATE_INCOMPLETE,
+            1usize,
+        );
+        self.count_nominal(
+            id::DC_STATE_INCOMPLETE__STATE,
+            id::NOMINAL_COUNTERS_DC_STATE_INCOMPLETE__STATE,
+            &event.state,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;

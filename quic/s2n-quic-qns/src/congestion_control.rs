@@ -1,14 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use clap::{builder::TypedValueParser as _, Args};
 use core::str::FromStr;
 use std::io;
-use structopt::StructOpt;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Args)]
 pub struct CongestionControl {
     /// The congestion controller to use
-    #[structopt(long = "cc", default_value = "bbr", possible_values = &["cubic","bbr"])]
+    #[clap(
+        long = "cc",
+        default_value = "bbr",
+        value_parser = clap::builder::PossibleValuesParser::new(["cubic", "bbr"])
+            .map(|s| s.parse::<CongestionController>().unwrap()),
+    )]
     pub congestion_controller: CongestionController,
 }
 

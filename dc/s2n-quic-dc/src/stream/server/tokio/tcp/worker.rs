@@ -40,7 +40,7 @@ where
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
-    local_port: u16,
+    local_addr: s2n_quic_core::inet::SocketAddress,
 }
 
 impl<Sub> Context<Sub>
@@ -54,7 +54,7 @@ where
             env: acceptor.env.clone(),
             secrets: acceptor.secrets.clone(),
             accept_flavor: acceptor.accept_flavor,
-            local_port: acceptor.socket.get_ref().local_addr().unwrap().port(),
+            local_addr: acceptor.local_addr.into(),
         }
     }
 }
@@ -315,6 +315,10 @@ where
                 } => (buffer, *blocked_count),
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "poll is only called with an active stream, as documented on Worker::poll"
+                    )]
                     let (stream, _remote_address) = stream.as_mut().unwrap();
                     let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..])).map_err(
                         |e| WorkerError {
@@ -344,6 +348,10 @@ where
 
             // try to read an initial packet from the socket
             let res = {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "poll is only called with an active stream, as documented on Worker::poll"
+                )]
                 let (stream, remote_address) = stream.as_mut().unwrap();
                 WorkerState::poll_initial_packet(
                     cx,
@@ -375,14 +383,28 @@ where
 
             let initial_packet = res?;
 
+            #[expect(
+                clippy::unwrap_used,
+                reason = "subscriber_ctx is always set alongside an active stream"
+            )]
             let subscriber_ctx = subscriber_ctx.take().unwrap();
+            #[expect(
+                clippy::unwrap_used,
+                reason = "poll is only called with an active stream, as documented on Worker::poll"
+            )]
             let (socket, remote_address) = stream.take().unwrap();
 
             let initial_packet = match initial_packet {
                 InitialPacket::Dc(initial_packet) => initial_packet,
                 InitialPacket::Tls => {
                     if let Some(tls) = &self.tls {
-                        tls.spawn(socket, remote_address, recv_buffer.take(), queue_time);
+                        tls.spawn(
+                            socket,
+                            remote_address,
+                            context.local_addr,
+                            recv_buffer.take(),
+                            queue_time,
+                        );
                     } else {
                         publisher.on_acceptor_tcp_packet_dropped(
                             event::builder::AcceptorTcpPacketDropped {
@@ -448,7 +470,7 @@ where
             let peer = env::tcp::Reregistered {
                 socket,
                 peer_addr: remote_address,
-                local_port: context.local_port,
+                local_port: context.local_addr.port(),
                 recv_buffer,
             };
 
@@ -754,6 +776,10 @@ where
                 } => (buffer, *blocked_count),
                 // we encountered an error so try and send it back
                 WorkerState::Erroring { offset, buffer, .. } => {
+                    #[expect(
+                        clippy::unwrap_used,
+                        reason = "poll is only called with an active stream, as documented on Worker::poll"
+                    )]
                     let (stream, _remote_address) = stream.as_mut().unwrap();
                     let len = ready!(Pin::new(stream).poll_write(cx, &buffer[*offset..])).map_err(
                         |error| WorkerError {
@@ -794,6 +820,10 @@ where
 
             // try to read an initial packet from the socket
             let res = {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "poll is only called with an active stream, as documented on Worker::poll"
+                )]
                 let (stream, remote_address) = stream.as_mut().unwrap();
                 WorkerState::poll_initial_packet(
                     cx,
@@ -838,6 +868,10 @@ where
                 Err(e) => return Err(e).into(),
             };
 
+            #[expect(
+                clippy::unwrap_used,
+                reason = "poll is only called with an active stream, as documented on Worker::poll"
+            )]
             let (socket, remote_address) = stream.take().unwrap();
 
             let recv_buffer = recv_buffer.make_contiguous();

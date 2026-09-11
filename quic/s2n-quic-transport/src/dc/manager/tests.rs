@@ -282,6 +282,207 @@ fn on_mtu_updated() {
     assert_eq!(1500, manager.path().mtu);
 }
 
+/// Records the `state` carried by the `DcStateIncomplete` event, so tests can assert the
+/// exact state the handshake was stuck in on close.
+#[derive(Default)]
+struct IncompleteRecorder {
+    state: Option<event::api::DcHandshakeState>,
+}
+
+impl event::Subscriber for IncompleteRecorder {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &event::api::ConnectionMeta,
+        _info: &event::api::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    fn on_dc_state_incomplete(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &event::api::ConnectionMeta,
+        event: &event::api::DcStateIncomplete,
+    ) {
+        assert!(
+            self.state.is_none(),
+            "at most one DcStateIncomplete event is expected per connection"
+        );
+        self.state = Some(event.state.clone());
+    }
+}
+
+fn connection_meta(endpoint_type: s2n_quic_core::endpoint::Type) -> event::builder::ConnectionMeta {
+    event::builder::ConnectionMeta {
+        endpoint_type,
+        id: 0,
+        timestamp: now(),
+    }
+}
+
+/// A locally-initiated no-error close while the server is stuck in `ServerTokensSent` emits
+/// `DcStateIncomplete` reporting that exact state: a local close says nothing about what the peer
+/// received, so the server cannot infer completion from it.
+#[test]
+fn on_close_server_local_close_incomplete_no_error() {
+    let mut recorder = IncompleteRecorder::default();
+    let mut context = ();
+    let mut publisher = event::ConnectionPublisherSubscriber::new(
+        connection_meta(s2n_quic_core::endpoint::Type::Server),
+        1,
+        &mut recorder,
+        &mut context,
+    );
+
+    let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_server_tokens_sent());
+
+    // peer_initiated = false: the server closed locally, so it cannot conclude the tokens were
+    // received.
+    manager.on_close(true, false, &mut publisher);
+
+    assert!(matches!(
+        recorder.state,
+        Some(event::api::DcHandshakeState::ServerTokensSent { .. })
+    ));
+    assert!(!manager.state.is_complete());
+}
+
+/// A peer-initiated no-error close while the server is in `ServerTokensSent` completes the dc
+/// handshake: the peer only closes cleanly after receiving the server's tokens, so the close
+/// confirms delivery even if the token ACK was lost.
+#[test]
+fn on_close_server_peer_close_completes() {
+    let mut recorder = IncompleteRecorder::default();
+    let mut context = ();
+    let mut publisher = event::ConnectionPublisherSubscriber::new(
+        connection_meta(s2n_quic_core::endpoint::Type::Server),
+        1,
+        &mut recorder,
+        &mut context,
+    );
+
+    let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_server_tokens_sent());
+
+    // peer_initiated = true: a clean close from the peer confirms it received the server's tokens.
+    manager.on_close(true, true, &mut publisher);
+
+    assert!(manager.state.is_complete());
+    // Completing is not an "incomplete" outcome, so no DcStateIncomplete is emitted.
+    assert!(recorder.state.is_none());
+}
+
+/// A no-error close while the client is stuck in `ClientPathSecretsReady` emits `DcStateIncomplete`
+/// reporting that exact state.
+#[test]
+fn on_close_client_incomplete_no_error() {
+    let mut recorder = IncompleteRecorder::default();
+    let mut context = ();
+    let mut publisher = event::ConnectionPublisherSubscriber::new(
+        connection_meta(s2n_quic_core::endpoint::Type::Client),
+        1,
+        &mut recorder,
+        &mut context,
+    );
+
+    let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    assert!(manager.state.is_path_secrets_ready());
+
+    // Even a peer-initiated clean close does not complete the client: the client completes only
+    // by receiving the server's tokens, which it hasn't here.
+    manager.on_close(true, true, &mut publisher);
+
+    assert!(matches!(
+        recorder.state,
+        Some(event::api::DcHandshakeState::ClientPathSecretsReady { .. })
+    ));
+}
+
+/// An error close does not emit `DcStateIncomplete`, even when the dc handshake is incomplete.
+#[test]
+fn on_close_error_does_not_emit() {
+    let mut recorder = IncompleteRecorder::default();
+    let mut context = ();
+    let mut publisher = event::ConnectionPublisherSubscriber::new(
+        connection_meta(s2n_quic_core::endpoint::Type::Server),
+        1,
+        &mut recorder,
+        &mut context,
+    );
+
+    let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_server_tokens_sent());
+
+    // An error close (closed_without_error = false) never completes or emits, regardless of who
+    // initiated it.
+    manager.on_close(false, true, &mut publisher);
+
+    assert!(recorder.state.is_none());
+    assert!(!manager.state.is_complete());
+}
+
+/// A completed dc handshake does not emit `DcStateIncomplete` on close.
+#[test]
+fn on_close_complete_does_not_emit() {
+    let mut recorder = IncompleteRecorder::default();
+    let mut context = ();
+    let mut publisher = event::ConnectionPublisherSubscriber::new(
+        connection_meta(s2n_quic_core::endpoint::Type::Client),
+        1,
+        &mut recorder,
+        &mut context,
+    );
+
+    let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
+    assert!(manager
+        .on_path_secrets_ready(&Session, &mut publisher)
+        .is_ok());
+    // the client completes as soon as it receives the peer's tokens
+    manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
+    assert!(manager.state.is_complete());
+
+    manager.on_close(true, true, &mut publisher);
+
+    assert!(recorder.state.is_none());
+}
+
+/// A disabled `dc::Manager` does not emit `DcStateIncomplete` on close.
+#[test]
+fn on_close_disabled_does_not_emit() {
+    let mut recorder = IncompleteRecorder::default();
+    let mut context = ();
+    let mut publisher = event::ConnectionPublisherSubscriber::new(
+        connection_meta(s2n_quic_core::endpoint::Type::Server),
+        1,
+        &mut recorder,
+        &mut context,
+    );
+
+    let mut manager: Manager<Server> = Manager::disabled();
+    assert!(manager.state.is_complete());
+
+    manager.on_close(true, true, &mut publisher);
+
+    assert!(recorder.state.is_none());
+}
+
 #[test]
 #[cfg_attr(miri, ignore)]
 fn snapshots() {

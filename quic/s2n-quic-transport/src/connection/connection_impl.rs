@@ -33,7 +33,7 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application::{self, ServerName},
+    application::ServerName,
     connection::{
         error::Error,
         id::{Classification, Generator as _},
@@ -189,6 +189,9 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     packet_buffer: Vec<u8>,
     /// Tracks which type of packet is currently stored in packet_buffer
     stored_packet_type: Option<PacketNumberSpace>,
+    /// Timestamp at which the first (oldest) packet currently sitting in
+    /// `packet_buffer` was buffered. Cleared when the buffer is drained.
+    first_buffered_at: Option<Timestamp>,
 }
 
 struct EventContext<Config: endpoint::Config> {
@@ -288,7 +291,30 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         packet_interceptor: &mut Config::PacketInterceptor,
         connection_id_validator: &Config::ConnectionIdFormat,
     ) -> Result<(), connection::Error> {
-        let mut payload: Vec<u8> = self.packet_buffer.drain(..).collect();
+        if !self.packet_buffer.is_empty() {
+            let packet_type = match self.stored_packet_type {
+                Some(PacketNumberSpace::Handshake) => event::builder::PacketType::Handshake,
+                Some(PacketNumberSpace::ApplicationData) => event::builder::PacketType::OneRtt,
+                // Initial packets are never buffered here; if we somehow end
+                // up in this state, still emit a drain event but with the
+                // conservative Handshake label.
+                _ => event::builder::PacketType::Handshake,
+            };
+            let oldest_buffered_duration = self
+                .first_buffered_at
+                .map(|t| timestamp.saturating_duration_since(t))
+                .unwrap_or_default();
+            let buffer_len = self.packet_buffer.len();
+            let mut publisher = self.event_context.publisher(timestamp, subscriber);
+            publisher.on_packet_buffer_drained(event::builder::PacketBufferDrained {
+                packet_type,
+                buffer_len,
+                oldest_buffered_duration,
+            });
+        }
+        self.first_buffered_at = None;
+
+        let mut payload: Vec<u8> = std::mem::take(&mut self.packet_buffer);
         let buffer = DecoderBufferMut::new(payload.as_mut_slice());
 
         let destination_connection_id = self.path_manager.active_path().local_connection_id;
@@ -306,7 +332,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         let path_id = self.path_manager.active_path_id();
         let mut check_for_stateless_reset = false;
 
-        self.handle_remaining_packets(
+        match self.handle_remaining_packets(
             &path_handle,
             &datagram_info,
             path_id,
@@ -319,7 +345,14 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
             dc,
             limits,
             &mut check_for_stateless_reset,
-        )?;
+        ) {
+            Ok(()) => (),
+            Err(err) => {
+                let mut publisher = self.event_context.publisher(timestamp, subscriber);
+                publisher.on_packet_buffer_error(event::builder::PacketBufferError {});
+                return Err(err);
+            }
+        }
         Ok(())
     }
 
@@ -751,6 +784,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             event_context,
             packet_buffer: Vec::new(),
             stored_packet_type: None,
+            first_buffered_at: None,
         };
 
         if Config::ENDPOINT_TYPE.is_client() {
@@ -835,6 +869,17 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
+
+        if let Some((space, _)) = self.space_manager.application_mut() {
+            let closed_without_error = matches!(error, connection::Error::Closed { .. });
+            let peer_initiated = matches!(
+                error,
+                connection::Error::Closed { initiator, .. } if initiator.is_remote()
+            );
+            space
+                .dc_manager
+                .on_close(closed_without_error, peer_initiated, &mut publisher);
+        }
 
         publisher.on_connection_closed(event::builder::ConnectionClosed { error });
 
@@ -1390,6 +1435,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
 
         if let Some((space, _status)) = self.space_manager.initial_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1446,6 +1495,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
         if let Some((space, handshake_status)) = self.space_manager.initial_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
+
             //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
             //# A server MUST discard an Initial packet that is carried
             //# in a UDP datagram with a payload that is smaller than the
@@ -1572,6 +1626,10 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         }
 
         if let Some((space, handshake_status)) = self.space_manager.handshake_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
             let packet = space.validate_and_decrypt_packet(
                 packet,
                 path_id,
@@ -1654,12 +1712,21 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
             let packet_bytes = packet.get_wire_bytes();
             if packet_bytes.len() + self.packet_buffer.len() <= self.limits.packet_buffer_size() {
+                let packet_len = packet_bytes.len();
                 self.packet_buffer.extend(packet_bytes);
-                self.stored_packet_type = Some(PacketNumberSpace::Handshake)
+                self.stored_packet_type = Some(PacketNumberSpace::Handshake);
+                if self.first_buffered_at.is_none() {
+                    self.first_buffered_at = Some(datagram.timestamp);
+                }
+                publisher.on_packet_buffered(event::builder::PacketBuffered {
+                    packet_type: event::builder::PacketType::Handshake,
+                    packet_len,
+                    buffer_len: self.packet_buffer.len(),
+                });
             } else {
                 let path = &self.path_manager[path_id];
                 publisher.on_packet_dropped(event::builder::PacketDropped {
-                    reason: event::builder::PacketDropReason::PacketSpaceDoesNotExist {
+                    reason: event::builder::PacketDropReason::PacketBufferOutOfSpace {
                         path: path_event!(path, path_id),
                         packet_type: event::builder::PacketType::Handshake,
                     },
@@ -1693,6 +1760,19 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         limits_endpoint: &mut Config::ConnectionLimits,
     ) -> Result<(), ProcessingError> {
         let mut publisher = self.event_context.publisher(datagram.timestamp, subscriber);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#10.2.1
+        //# An endpoint that is closing is not required to process any received frame.
+        if matches!(self.state, ConnectionState::Closing) {
+            let path = &self.path_manager[path_id];
+            publisher.on_packet_dropped(event::builder::PacketDropped {
+                reason: event::builder::PacketDropReason::ConnectionClosed {
+                    path: path_event!(path, path_id),
+                    packet_type: event::builder::PacketType::OneRtt,
+                },
+            });
+            return Ok(());
+        }
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-5.7
         //# Endpoints in either role MUST NOT decrypt 1-RTT packets from
@@ -1731,13 +1811,23 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                     // We only store one packet of application data for now. This is due to the fact that
                     // short packets do not contain a length prefix, therefore, we would have to store additional
                     // length info per packet to properly parse them once the application space is created.
+                    let packet_len = packet_bytes.len();
                     self.packet_buffer = packet_bytes;
-                    self.stored_packet_type = Some(PacketNumberSpace::ApplicationData)
+                    self.stored_packet_type = Some(PacketNumberSpace::ApplicationData);
+                    if self.first_buffered_at.is_none() {
+                        self.first_buffered_at = Some(datagram.timestamp);
+                    }
+                    publisher.on_packet_buffered(event::builder::PacketBuffered {
+                        packet_type: event::builder::PacketType::OneRtt,
+                        packet_len,
+                        buffer_len: self.packet_buffer.len(),
+                    });
                 } else {
                     let path = &self.path_manager[path_id];
                     publisher.on_packet_dropped(event::builder::PacketDropped {
-                        reason: event::builder::PacketDropReason::HandshakeNotComplete {
+                        reason: event::builder::PacketDropReason::PacketBufferOutOfSpace {
                             path: path_event!(path, path_id),
+                            packet_type: event::builder::PacketType::OneRtt,
                         },
                     });
                 }
@@ -2054,6 +2144,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             .on_retry_packet(retry_source_connection_id);
 
         if let Some((space, _handshake_status)) = self.space_manager.initial_mut() {
+            debug_assert!(
+                !matches!(self.state, ConnectionState::Closing),
+                "The packet space should be discarded as soon as the Closing state is entered"
+            );
+
             space.on_retry_packet(
                 path,
                 path_id,
@@ -2197,7 +2292,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         )
     }
 
-    fn application_close(&mut self, error: Option<application::Error>) {
+    fn application_close(&mut self, error: Option<connection::Error>) {
         if self.error.is_err() {
             return;
         }
@@ -2206,7 +2301,11 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.open_registry = None;
 
         if let Some(error) = error {
-            self.error = Err(connection::Error::application(error));
+            self.error = Err(error);
+            // This will put all streams into Reset state and wake all tasks
+            if let Some((space, _)) = self.space_manager.application_mut() {
+                space.stream_manager.close(error);
+            }
         } else {
             // give the connection some time to flush all outstanding streams
             self.state = ConnectionState::Flushing;

@@ -11,7 +11,10 @@ use crate::{
 };
 use core::{future::poll_fn, task::Poll};
 use s2n_quic_core::{inet::SocketAddress, time::Clock};
-use std::{net::TcpListener, time::Duration};
+use std::{
+    net::{SocketAddr, TcpListener},
+    time::Duration,
+};
 use tokio::io::unix::AsyncFd;
 use tracing::debug;
 
@@ -29,6 +32,7 @@ where
     B: PollBehavior<Sub> + Clone,
 {
     socket: AsyncFd<TcpListener>,
+    local_addr: SocketAddr,
     env: Environment<Sub>,
     secrets: secret::Map,
     backlog: usize,
@@ -54,6 +58,7 @@ where
         poll_behavior: B,
     ) -> std::io::Result<Self> {
         let acceptor = Self {
+            local_addr: socket.get_ref().local_addr()?,
             socket,
             env: env.clone(),
             secrets: secrets.clone(),
@@ -85,16 +90,14 @@ where
             }
         }
 
-        if let Ok(addr) = acceptor.socket.get_ref().local_addr() {
-            let local_address: SocketAddress = addr.into();
-            acceptor.env.endpoint_publisher().on_acceptor_tcp_started(
-                event::builder::AcceptorTcpStarted {
-                    id,
-                    local_address: &local_address,
-                    backlog,
-                },
-            );
-        }
+        let local_address: SocketAddress = acceptor.local_addr.into();
+        acceptor.env.endpoint_publisher().on_acceptor_tcp_started(
+            event::builder::AcceptorTcpStarted {
+                id,
+                local_address: &local_address,
+                backlog,
+            },
+        );
 
         Ok(acceptor)
     }

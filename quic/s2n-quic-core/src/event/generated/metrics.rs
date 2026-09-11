@@ -29,6 +29,7 @@ pub struct Context<R: Recorder> {
     application_protocol_information: u64,
     server_name_information: u64,
     key_exchange_group: u64,
+    signature_scheme: u64,
     packet_skipped: u64,
     packet_sent: u64,
     packet_received: u64,
@@ -45,6 +46,9 @@ pub struct Context<R: Recorder> {
     ack_range_received: u64,
     ack_range_sent: u64,
     packet_dropped: u64,
+    packet_buffered: u64,
+    packet_buffer_drained: u64,
+    packet_buffer_error: u64,
     key_update: u64,
     key_space_discarded: u64,
     connection_started: u64,
@@ -74,6 +78,7 @@ pub struct Context<R: Recorder> {
     bbr_state_changed: u64,
     dc_state_changed: u64,
     dc_path_created: u64,
+    dc_state_incomplete: u64,
     connection_closed: u64,
 }
 impl<R: Recorder> Context<R> {
@@ -99,6 +104,7 @@ where
             application_protocol_information: 0,
             server_name_information: 0,
             key_exchange_group: 0,
+            signature_scheme: 0,
             packet_skipped: 0,
             packet_sent: 0,
             packet_received: 0,
@@ -115,6 +121,9 @@ where
             ack_range_received: 0,
             ack_range_sent: 0,
             packet_dropped: 0,
+            packet_buffered: 0,
+            packet_buffer_drained: 0,
+            packet_buffer_error: 0,
             key_update: 0,
             key_space_discarded: 0,
             connection_started: 0,
@@ -144,6 +153,7 @@ where
             bbr_state_changed: 0,
             dc_state_changed: 0,
             dc_path_created: 0,
+            dc_state_incomplete: 0,
             connection_closed: 0,
         }
     }
@@ -179,6 +189,17 @@ where
         context.key_exchange_group += 1;
         self.subscriber
             .on_key_exchange_group(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_signature_scheme(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::SignatureScheme,
+    ) {
+        context.signature_scheme += 1;
+        self.subscriber
+            .on_signature_scheme(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_packet_skipped(
@@ -356,6 +377,39 @@ where
         context.packet_dropped += 1;
         self.subscriber
             .on_packet_dropped(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_packet_buffered(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBuffered,
+    ) {
+        context.packet_buffered += 1;
+        self.subscriber
+            .on_packet_buffered(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_packet_buffer_drained(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferDrained,
+    ) {
+        context.packet_buffer_drained += 1;
+        self.subscriber
+            .on_packet_buffer_drained(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_packet_buffer_error(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::PacketBufferError,
+    ) {
+        context.packet_buffer_error += 1;
+        self.subscriber
+            .on_packet_buffer_error(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_key_update(
@@ -680,6 +734,17 @@ where
             .on_dc_path_created(&mut context.recorder, meta, event);
     }
     #[inline]
+    fn on_dc_state_incomplete(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::DcStateIncomplete,
+    ) {
+        context.dc_state_incomplete += 1;
+        self.subscriber
+            .on_dc_state_incomplete(&mut context.recorder, meta, event);
+    }
+    #[inline]
     fn on_connection_closed(
         &mut self,
         context: &mut Self::ConnectionContext,
@@ -701,6 +766,8 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("server_name_information", self.server_name_information as _);
         self.recorder
             .increment_counter("key_exchange_group", self.key_exchange_group as _);
+        self.recorder
+            .increment_counter("signature_scheme", self.signature_scheme as _);
         self.recorder
             .increment_counter("packet_skipped", self.packet_skipped as _);
         self.recorder
@@ -735,6 +802,12 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("ack_range_sent", self.ack_range_sent as _);
         self.recorder
             .increment_counter("packet_dropped", self.packet_dropped as _);
+        self.recorder
+            .increment_counter("packet_buffered", self.packet_buffered as _);
+        self.recorder
+            .increment_counter("packet_buffer_drained", self.packet_buffer_drained as _);
+        self.recorder
+            .increment_counter("packet_buffer_error", self.packet_buffer_error as _);
         self.recorder
             .increment_counter("key_update", self.key_update as _);
         self.recorder
@@ -805,6 +878,8 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("dc_state_changed", self.dc_state_changed as _);
         self.recorder
             .increment_counter("dc_path_created", self.dc_path_created as _);
+        self.recorder
+            .increment_counter("dc_state_incomplete", self.dc_state_incomplete as _);
         self.recorder
             .increment_counter("connection_closed", self.connection_closed as _);
     }

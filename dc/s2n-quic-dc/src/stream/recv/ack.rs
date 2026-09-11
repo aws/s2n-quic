@@ -74,6 +74,10 @@ impl Space {
                     ack_ranges: &self.packets,
                     ecn_counts,
                 };
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "an ACK frame's encoding size is bounded well below VarInt::MAX"
+                )]
                 let encoding_size: VarInt = frame.encoding_size().try_into().unwrap();
                 let encoding_size = max_data_encoding_size + encoding_size;
 

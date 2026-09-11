@@ -19,6 +19,12 @@ expression: "State::test_transitions()"
                 event: "on_stateless_reset_tokens_acked",
             },
         ),
+        on_peer_clean_close: Err(
+            InvalidTransition {
+                current: ClientPathSecretsReady,
+                event: "on_peer_clean_close",
+            },
+        ),
     },
     Complete: {
         on_path_secrets_ready: Err(
@@ -34,6 +40,11 @@ expression: "State::test_transitions()"
             },
         ),
         on_stateless_reset_tokens_acked: Err(
+            NoOp {
+                current: Complete,
+            },
+        ),
+        on_peer_clean_close: Err(
             NoOp {
                 current: Complete,
             },
@@ -55,6 +66,12 @@ expression: "State::test_transitions()"
                 event: "on_stateless_reset_tokens_acked",
             },
         ),
+        on_peer_clean_close: Err(
+            InvalidTransition {
+                current: InitClient,
+                event: "on_peer_clean_close",
+            },
+        ),
     },
     InitServer: {
         on_path_secrets_ready: Ok(
@@ -70,6 +87,12 @@ expression: "State::test_transitions()"
             InvalidTransition {
                 current: InitServer,
                 event: "on_stateless_reset_tokens_acked",
+            },
+        ),
+        on_peer_clean_close: Err(
+            InvalidTransition {
+                current: InitServer,
+                event: "on_peer_clean_close",
             },
         ),
     },
@@ -89,6 +112,12 @@ expression: "State::test_transitions()"
                 event: "on_stateless_reset_tokens_acked",
             },
         ),
+        on_peer_clean_close: Err(
+            InvalidTransition {
+                current: ServerPathSecretsReady,
+                event: "on_peer_clean_close",
+            },
+        ),
     },
     ServerTokensSent: {
         on_path_secrets_ready: Err(
@@ -104,6 +133,9 @@ expression: "State::test_transitions()"
             },
         ),
         on_stateless_reset_tokens_acked: Ok(
+            Complete,
+        ),
+        on_peer_clean_close: Ok(
             Complete,
         ),
     },

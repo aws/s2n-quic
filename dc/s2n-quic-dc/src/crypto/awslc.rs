@@ -22,6 +22,10 @@ pub mod seal {
     impl Application {
         #[inline]
         pub fn new(key: &[u8], iv: [u8; NONCE_LEN], algorithm: &'static Algorithm) -> Self {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "key sizes are statically known, moving the panic into callers isn't helpful"
+            )]
             let key = UnboundKey::new(algorithm, key).unwrap();
             let key = LessSafeKey::new(key);
             Self { key, iv: Iv(iv) }
@@ -151,6 +155,10 @@ pub mod open {
     impl Application {
         #[inline]
         pub fn new(key: &[u8], iv: [u8; NONCE_LEN], algorithm: &'static Algorithm) -> Self {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "key sizes are statically known, moving the panic into callers isn't helpful"
+            )]
             let key = UnboundKey::new(algorithm, key).unwrap();
             let key = LessSafeKey::new(key);
             Self { key, iv: Iv(iv) }

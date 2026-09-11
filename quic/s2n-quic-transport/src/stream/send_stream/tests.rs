@@ -208,7 +208,7 @@ fn execute_instructions(test_env: &mut TestEnvironment, instructions: &[Instruct
                     test_env.sent_frames.len(),
                     0,
                     "Expected no queued frames {:?}",
-                    &test_env.sent_frames
+                    test_env.sent_frames
                 );
             }
             Instruction::CheckDataTx(

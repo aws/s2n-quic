@@ -34,6 +34,10 @@ pub struct AcceptError {
 }
 
 #[inline]
+#[expect(
+    clippy::unwrap_used,
+    reason = "VarInt::ZERO is a constant that is always a valid normal stream Id"
+)]
 pub fn open_stream<Env, P>(
     env: &Env,
     entry: map::Peer,

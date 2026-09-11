@@ -118,11 +118,14 @@ pub(crate) trait Absorb: Sized + Default {
 static PRINTED_MEMBARRIER_WARNING: AtomicBool = AtomicBool::new(false);
 
 impl<T: Absorb> Channels<T> {
-    #[cfg_attr(not(target_os = "linux"), allow(unused_assignments))]
+    #[cfg_attr(
+        not(all(target_os = "linux", target_pointer_width = "64")),
+        allow(unused_assignments)
+    )]
     pub(crate) fn new() -> Self {
         let mut must_use_fallback = false;
 
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
         {
             let ret = unsafe {
                 libc::syscall(
@@ -148,7 +151,7 @@ impl<T: Absorb> Channels<T> {
             }
         }
 
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
         {
             must_use_fallback = true;
         }
@@ -175,12 +178,12 @@ impl<T: Absorb> Channels<T> {
         len
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
     pub(crate) fn steal_pages(&self) {
         self.aggregate_fallback(true);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     pub(crate) fn steal_pages(&self) {
         if self.must_use_fallback {
             self.aggregate_fallback(true);
@@ -253,12 +256,12 @@ impl<T: Absorb> Channels<T> {
         self.aggregate.lock().expect("propagate panic")
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
     pub(crate) fn send_event(&self, event: u64) {
         self.fallback_push(event)
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     pub(crate) fn send_event(&self, event: u64) {
         if self.must_use_fallback {
             return self.fallback_push(event);
@@ -269,7 +272,7 @@ impl<T: Absorb> Channels<T> {
     }
 
     // Separate function for unit testing.
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     fn send_event_inner(&self, event: u64, rseq_ptr: NonNull<Rseq>) {
         unsafe {
             #[cfg(target_arch = "x86_64")]
@@ -391,13 +394,13 @@ impl<T: Absorb> Channels<T> {
                 ldr {cpu_id:w}, [{rseq_ptr}, #{cpu_id_offset_start}]
 
                 cmp {cpu_id:w}, {per_cpu_len:w}
-                b.ge {fallback}
+                b.hs {fallback}
 
                 subs {loop_count}, {loop_count}, #1
                 b.eq {fallback}
 
                 adrp {tmp}, 9b
-                ldr {tmp}, [{tmp}, #:lo12:9b]
+                add {tmp}, {tmp}, :lo12:9b
                 str {tmp}, [{rseq_ptr}, #{rseq_cs_offset}]
 
                 2:
@@ -482,7 +485,7 @@ impl<T: Absorb> Channels<T> {
     }
 
     #[cold]
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     #[cfg_attr(target_arch = "aarch64", target_feature(enable = "lse"))]
     fn send_event_slow(&self, rseq_ptr: NonNull<Rseq>, serialized_event: u64) {
         let mut new_page = self.empty_pages.pop().unwrap_or_else(Page::new);
@@ -571,15 +574,15 @@ impl<T: Absorb> Channels<T> {
                 ldr {cpu_id:w}, [{rseq_ptr}, #{cpu_id_offset_start}]
 
                 cmp {cpu_id:w}, {per_cpu_len:w}
-                cset {fallback:w}, ge
-                b.ge 7f
+                cset {fallback:w}, hs
+                b.hs 7f
 
                 subs {loop_count}, {loop_count}, #1
                 cset {fallback:w}, eq
                 b.eq 7f
 
                 adrp {tmp}, 12b
-                ldr {tmp}, [{tmp}, #:lo12:12b]
+                add {tmp}, {tmp}, :lo12:12b
                 str {tmp}, [{rseq_ptr}, #{rseq_cs_offset}]
 
                 3:
@@ -760,6 +763,7 @@ fn rseq_init() -> NonNull<Rseq> {
     rseq_ptr
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     unsafe {
         // clear previous errors
@@ -778,6 +782,7 @@ fn dlsym(symbol: &CStr) -> std::io::Result<*mut std::ffi::c_void> {
     }
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     let output: *mut std::ffi::c_void;
     // As far as I can tell, both of these should work in the most general case.
@@ -795,6 +800,7 @@ fn thread_plus_offset(offset: libc::ptrdiff_t) -> *mut std::ffi::c_void {
     output.wrapping_offset(offset)
 }
 
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
 fn from_libc() -> std::io::Result<*mut Rseq> {
     let _size = dlsym(c"__rseq_size")?.cast::<u32>();
     let offset = dlsym(c"__rseq_offset")?.cast::<libc::ptrdiff_t>(); // ptrdiff_t
@@ -803,9 +809,14 @@ fn from_libc() -> std::io::Result<*mut Rseq> {
     Ok(thread_plus_offset(unsafe { offset.read() }).cast())
 }
 
+#[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
+fn from_libc() -> std::io::Result<*mut Rseq> {
+    return Err(std::io::Error::from(std::io::ErrorKind::Unsupported));
+}
+
 #[allow(clippy::needless_return)]
 fn sys_rseq(rseq_abi: *mut Rseq, flags: i32) -> std::io::Result<()> {
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     {
         let ret = unsafe {
             libc::syscall(
@@ -823,7 +834,7 @@ fn sys_rseq(rseq_abi: *mut Rseq, flags: i32) -> std::io::Result<()> {
         return Ok(());
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
     {
         Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
     }
@@ -912,7 +923,7 @@ mod tests {
         .unwrap();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     #[test]
     fn check_send_branches() {
         let mut rseq = Rseq {
@@ -974,7 +985,7 @@ mod tests {
         drop(channels);
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     #[test]
     // `lse` enablement on aarch64
     #[allow(unused_unsafe)]
@@ -1072,5 +1083,102 @@ mod tests {
             assert_eq!(channels.empty_pages.len(), 1);
         }
         drop(channels);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[repr(C)]
+    struct RseqCsDescriptor {
+        version: u32,
+        flags: u32,
+        start_ip: u64,
+        post_commit_offset: u64,
+        abort_ip: u64,
+    }
+
+    // Verifies that the assembly computes the rseq_cs descriptor *address* rather
+    // than accidentally dereferencing it (which would yield 0 since the first 8 bytes
+    // of the descriptor are zero-initialized version/flags fields).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn check_rseq_cs_descriptor_address() {
+        let channels = Channels::<TestAbsorber>::new();
+        channels.allocate();
+
+        let mut rseq = Rseq {
+            cpu_id_start: 0,
+            cpu_id: 1,
+            rseq_cs: 0,
+            flags: 0,
+        };
+
+        channels.send_event_inner(0u64, NonNull::from(&mut rseq));
+
+        assert_eq!(channels.fallback.read().len(), 1);
+
+        assert_ne!(
+            rseq.rseq_cs, 0,
+            "rseq_cs must contain the descriptor address, not zero"
+        );
+
+        let descriptor = unsafe { &*(rseq.rseq_cs as *const RseqCsDescriptor) };
+        assert_eq!(descriptor.version, 0);
+        assert_eq!(descriptor.flags, 0);
+        assert_ne!(descriptor.start_ip, 0);
+        assert_ne!(descriptor.post_commit_offset, 0);
+        assert_ne!(descriptor.abort_ip, 0);
+
+        // The abort handler appears before the critical section in the instruction
+        // stream, so abort_ip < start_ip.
+        assert!(
+            descriptor.abort_ip < descriptor.start_ip,
+            "abort_ip ({:#x}) should precede start_ip ({:#x})",
+            descriptor.abort_ip,
+            descriptor.start_ip,
+        );
+
+        // The critical section end (start_ip + post_commit_offset) must be after
+        // start_ip and within a reasonable distance (all in one function).
+        let end_ip = descriptor.start_ip + descriptor.post_commit_offset;
+        assert!(end_ip > descriptor.start_ip);
+        assert!(
+            descriptor.post_commit_offset < 4096,
+            "critical section size {} is unreasonably large",
+            descriptor.post_commit_offset,
+        );
+
+        // All three addresses should be in the same region (within the same function).
+        assert!(
+            descriptor.start_ip - descriptor.abort_ip < 4096,
+            "start_ip and abort_ip are too far apart to be in the same function",
+        );
+    }
+
+    // Verifies that the u32::MAX sentinel (used when rseq registration fails) is
+    // caught by the bounds check *before* any loop body executes. The comparison
+    // must be unsigned so that 0xFFFFFFFF is greater than per_cpu_len.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn check_u32_max_sentinel_immediate_fallback() {
+        let channels = Channels::<TestAbsorber>::new();
+        channels.allocate();
+
+        let mut rseq = Rseq {
+            cpu_id_start: u32::MAX,
+            cpu_id: 0,
+            rseq_cs: 0,
+            flags: 0,
+        };
+
+        channels.send_event_inner(0u64, NonNull::from(&mut rseq));
+
+        assert_eq!(channels.fallback.read().len(), 1);
+
+        // The bounds check fires before the rseq_cs store, so rseq_cs stays zero.
+        // A signed comparison would treat u32::MAX as -1, passing the bounds check
+        // and entering the loop body (which would set rseq_cs to non-zero).
+        assert_eq!(
+            rseq.rseq_cs, 0,
+            "u32::MAX sentinel must trigger immediate fallback at the bounds check"
+        );
     }
 }

@@ -39,6 +39,12 @@ pub struct CryptoStream {
 
 const TX_MAX_BUFFER_CAPACITY: u32 = 4096;
 
+/// Maximum number of bytes that may be buffered ahead of the read cursor in the
+/// crypto receive buffer. RFC 9000 §7.5 requires at least 4096; we allow up to
+/// 128 KiB to accommodate larger handshake messages (e.g. certificate chains)
+/// while still bounding memory consumption against adversarial CRYPTO frames.
+const MAX_CRYPTO_BUFFER_SIZE: u64 = 128 * 1024;
+
 impl Default for CryptoStream {
     fn default() -> Self {
         Self::new()
@@ -87,20 +93,28 @@ impl CryptoStream {
         }
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
-        //= type=TODO
-        //= tracking-issue=356
-        //= feature=Crypto buffer limits
         //# Implementations MUST support buffering at least 4096 bytes of data
         //# received in out-of-order CRYPTO frames.
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
-        //= type=TODO
-        //= tracking-issue=356
-        //= feature=Crypto buffer limits
         //# Endpoints MAY choose to
         //# allow more data to be buffered during the handshake.
 
-        //TODO we need to limit the buffer size here
+        // Enforce the buffer size limit required by RFC 9000 §7.5.
+        // This bounds the maximum distance between the read cursor and the farthest
+        // byte a peer can write, capping total Reassembler memory for the crypto stream.
+        let end_offset = frame
+            .offset
+            .checked_add_usize(frame.data.len())
+            .ok_or(transport::Error::CRYPTO_BUFFER_EXCEEDED)?;
+
+        let buffered = end_offset.as_u64().saturating_sub(self.rx.consumed_len());
+        if buffered > MAX_CRYPTO_BUFFER_SIZE {
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
+            //# If an endpoint does not expand its buffer, it MUST close
+            //# the connection with a CRYPTO_BUFFER_EXCEEDED error code.
+            return Err(transport::Error::CRYPTO_BUFFER_EXCEEDED);
+        }
 
         self.rx.write_at(frame.offset, frame.data).map_err(|_| {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-7.5
@@ -136,5 +150,88 @@ impl transmission::interest::Provider for CryptoStream {
         query: &mut Q,
     ) -> transmission::interest::Result {
         self.tx.transmission_interest(query)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::frame::crypto::Crypto;
+
+    fn crypto_frame(offset: u64, len: usize) -> CryptoRef<'static> {
+        // Use a static buffer large enough for any test frame
+        static DATA: [u8; 1024] = [0xAA; 1024];
+        Crypto {
+            offset: VarInt::new(offset).unwrap(),
+            data: &DATA[..len],
+        }
+    }
+
+    #[test]
+    fn frame_within_buffer_limit_is_accepted() {
+        let mut stream = CryptoStream::new();
+        // A frame well within the 128 KiB limit should succeed
+        assert!(stream.on_crypto_frame(crypto_frame(0, 1024)).is_ok());
+    }
+
+    #[test]
+    fn frame_at_exact_limit_is_accepted() {
+        let mut stream = CryptoStream::new();
+        // end_offset == MAX_CRYPTO_BUFFER_SIZE is exactly at the boundary (not exceeded)
+        let frame = Crypto {
+            offset: VarInt::new(MAX_CRYPTO_BUFFER_SIZE - 16).unwrap(),
+            data: &[0u8; 16][..],
+        };
+        assert!(stream.on_crypto_frame(frame).is_ok());
+    }
+
+    #[test]
+    fn frame_exceeding_buffer_limit_is_rejected() {
+        let mut stream = CryptoStream::new();
+        // end_offset = MAX_CRYPTO_BUFFER_SIZE + 1, which exceeds the limit
+        let frame = Crypto {
+            offset: VarInt::new(MAX_CRYPTO_BUFFER_SIZE).unwrap(),
+            data: &[0u8; 1][..],
+        };
+        let err = stream.on_crypto_frame(frame).unwrap_err();
+        assert_eq!(err.code, transport::Error::CRYPTO_BUFFER_EXCEEDED.code);
+    }
+
+    #[test]
+    fn large_offset_with_consumed_data_is_accepted() {
+        let mut stream = CryptoStream::new();
+        // Write and consume some data first so consumed_len advances
+        assert!(stream.on_crypto_frame(crypto_frame(0, 1024)).is_ok());
+        // Pop the data to advance consumed_len
+        assert!(stream.rx.pop().is_some());
+
+        // Now consumed_len == 1024, so a frame at offset 1024 + MAX - 16
+        // has buffered = (1024 + MAX - 16 + 16) - 1024 = MAX, which is at the limit
+        let frame = Crypto {
+            offset: VarInt::new(1024 + MAX_CRYPTO_BUFFER_SIZE - 16).unwrap(),
+            data: &[0u8; 16][..],
+        };
+        assert!(stream.on_crypto_frame(frame).is_ok());
+    }
+
+    #[test]
+    fn large_offset_without_consumed_data_is_rejected() {
+        let mut stream = CryptoStream::new();
+        // Without consuming anything, a frame slightly larger than the limit should fail
+        let frame = Crypto {
+            offset: VarInt::new(MAX_CRYPTO_BUFFER_SIZE + 1).unwrap(),
+            data: &[0u8; 1][..],
+        };
+        let err = stream.on_crypto_frame(frame).unwrap_err();
+        assert_eq!(err.code, transport::Error::CRYPTO_BUFFER_EXCEEDED.code);
+    }
+
+    #[test]
+    fn multiple_frames_within_limit_are_accepted() {
+        let mut stream = CryptoStream::new();
+        // Send multiple in-order frames that together stay within the limit
+        for i in 0..10 {
+            assert!(stream.on_crypto_frame(crypto_frame(i * 1024, 1024)).is_ok());
+        }
     }
 }

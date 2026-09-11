@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use s2n_quic::provider::tls::ConnectionInfo;
-use s2n_tls::{
-    callbacks::{ClientHelloCallback, ConnectionFuture},
-    error::Error as S2nError,
+use s2n_quic::provider::tls::{
+    s2n_tls::{
+        callbacks::{ClientHelloCallback, ConnectionFuture},
+        connection::Connection,
+        error::Error as S2nError,
+    },
+    ConnectionInfo,
 };
 use std::{
     pin::Pin,
@@ -28,7 +31,7 @@ impl TestClientHelloHandle {
 impl ClientHelloCallback for TestClientHelloHandle {
     fn on_client_hello(
         &self,
-        connection: &mut s2n_tls::connection::Connection,
+        connection: &mut Connection,
     ) -> Result<Option<Pin<Box<dyn ConnectionFuture>>>, S2nError> {
         let connection_info = connection.application_context::<ConnectionInfo>();
 

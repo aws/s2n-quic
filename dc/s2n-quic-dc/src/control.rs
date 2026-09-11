@@ -13,7 +13,7 @@ pub struct Control {
 impl Control {
     pub fn new(address: SocketAddr, map: Map) -> std::io::Result<Self> {
         let socket = Arc::new(std::net::UdpSocket::bind(address)?);
-        let port = socket.local_addr().unwrap().port();
+        let port = socket.local_addr()?.port();
 
         {
             let socket = socket.clone();

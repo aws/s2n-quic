@@ -231,7 +231,15 @@ impl Secret {
         let (client_key, out) = out.split_at(key_len);
         let (server_key, out) = out.split_at(key_len);
         let (client_iv, server_iv) = out.split_at(NONCE_LEN);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the slice was split off at NONCE_LEN, so it is provably the right length for the array conversion"
+        )]
         let client_iv = client_iv.try_into().unwrap();
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the slice was split off at NONCE_LEN, so it is provably the right length for the array conversion"
+        )]
         let server_iv = server_iv.try_into().unwrap();
         let aead = ciphersuite.aead();
 
@@ -338,6 +346,10 @@ impl Secret {
         );
         // if the hash is ever broken, it's better to put the "more secret" data at the beginning
         let (key, iv) = out.split_at(key_len);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the remaining slice after splitting off key_len is NONCE_LEN long, matching the array conversion"
+        )]
         let iv = iv.try_into().unwrap();
         f(self.ciphersuite.aead(), key, iv)
     }
@@ -393,6 +405,10 @@ trait PrkExt {
 impl PrkExt for Prk {
     #[inline]
     fn expand_into(&self, label: &[&[u8]], out: &mut [u8]) {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "expand and fill only fail on invalid output lengths; OutLen is derived from the output slice so the length is always valid"
+        )]
         self.expand(label, OutLen(out.len()))
             .unwrap()
             .fill(out)
@@ -481,6 +497,10 @@ impl Updater {
         // (key_update, key, iv)
         let (ku, out) = out.split_at(key_len);
         let (key, iv) = out.split_at(key_len);
+        #[expect(
+            clippy::unwrap_used,
+            reason = "the remaining slice after splitting off key_len is NONCE_LEN long, matching the array conversion"
+        )]
         let iv = iv.try_into().unwrap();
 
         let ku = Self::new(ku, ciphersuite);
@@ -490,6 +510,10 @@ impl Updater {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::panic_in_result_fn,
+    reason = "test code may panic to surface failures"
+)]
 mod tests {
     use super::*;
     use crate::{

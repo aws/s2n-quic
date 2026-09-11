@@ -902,6 +902,17 @@ enum PacketDropReason<'a> {
         path: Path<'a>,
         packet_type: PacketType,
     },
+    /// The packet space for a received packet did not exist and there was not enough space in the
+    /// packet buffer to store it for later processing.
+    PacketBufferOutOfSpace {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
+    /// The connection has already closed
+    ConnectionClosed {
+        path: Path<'a>,
+        packet_type: PacketType,
+    },
 }
 
 #[deprecated(note = "use on_rx_ack_range_dropped event instead")]
@@ -1080,6 +1091,25 @@ enum DcState {
     VersionNegotiated { version: u32 },
     NoVersionNegotiated,
     PathSecretsReady,
+    Complete,
+}
+
+/// The state the dc handshake state machine reached
+///
+/// Unlike `DcState`, this mirrors the internal `dc::Manager` states so that,
+/// when the handshake does not complete, the exact state it stalled in can be reported.
+enum DcHandshakeState {
+    /// Client path created; TLS not yet far enough to derive secrets
+    InitClient,
+    /// Server path created; TLS not yet far enough to derive secrets
+    InitServer,
+    /// Client derived secrets and sent its `DC_STATELESS_RESET_TOKENS`
+    ClientPathSecretsReady,
+    /// Server derived secrets and is waiting for the client's tokens
+    ServerPathSecretsReady,
+    /// Server received the client's tokens, sent its own, and is waiting for the client's ACK
+    ServerTokensSent,
+    /// Handshake done and map entries finalized
     Complete,
 }
 

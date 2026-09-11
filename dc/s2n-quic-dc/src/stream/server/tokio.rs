@@ -20,7 +20,13 @@ use crate::{
 };
 use core::num::{NonZeroU16, NonZeroUsize};
 use s2n_quic_core::ensure;
-use std::{io, net::SocketAddr, time::Duration};
+use std::{
+    io,
+    net::SocketAddr,
+    os::fd::{AsRawFd, OwnedFd},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::io::unix::AsyncFd;
 use tracing::Instrument as _;
 
@@ -132,6 +138,7 @@ pub const DEFAULT_BACKLOG: u16 = libc::SOMAXCONN as _;
 
 pub struct Builder {
     backlog: Option<NonZeroU16>,
+    socket_backlog: Option<NonZeroU16>,
     workers: Option<usize>,
     acceptor_addr: SocketAddr,
     span: Option<tracing::Span>,
@@ -143,14 +150,20 @@ pub struct Builder {
     recv_buffer: Option<usize>,
     reuse_addr: Option<bool>,
     tls: Option<tcp::tls::Builder>,
+    attach_reuseport_ebpf: Option<Arc<OwnedFd>>,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Self {
             backlog: None,
+            socket_backlog: None,
             workers: None,
             // FIXME: Don't default to a fixed port?
+            #[expect(
+                clippy::unwrap_used,
+                reason = "parsing a compile-time constant socket address that is known valid"
+            )]
             acceptor_addr: "[::]:4444".parse().unwrap(),
             span: None,
             enable_udp: true,
@@ -161,6 +174,7 @@ impl Default for Builder {
             recv_buffer: None,
             reuse_addr: None,
             tls: None,
+            attach_reuseport_ebpf: None,
         }
     }
 }
@@ -252,6 +266,16 @@ impl Builder {
         self
     }
 
+    pub fn with_attach_reuseport_ebpf(mut self, fd: Arc<OwnedFd>) -> Self {
+        self.attach_reuseport_ebpf = Some(fd);
+        self
+    }
+
+    pub fn with_socket_backlog(mut self, socket_backlog: NonZeroU16) -> Self {
+        self.socket_backlog = Some(socket_backlog);
+        self
+    }
+
     pub fn build<H: Handshake + Clone, S: event::Subscriber + Clone>(
         mut self,
         handshake: H,
@@ -265,6 +289,10 @@ impl Builder {
             ))
         );
 
+        #[expect(
+            clippy::unwrap_used,
+            reason = "converting the constant 1 to NonZeroUsize is infallible"
+        )]
         let concurrency: usize = self.workers.unwrap_or_else(|| {
             std::thread::available_parallelism()
                 .unwrap_or_else(|_| 1.try_into().unwrap())
@@ -301,16 +329,27 @@ impl Builder {
 
         if self.enable_udp && enable_udp_pool {
             // update the address with the selected port
-            self.acceptor_addr = env.pool_addr().unwrap();
+            self.acceptor_addr = env
+                .pool_addr()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "udp pool_addr failed"))?;
             // don't use the owned socket acceptor
             self.enable_udp = false;
         }
 
-        // TODO is it better to spawn one current_thread runtime per concurrency?
+        // If we've not enabled UDP support, clamp the # of threads we spawn to the TCP worker
+        // count + 1. No reason to spawn extra threads that would largely just sit idle.
+        //
+        // We add one to allow for additional work done in the pruner and stats worker, even though
+        // in most cases those are fairly idle.
+        let acceptor_concurrency = if self.enable_udp {
+            concurrency
+        } else {
+            concurrency.clamp(1, MAX_TCP_WORKERS + 1)
+        };
         let acceptor_rt: runtime::Shared<S> = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_name("acceptor")
-            .worker_threads(concurrency)
+            .worker_threads(acceptor_concurrency)
             .build()?
             .into();
 
@@ -357,12 +396,19 @@ impl Builder {
             .div_ceil(concurrency.clamp(0, MAX_TCP_WORKERS))
             .max(1);
 
+        // Let applications set the socket backlog:
+        let socket_backlog = self
+            .socket_backlog
+            .map(NonZeroU16::get)
+            .unwrap_or(DEFAULT_BACKLOG) as usize;
+
         Start {
             enable_tcp: self.enable_tcp,
             enable_udp: self.enable_udp,
             accept_flavor: self.accept_flavor,
             linger: self.linger,
             backlog,
+            socket_backlog,
             concurrency,
             server: &mut server,
             stream_sender,
@@ -371,6 +417,7 @@ impl Builder {
             send_buffer: self.send_buffer,
             recv_buffer: self.recv_buffer,
             reuse_addr: self.reuse_addr.unwrap_or(false),
+            attach_reuseport_ebpf: self.attach_reuseport_ebpf,
         }
         .start()?;
 
@@ -383,6 +430,7 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     enable_udp: bool,
     accept_flavor: accept::Flavor,
     backlog: usize,
+    socket_backlog: usize,
     concurrency: usize,
     server: &'a mut Server<H, S>,
     stream_sender: accept::Sender<S>,
@@ -392,6 +440,7 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: bool,
+    attach_reuseport_ebpf: Option<Arc<OwnedFd>>,
 }
 
 impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
@@ -471,18 +520,21 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     fn socket_opts(&self, local_addr: SocketAddr) -> socket::Options {
         let mut options = socket::Options::new(local_addr);
 
-        // Explicitly do **not** set the socket backlog to self.backlog. While we split the
+        // We do now allow applications to set the kernel backlog.  While we split the
         // configured backlog amongst our in-process queues as concurrency increases, it doesn't
         // make sense to shrink the kernel backlogs -- that just causes packet drops and generally
-        // bad behavior.
+        // bad behavior -- but we'll let them do it.
         //
         // This is especially true for TCP where we don't have workers matching concurrency.
+        options.backlog = self.socket_backlog;
+
         options.send_buffer = self.send_buffer;
         options.recv_buffer = self.recv_buffer;
         options.reuse_address = self.reuse_addr;
 
         // if we have more than one thread then we'll need to use reuse port
-        if self.concurrency > 1 {
+        // SO_REUSEPORT is also required for SO_ATTACH_REUSEPORT_EBPF
+        if self.concurrency > 1 || self.attach_reuseport_ebpf.is_some() {
             // if the application is wanting to bind to a random port then we need to set
             // reuse_port after
             if local_addr.port() == 0 {
@@ -531,6 +583,27 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
         // if this is the first socket being spawned then update the local address
         if self.server.local_addr.port() == 0 {
             self.server.local_addr = socket.local_addr()?;
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(prog_fd) = self.attach_reuseport_ebpf.as_ref() {
+            let prog_raw_fd: libc::c_int = prog_fd.as_raw_fd();
+            // SAFETY: setsockopt with valid socket fd, valid optval pointer,
+            // and matching optlen for SO_ATTACH_REUSEPORT_EBPF. The BPF
+            // program fd is borrowed via the Arc<OwnedFd>. The kernel takes
+            // its own reference on success.
+            let ret = unsafe {
+                libc::setsockopt(
+                    socket.as_raw_fd(),
+                    libc::SOL_SOCKET,
+                    libc::SO_ATTACH_REUSEPORT_EBPF,
+                    &prog_raw_fd as *const libc::c_int as *const libc::c_void,
+                    std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                )
+            };
+            if ret != 0 {
+                return Err(io::Error::last_os_error());
+            }
         }
 
         let socket = tokio::io::unix::AsyncFd::new(socket)?;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub use anyhow::Error;
-use structopt::StructOpt;
+use clap::Parser;
 
 pub type Result<T = (), E = Error> = core::result::Result<T, E>;
 
@@ -12,7 +12,7 @@ mod report;
 mod run;
 mod stats;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum Args {
     Query(query::Query),
     Run(Box<run::Run>),
@@ -32,7 +32,7 @@ fn main() -> Result {
         .event_format(format)
         .init();
 
-    match Args::from_args() {
+    match Args::parse() {
         Args::Query(args) => args.run(),
         Args::Run(args) => args.run(),
         Args::Report(args) => args.run(),

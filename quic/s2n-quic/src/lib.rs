@@ -34,7 +34,8 @@
 //! _Enabled by default_
 //!
 //! Enables platform detection for the recommended implementation of TLS. Currently, this uses
-//! [`s2n-tls`][s2n-tls] on unix-like platforms and [`rustls`][rustls] on everything else.
+//! [`s2n-tls`][s2n-tls] on unix-like platforms and on Windows with the GNU/MinGW toolchain, and
+//! [`rustls`][rustls] on everything else (notably Windows with the MSVC toolchain).
 //!
 //! ### `provider-tls-rustls`
 //!
@@ -49,6 +50,8 @@
 //! [`provider::tls::s2n_tls`].
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
+//!
+//! **NOTE**: on Windows, [`s2n-tls`][s2n-tls] only builds with the GNU/MinGW toolchain it does not build with the MSVC toolchain.
 //!
 //! ### `provider-tls-fips`
 //!

@@ -16,6 +16,18 @@ internet-checksum = "0.2"
 s2n-codec = { path = "../../common/s2n-codec", features = ["testing"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 
+# Dependencies for the overload-server binary
+[target.'cfg(unix)'.dependencies]
+clap = { version = "4", features = ["derive"] }
+mimalloc = "0.1"
+nix = { version = "0.31.1", features = ["socket"] }
+s2n-quic = { path = "../s2n-quic" }
+s2n-quic-dc = { path = "../../dc/s2n-quic-dc" }
+s2n-quic-dc-metrics = { path = "../../dc/s2n-quic-dc-metrics" }
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
 [[bench]]
 name = "bench"
 harness = false

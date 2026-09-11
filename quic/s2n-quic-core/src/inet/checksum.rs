@@ -64,7 +64,7 @@ fn write_sized_generic<'a, const MAX_LEN: usize, const CHUNK_LEN: usize>(
 
         let mut sum = 0;
         // for each pair of bytes, interpret them as integers and sum them up
-        for chunk in chunks.chunks_exact(CHUNK_LEN) {
+        for chunk in chunks.as_chunks::<CHUNK_LEN>().0 {
             let chunk = unsafe {
                 // SAFETY: chunks_exact always produces a slice of CHUNK_LEN
                 debug_assert_eq!(chunk.len(), CHUNK_LEN);

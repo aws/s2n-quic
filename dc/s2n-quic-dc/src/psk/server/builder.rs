@@ -9,6 +9,7 @@ use crate::{
     },
 };
 use s2n_quic::provider::{event::Subscriber as Sub, tls::Provider as Prov};
+use s2n_quic_dc_metrics::Registry;
 use std::{net::SocketAddr, time::Duration};
 
 use super::Provider;
@@ -25,6 +26,7 @@ pub struct Builder<
     #[cfg(any(test, feature = "testing"))]
     pub(crate) endpoint_limits: Option<TestEndpointLimiter>,
     pub(crate) thread_offload_count: usize,
+    pub(crate) registry: Option<Registry>,
 }
 
 /// A wrapper type for test endpoint limiters
@@ -55,6 +57,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             #[cfg(any(test, feature = "testing"))]
             endpoint_limits: None,
             thread_offload_count: DEFAULT_THREAD_COUNT,
+            registry: None,
         }
     }
 }
@@ -75,6 +78,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             #[cfg(any(test, feature = "testing"))]
             endpoint_limits: self.endpoint_limits,
             thread_offload_count: self.thread_offload_count,
+            registry: self.registry,
         }
     }
 
@@ -147,6 +151,11 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
+    pub fn with_registry(mut self, registry: Registry) -> Self {
+        self.registry = Some(registry);
+        self
+    }
+
     /// Starts the server listening to the given address.
     pub async fn start<
         TlsProvider: Prov + Send + Sync + 'static,
@@ -164,7 +173,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             tls_materials_provider,
             subscriber,
             self,
-        );
+        )?;
         let local_addr = rx.await??;
         Ok(Provider::new(map, local_addr, guard))
     }
@@ -186,7 +195,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             tls_materials_provider,
             subscriber,
             self,
-        );
+        )?;
         let local_addr = rx.blocking_recv()??;
         Ok(Provider::new(map, local_addr, guard))
     }

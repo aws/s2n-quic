@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::Result;
-use structopt::StructOpt;
+use clap::Args;
 use tokio::runtime::Runtime as Rt;
 
-#[derive(Clone, Debug, StructOpt)]
+#[derive(Clone, Debug, Args)]
 pub struct Runtime {
     /// Enables the multi-threaded runtime
-    #[structopt(long)]
+    #[clap(long)]
     multithread: Option<Option<bool>>,
 }
 

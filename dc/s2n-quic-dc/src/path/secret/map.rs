@@ -4,7 +4,7 @@
 use crate::{
     credentials::{Credentials, Id},
     event,
-    packet::{secret_control as control, Packet},
+    packet::{secret_control as control, Packet, WireVersion},
     path::secret::{
         open,
         schedule::{Ciphersuite, ExportSecret},
@@ -14,14 +14,17 @@ use crate::{
     stream::TransportFeatures,
 };
 use core::fmt;
+use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
 
 mod cleaner;
+mod disk;
 mod entry;
 pub mod handshake;
 mod peer;
+mod proactive_unknown_path_secret;
 mod rehandshake;
 mod size_of;
 mod state;
@@ -34,9 +37,13 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
+pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
+pub use proactive_unknown_path_secret::SendStats;
+use state::StateBuilderError;
 use store::Store;
 
+pub(crate) use cleaner::Epoch;
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
@@ -45,6 +52,28 @@ pub use peer::Peer;
 
 pub(crate) use size_of::SizeOf;
 pub(crate) use status::Dedup;
+
+/// Encodes an authenticated `UnknownPathSecret` packet for `credential_id` into `buffer`,
+/// returning the encoded length. Shared by the reactive reply, when an incoming packet's
+/// credentials are unknown (see [`Store::pre_authentication`]), and proactive emission (see the
+/// `proactive_unknown_path_secret` module). `buffer` must be at least
+/// [`control::UnknownPathSecret::MAX_PACKET_SIZE`] bytes.
+///
+/// [`Store::pre_authentication`]: store::Store::pre_authentication
+fn encode_unknown_path_secret(
+    buffer: &mut [u8],
+    signer: &stateless_reset::Signer,
+    credential_id: Id,
+    queue_id: Option<VarInt>,
+) -> usize {
+    let packet = control::UnknownPathSecret {
+        wire_version: WireVersion::ZERO,
+        credential_id,
+        queue_id,
+    };
+    let stateless_reset = signer.sign(&credential_id);
+    packet.encode(EncoderBuffer::new(buffer), &stateless_reset)
+}
 
 // FIXME: Most of this comment is not true today, we're expecting to implement the details
 // contained here. This is presented as a roadmap.
@@ -72,7 +101,76 @@ impl fmt::Debug for Map {
     }
 }
 
+/// A builder for [`Map`].
+pub struct Builder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    inner: state::StateBuilder<C, S>,
+}
+
+impl<C, S> Builder<C, S>
+where
+    C: 'static + time::Clock + Sync + Send,
+    S: event::Subscriber,
+{
+    pub fn with_signer(mut self, signer: stateless_reset::Signer) -> Self {
+        self.inner = self.inner.with_signer(signer);
+        self
+    }
+
+    pub fn with_capacity(mut self, capacity: usize) -> Self {
+        self.inner = self.inner.with_capacity(capacity);
+        self
+    }
+
+    pub fn with_evict_on_unknown_path_secret(mut self, should_evict: bool) -> Self {
+        self.inner = self.inner.with_evict_on_unknown_path_secret(should_evict);
+        self
+    }
+
+    pub fn with_clock<C2: 'static + time::Clock + Sync + Send>(self, clock: C2) -> Builder<C2, S> {
+        Builder {
+            inner: self.inner.with_clock(clock),
+        }
+    }
+
+    pub fn with_subscriber<S2: event::Subscriber>(self, subscriber: S2) -> Builder<C, S2> {
+        Builder {
+            inner: self.inner.with_subscriber(subscriber),
+        }
+    }
+
+    /// Configures on-disk serialization of the map.
+    pub fn with_serializer(mut self, serializer: Serializer) -> Self {
+        self.inner = self.inner.with_serializer(serializer);
+        self
+    }
+
+    /// Builds the [`Map`].
+    pub fn build(self) -> Result<Map, MapBuilderError> {
+        Ok(Map {
+            store: self.inner.build().map_err(MapBuilderError)?,
+        })
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct MapBuilderError(StateBuilderError);
+
 impl Map {
+    /// Begins configuring a [`Map`].
+    ///
+    /// The signer, capacity, clock, and subscriber are all required; [`Builder::build`] fails if
+    /// any are missing.
+    pub fn builder() -> Builder<time::StdClock, crate::event::tracing::Subscriber> {
+        Builder {
+            inner: state::State::builder(),
+        }
+    }
+
     pub fn new<C, S>(
         signer: stateless_reset::Signer,
         capacity: usize,
@@ -84,16 +182,18 @@ impl Map {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
-        let store = state::State::builder()
+        #[expect(
+            clippy::unwrap_used,
+            reason = "build only fails if a required field is unset, we control the required field set"
+        )]
+        Self::builder()
+            .with_clock(clock)
+            .with_subscriber(subscriber)
             .with_signer(signer)
             .with_capacity(capacity)
             .with_evict_on_unknown_path_secret(should_evict_on_unknown_path_secret)
-            .with_clock(clock)
-            .with_subscriber(subscriber)
             .build()
-            .unwrap();
-
-        Self { store }
+            .unwrap()
     }
 
     /// The number of trusted secrets.
@@ -114,6 +214,50 @@ impl Map {
 
     pub fn drop_state(&self) {
         self.store.drop_state();
+    }
+
+    /// Serializes the current map to disk using the serializer configured at construction.
+    ///
+    /// This is a no-op (returning `Ok(())`) if no serializer was configured. It can be called
+    /// regardless of whether background serialization is enabled, letting callers drive
+    /// serialization on their own schedule.
+    pub fn serialize_to_disk(&self) -> std::io::Result<()> {
+        self.store.serialize_to_disk()
+    }
+
+    /// Proactively sends an authenticated [`control::UnknownPathSecret`] packet to each peer in
+    /// `entries`, telling peers holding stale cached secrets to re-handshake.
+    ///
+    /// This is the proactive counterpart to the `UnknownPathSecret` the map already sends reactively
+    /// when it receives a packet with unknown credentials. It is intended to be called once, at
+    /// startup (e.g. after a restart, over the peers recovered from the persisted map), and blocks
+    /// the calling thread until every entry has been handled or `timeout` of wall-clock time (from
+    /// the call) elapses.
+    ///
+    /// Packets are emitted at approximately `rate` packets per second (see [`SendStats`] and the
+    /// pacer in `proactive_unknown_path_secret.rs`). Entries are handled as follows:
+    ///
+    /// * An entry with a credential id has an `UnknownPathSecret` packet built, signed with the
+    ///   map's signer, and sent to its peer address. Success is counted in [`SendStats::sent`];
+    ///   an individual send failure (including a `WouldBlock` on the shared, non-blocking control
+    ///   socket, which is dropped rather than retried) is counted in [`SendStats::failed`] and does
+    ///   not abort the run.
+    /// * A v0 entry (no credential id) cannot be turned into a packet and is counted in
+    ///   [`SendStats::skipped`]; those peers recover reactively.
+    /// * Entries not reached before `timeout` elapses are counted in [`SendStats::remaining`].
+    ///
+    /// Returns `Err` only if the map has no control socket to send on. Socket creation is
+    /// best-effort at construction, so a map can lack one. Per-entry send failures are reported via
+    /// [`SendStats::failed`], not as an error.
+    pub fn send_unknown_path_secrets(
+        &self,
+        entries: impl IntoIterator<Item = DiskEntry, IntoIter: ExactSizeIterator>,
+        rate: core::num::NonZeroU32,
+        timeout: core::time::Duration,
+    ) -> std::io::Result<SendStats> {
+        let mut entries = entries.into_iter();
+        self.store
+            .send_unknown_path_secrets(&mut entries, rate, timeout)
     }
 
     pub fn contains(&self, peer: &SocketAddr) -> bool {
@@ -169,6 +313,20 @@ impl Map {
             .pre_authentication(credentials, queue_id, control_out)?;
         let opener = entry.uni_opener(self.clone(), credentials, queue_id);
         Some(opener)
+    }
+
+    pub fn open_once_with_application_data(
+        &self,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
+    ) -> Option<(open::Once, Option<ApplicationData>)> {
+        let entry = self
+            .store
+            .pre_authentication(credentials, queue_id, control_out)?;
+        let application_data = entry.application_data().clone();
+        let opener = entry.uni_opener(self.clone(), credentials, queue_id);
+        Some((opener, application_data))
     }
 
     pub fn pair_for_credentials(
@@ -228,6 +386,16 @@ impl Map {
         self.store.on_dc_connection_timeout(peer_address);
     }
 
+    /// Emits a datagram encrypt event with the wire packet length
+    pub(crate) fn on_datagram_encrypt(&self, packet_len: usize) {
+        self.store.on_datagram_encrypt(packet_len);
+    }
+
+    /// Emits a datagram decrypt event with the wire packet length
+    pub(crate) fn on_datagram_decrypt(&self, packet_len: usize) {
+        self.store.on_datagram_decrypt(packet_len);
+    }
+
     pub fn handle_control_packet(&self, packet: &control::Packet, peer: &SocketAddr) {
         match packet {
             control::Packet::StaleKey(packet) => {
@@ -240,6 +408,18 @@ impl Map {
                 let _ = self.handle_unknown_path_secret_packet(packet, peer);
             }
         }
+    }
+
+    /// Sends an already-encoded secret control packet in `buffer` to `dst` using the map's
+    /// control socket, emitting the corresponding packet-sent metric (e.g.
+    /// `UnknownPathSecretPacketSent`).
+    ///
+    /// `buffer` should contain a fully-encoded secret control packet, such as the one written
+    /// into the `control_out` buffer by [`Map::open_once`],
+    /// [`Map::open_once_with_application_data`], and related methods when the path secret is
+    /// unknown. Sending is best-effort: if the map has no control socket the packet is dropped.
+    pub fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
+        self.store.send_control_packet(dst, buffer);
     }
 
     pub fn handle_stale_key_packet<'a>(
@@ -268,6 +448,10 @@ impl Map {
 
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        clippy::unwrap_used,
+        reason = "test-support helper may panic to surface setup failures"
+    )]
     pub fn for_test_with_peers(
         peers: Vec<(
             crate::path::secret::schedule::Ciphersuite,
@@ -338,6 +522,10 @@ impl Map {
     }
 
     #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        clippy::unwrap_used,
+        reason = "test-support helper may panic to surface setup failures"
+    )]
     pub(crate) fn test_insert_pair(
         &self,
         local_addr: SocketAddr,

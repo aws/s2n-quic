@@ -11,7 +11,7 @@ pub trait Provider: 'static {
     fn start(self) -> Result<Self::Generator, Self::Error>;
 }
 
-pub use self::rand::{Provider as Default, Random, ReseedingRng};
+pub use self::rand::{Provider as Default, Random};
 
 impl_provider_utils!();
 
