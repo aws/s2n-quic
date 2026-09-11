@@ -715,6 +715,105 @@ fn bimodal_jumbo_not_supported() -> Result<()> {
     Ok(())
 }
 
+// Verifies the bimodal success path end-to-end: when the network supports jumbo frames,
+// the single max-sized probe is acked and both sides confirm the MTU at the max (no
+// fallback, and only that one probe is sent).
+#[test]
+fn bimodal_jumbo_supported() -> Result<()> {
+    // Endpoints allow jumbo and the network carries it, so the max probe succeeds.
+    const BASE_MTU: u16 = 1450;
+    const MAX_MTU: u16 = 9000;
+    const NETWORK_MAX_UDP_PAYLOAD: u16 = 9000;
+    // Max MTU minus IPv4 + UDP headers.
+    const EXPECTED_MTU: u16 = MAX_MTU - 28;
+
+    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let server = Server::builder()
+        .with_tls(server_tls)?
+        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
+
+    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
+    let client = Client::builder()
+        .with_tls(client_tls)?
+        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+    let model = Model::default();
+    let rtt = Duration::from_millis(100);
+    model.set_delay(rtt / 2);
+    // The network carries the full jumbo probe, so it is acked and confirmed.
+    model.set_max_udp_payload(NETWORK_MAX_UDP_PAYLOAD);
+
+    let server_subscriber = DcRecorder::new();
+    let server_events = server_subscriber.clone();
+    let client_subscriber = DcRecorder::new();
+    let client_events = client_subscriber.clone();
+
+    test(model.clone(), |handle| {
+        // Jumbo max MTU with base/initial at BASE_MTU so probing is enabled (base < max).
+        let mtu_io = |handle: &s2n_quic::provider::io::testing::Handle| {
+            handle
+                .builder()
+                .with_base_mtu(BASE_MTU)
+                .with_initial_mtu(BASE_MTU)
+                .with_max_mtu(MAX_MTU)
+                .build()
+        };
+
+        let mut server = server
+            .with_io(mtu_io(handle)?)?
+            .with_event((
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (tracing_events(true, model.clone()), server_subscriber),
+            ))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        let addr = server.local_addr()?;
+
+        spawn(async move {
+            if let Some(mut conn) = server.accept().await {
+                assert!(dc::ConfirmComplete::wait_ready(&mut conn).await.is_ok());
+                dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            }
+        });
+
+        let client = client
+            .with_io(mtu_io(handle)?)?
+            .with_event((
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (tracing_events(true, model.clone()), client_subscriber),
+            ))?
+            .with_random(Random::with_seed(456))?
+            .start()?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(addr)
+                .with_server_name("localhost")
+                .with_deduplicate(true);
+            let mut conn = client.connect(connect).await.unwrap();
+            assert!(dc::ConfirmComplete::wait_ready(&mut conn).await.is_ok());
+            dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            delay(Duration::from_millis(100)).await;
+        });
+
+        Ok(addr)
+    })
+    .unwrap();
+
+    // Both sides must complete their MTU search at the jumbo max, not the base.
+    let client_mtu_events = client_events.mtu_updated_events.lock().unwrap().clone();
+    let server_mtu_events = server_events.mtu_updated_events.lock().unwrap().clone();
+    assert_mtu_probing_completed(&client_mtu_events, EXPECTED_MTU);
+    assert_mtu_probing_completed(&server_mtu_events, EXPECTED_MTU);
+
+    // The max size is the only size probed, so a successful search sends few probes.
+    const MAX_PROBES: usize = 3;
+    assert!(client_events.mtu_probe_packets_sent() <= MAX_PROBES);
+    assert!(server_events.mtu_probe_packets_sent() <= MAX_PROBES);
+
+    Ok(())
+}
+
 // Bimodal search runs only after the handshake, so it must not affect handshake latency.
 // The DC handshake should still complete at the usual RTT multiples (client 2 RTT, server 2.5 RTT).
 #[test]
@@ -747,6 +846,10 @@ fn bimodal_no_handshake_delay() -> Result<()> {
     let client_complete = client_dc.last().unwrap().timestamp.duration_since_start();
     let server_complete = server_dc.last().unwrap().timestamp.duration_since_start();
 
+    // The dc handshake completes in 2 round trips. The client reaches Complete at 2 RTT.
+    // The server is half an RTT behind since the client's Initial takes 0.5 RTT to arrive,
+    // so it reaches Complete at 2.5 RTT. These are the same timings a non-bimodal DC
+    // connection sees, so matching them shows bimodal adds no handshake latency.
     assert_eq!(
         client_complete,
         rtt * 2,
