@@ -45,6 +45,32 @@ use s2n_quic_core::{
 
 // Ensure there is a gap between skipped packet numbers
 const MIN_SKIP_COUNTER_VALUE: u32 = MAX_BURST_PACKETS * 3;
+const APPLICATION_INVALID_FRAME_ERROR: &str = "invalid frame in application space";
+
+fn validate_new_token_frame(
+    endpoint_type: endpoint::Type,
+    frame: &NewToken,
+) -> Result<(), transport::Error> {
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
+    //# A server MUST treat receipt of a NEW_TOKEN frame as a connection
+    //# error of type PROTOCOL_VIOLATION.
+    if endpoint_type.is_server() {
+        return Err(transport::Error::PROTOCOL_VIOLATION
+            .with_reason(APPLICATION_INVALID_FRAME_ERROR)
+            .with_frame_type(frame.tag().into()));
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
+    //# A client MUST treat receipt of a NEW_TOKEN frame with an empty Token
+    //# field as a connection error of type FRAME_ENCODING_ERROR.
+    if frame.token.is_empty() {
+        return Err(transport::Error::FRAME_ENCODING_ERROR
+            .with_reason("empty Token field")
+            .with_frame_type(frame.tag().into()));
+    }
+
+    Ok(())
+}
 
 pub struct ApplicationSpace<Config: endpoint::Config> {
     /// Transmission Packet numbers
@@ -822,7 +848,7 @@ impl<Config: endpoint::Config> recovery::Context<Config> for RecoveryContext<'_,
 }
 
 impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> {
-    const INVALID_FRAME_ERROR: &'static str = "invalid frame in application space";
+    const INVALID_FRAME_ERROR: &'static str = APPLICATION_INVALID_FRAME_ERROR;
 
     /// Signals the connection was previously blocked by anti-amplification limits
     /// but is now no longer limited.
@@ -980,17 +1006,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     }
 
     fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), transport::Error> {
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
-        //# A server MUST treat receipt
-        //# of a NEW_TOKEN frame as a connection error of type
-        //# PROTOCOL_VIOLATION.
-        if Config::ENDPOINT_TYPE.is_server() {
-            return Err(transport::Error::PROTOCOL_VIOLATION
-                .with_reason(Self::INVALID_FRAME_ERROR)
-                .with_frame_type(frame.tag().into()));
-        }
-        // TODO add support for the NEW_TOKEN_FRAME on the client
-        Ok(())
+        validate_new_token_frame(Config::ENDPOINT_TYPE, &frame)
     }
 
     fn handle_new_connection_id_frame<Pub: event::ConnectionPublisher>(
@@ -1181,6 +1197,29 @@ mod tests {
     use crate::path::testing::helper_path_server;
     use bolero::check;
     use s2n_quic_core::random;
+
+    #[test]
+    fn new_token_validation() {
+        use s2n_quic_core::endpoint::Type;
+
+        let valid = NewToken { token: b"token" };
+        let empty = NewToken { token: b"" };
+
+        assert_eq!(validate_new_token_frame(Type::Client, &valid), Ok(()));
+
+        let error = validate_new_token_frame(Type::Client, &empty).unwrap_err();
+        assert_eq!(error.code, transport::Error::FRAME_ENCODING_ERROR.code);
+        assert_eq!(error.frame_type.as_u64(), 0x07);
+        assert_eq!(error.reason, "empty Token field");
+
+        for frame in [&valid, &empty] {
+            let error = validate_new_token_frame(Type::Server, frame).unwrap_err();
+
+            assert_eq!(error.code, transport::Error::PROTOCOL_VIOLATION.code);
+            assert_eq!(error.frame_type.as_u64(), 0x07);
+            assert_eq!(error.reason, APPLICATION_INVALID_FRAME_ERROR);
+        }
+    }
 
     #[test]
     fn fuzz_arm_skip_counter() {
