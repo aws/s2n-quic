@@ -26,6 +26,10 @@ on:
         default: '4.4.2'
         type: string
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Updating status is relatively safe (doesnt modify source code) and caution
 # should be taken before adding more permissions.
 permissions:
