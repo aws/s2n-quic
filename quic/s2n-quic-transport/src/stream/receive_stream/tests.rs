@@ -1757,12 +1757,35 @@ fn stop_sending_releases_outstanding_connection_flow_control_credits() {
     // Call stop_sending - this simulates the Drop path.
     // The receive buffer should be reset AND the outstanding flow control
     // credits should be released back to the connection.
-    assert!(test_env
-        .stop_sending(ApplicationErrorCode::UNKNOWN)
-        .is_ok());
+    assert!(test_env.stop_sending(ApplicationErrorCode::UNKNOWN).is_ok());
 
-    // After stop_sending, the full desired connection flow control window
-    // should be available again because all credits were released.
+    // The released credits have to reach the peer as a MAX_DATA frame, otherwise
+    // it stays blocked on a window which this stream no longer holds. The
+    // connection flow controller transmits before the stream does.
+    test_env.assert_write_frames(2);
+
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::MaxData(MaxData {
+            maximum_data: VarInt::new(
+                test_env_config.initial_connection_receive_window_size + 2000
+            )
+            .unwrap(),
+        }),
+        sent_frame.as_frame()
+    );
+
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::StopSending(StopSending {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: ApplicationErrorCode::UNKNOWN.into(),
+        }),
+        sent_frame.as_frame()
+    );
+
+    // Cross-check the accounting which produced that MAX_DATA: the full desired
+    // connection flow control window is available again.
     assert_eq!(
         VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
         Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
@@ -1777,17 +1800,12 @@ fn stop_sending_releases_credits_for_data_arriving_in_stopping_state() {
     // Feed 2000 bytes of data — stream acquires connection flow control credits
     test_env.feed_data(VarInt::from_u32(0), 2000);
     assert_eq!(
-        VarInt::new(
-            test_env_config.initial_connection_receive_window_size - 2000,
-        )
-        .unwrap(),
+        VarInt::new(test_env_config.initial_connection_receive_window_size - 2000).unwrap(),
         Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
     );
 
     // STOP_SENDING releases outstanding credits
-    assert!(test_env
-        .stop_sending(ApplicationErrorCode::UNKNOWN)
-        .is_ok());
+    assert!(test_env.stop_sending(ApplicationErrorCode::UNKNOWN).is_ok());
     assert_eq!(
         VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
         Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
@@ -1813,13 +1831,37 @@ fn stop_sending_releases_credits_for_data_arriving_in_stopping_state() {
         )
         .is_ok());
 
-    // Connection flow control window should be fully available again
+    // All 3000 bytes have to reach the peer as a single MAX_DATA: the 2000 which
+    // were buffered before STOP_SENDING and the 1000 which arrived afterwards.
+    test_env.assert_write_frames(2);
+
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::MaxData(MaxData {
+            maximum_data: VarInt::new(
+                test_env_config.initial_connection_receive_window_size + 3000
+            )
+            .unwrap(),
+        }),
+        sent_frame.as_frame()
+    );
+
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::StopSending(StopSending {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: ApplicationErrorCode::UNKNOWN.into(),
+        }),
+        sent_frame.as_frame()
+    );
+
+    // Cross-check the accounting which produced that MAX_DATA: the connection
+    // flow control window is fully available again and the data which arrived
+    // while stopping was accounted for.
     assert_eq!(
         VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
         Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
     );
-
-    // consumed_window must increase to reflect the additional data
     assert_eq!(
         consumed_before + VarInt::from_u32(1000),
         test_env.rx_connection_flow_controller.consumed_window()
@@ -2074,17 +2116,16 @@ fn stop_sending_releases_credits_when_all_data_received_but_not_consumed() {
     assert!(test_env
         .stream
         .on_data(
-            &stream_data(
-                test_env.stream.stream_id,
-                VarInt::from_u32(2000),
-                &[],
-                true
-            ),
+            &stream_data(test_env.stream.stream_id, VarInt::from_u32(2000), &[], true),
             &mut events,
         )
         .is_ok());
     assert!(
-        test_env.stream.receive_stream.receive_buffer.is_writing_complete(),
+        test_env
+            .stream
+            .receive_stream
+            .receive_buffer
+            .is_writing_complete(),
         "all data should be received"
     );
 
@@ -2095,11 +2136,25 @@ fn stop_sending_releases_credits_when_all_data_received_but_not_consumed() {
     );
 
     // Call stop_sending - hits the is_writing_complete() branch
-    assert!(test_env
-        .stop_sending(ApplicationErrorCode::UNKNOWN)
-        .is_ok());
+    assert!(test_env.stop_sending(ApplicationErrorCode::UNKNOWN).is_ok());
 
-    // Credits must be released
+    // All data was already received, so no STOP_SENDING is pending - the only
+    // thing the peer still needs to learn about is the 2000 bytes buffered on
+    // this stream, which are returned through a MAX_DATA frame.
+    test_env.assert_write_frames(1);
+
+    let mut sent_frame = test_env.sent_frames.pop_front().expect("Frame is written");
+    assert_eq!(
+        Frame::MaxData(MaxData {
+            maximum_data: VarInt::new(
+                test_env_config.initial_connection_receive_window_size + 2000
+            )
+            .unwrap(),
+        }),
+        sent_frame.as_frame()
+    );
+
+    // Cross-check the accounting which produced that MAX_DATA
     assert_eq!(
         VarInt::from_u32(test_env_config.desired_connection_flow_control_window),
         Into::<u64>::into(test_env.rx_connection_flow_controller.remaining_window())
@@ -2677,4 +2732,3 @@ fn receiving_into_non_empty_buffers_returns_an_error() {
         "data should not be lost when returning an error"
     );
 }
-
