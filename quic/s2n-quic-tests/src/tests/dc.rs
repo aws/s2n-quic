@@ -585,37 +585,6 @@ fn mtu_probing_complete_frame_exchange_jumbo_mtu_test() -> Result<()> {
     Ok(())
 }
 
-// Verifies that the bimodal MTU search keeps probe traffic low.
-// Bimodal probes only the max size, so it sends at most MAX_PROBES (3) probe packets
-#[test]
-fn bimodal_probe_reduction() -> Result<()> {
-    let server_tls = build_server_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let server = Server::builder()
-        .with_tls(server_tls)?
-        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?;
-
-    let client_tls = build_client_mtls_provider(certificates::MTLS_CA_CERT)?;
-    let client = Client::builder()
-        .with_tls(client_tls)?
-        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
-
-    let (client_events, server_events) = self_test(server, client, true, None, None, true)?;
-
-    const MAX_PROBES: usize = 3;
-    let client_probes = client_events.mtu_probe_packets_sent();
-    let server_probes = server_events.mtu_probe_packets_sent();
-    assert!(
-        client_probes <= MAX_PROBES,
-        "client sent {client_probes} MTU probe packets, expected at most {MAX_PROBES}"
-    );
-    assert!(
-        server_probes <= MAX_PROBES,
-        "server sent {server_probes} MTU probe packets, expected at most {MAX_PROBES}"
-    );
-
-    Ok(())
-}
-
 // Verifies the bimodal fallback end-to-end: when the network cannot support the max probe,
 // bimodal search falls back to the base MTU and the connection still completes.
 #[test]
@@ -649,6 +618,7 @@ fn bimodal_jumbo_not_supported() -> Result<()> {
     let client_events = client_subscriber.clone();
 
     test(model.clone(), |handle| {
+        let metrics = aggregate::testing::Registry::snapshot();
         // Jumbo max MTU with base/initial at BASE_MTU so probing is enabled (base < max).
         let mtu_io = |handle: &s2n_quic::provider::io::testing::Handle| {
             handle
@@ -663,7 +633,10 @@ fn bimodal_jumbo_not_supported() -> Result<()> {
             .with_io(mtu_io(handle)?)?
             // with_blocklist=false: the failed jumbo probes are dropped on purpose.
             .with_event((
-                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (
+                    (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                    metrics.subscriber("server"),
+                ),
                 (tracing_events(false, model.clone()), server_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
@@ -681,7 +654,10 @@ fn bimodal_jumbo_not_supported() -> Result<()> {
         let client = client
             .with_io(mtu_io(handle)?)?
             .with_event((
-                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (
+                    (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                    metrics.subscriber("client"),
+                ),
                 (tracing_events(false, model.clone()), client_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
@@ -707,10 +683,11 @@ fn bimodal_jumbo_not_supported() -> Result<()> {
     assert_mtu_probing_completed(&client_mtu_events, EXPECTED_MTU);
     assert_mtu_probing_completed(&server_mtu_events, EXPECTED_MTU);
 
-    // Fallback still stays within the bimodal probe budget.
+    // Bimodal retries the max-sized probe MAX_PROBES times before giving up, confirming
+    // the path really can't carry it, then drops to base. Each side should send exactly MAX_PROBES probes.
     const MAX_PROBES: usize = 3;
-    assert!(client_events.mtu_probe_packets_sent() <= MAX_PROBES);
-    assert!(server_events.mtu_probe_packets_sent() <= MAX_PROBES);
+    assert_eq!(MAX_PROBES, client_events.mtu_probe_packets_sent());
+    assert_eq!(MAX_PROBES, server_events.mtu_probe_packets_sent());
 
     Ok(())
 }
@@ -749,6 +726,7 @@ fn bimodal_jumbo_supported() -> Result<()> {
     let client_events = client_subscriber.clone();
 
     test(model.clone(), |handle| {
+        let metrics = aggregate::testing::Registry::snapshot();
         // Jumbo max MTU with base/initial at BASE_MTU so probing is enabled (base < max).
         let mtu_io = |handle: &s2n_quic::provider::io::testing::Handle| {
             handle
@@ -762,7 +740,10 @@ fn bimodal_jumbo_supported() -> Result<()> {
         let mut server = server
             .with_io(mtu_io(handle)?)?
             .with_event((
-                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (
+                    (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                    metrics.subscriber("server"),
+                ),
                 (tracing_events(true, model.clone()), server_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
@@ -780,7 +761,10 @@ fn bimodal_jumbo_supported() -> Result<()> {
         let client = client
             .with_io(mtu_io(handle)?)?
             .with_event((
-                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (
+                    (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                    metrics.subscriber("client"),
+                ),
                 (tracing_events(true, model.clone()), client_subscriber),
             ))?
             .with_random(Random::with_seed(456))?
@@ -806,10 +790,10 @@ fn bimodal_jumbo_supported() -> Result<()> {
     assert_mtu_probing_completed(&client_mtu_events, EXPECTED_MTU);
     assert_mtu_probing_completed(&server_mtu_events, EXPECTED_MTU);
 
-    // The max size is the only size probed, so a successful search sends few probes.
-    const MAX_PROBES: usize = 3;
-    assert!(client_events.mtu_probe_packets_sent() <= MAX_PROBES);
-    assert!(server_events.mtu_probe_packets_sent() <= MAX_PROBES);
+    // The max size is the only size probed and it is acked on the first try, so each side
+    // sends exactly one probe - no retries or bisection needed on a supported jumbo path.
+    assert_eq!(1, client_events.mtu_probe_packets_sent());
+    assert_eq!(1, server_events.mtu_probe_packets_sent());
 
     Ok(())
 }
