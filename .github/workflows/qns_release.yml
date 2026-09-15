@@ -14,6 +14,10 @@ on:
 
 name: release
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   id-token: write # This is required for requesting the JWT (used for docker push to AWS ECR)
   contents: read  # This is required for actions/checkout
