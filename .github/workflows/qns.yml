@@ -27,6 +27,10 @@ env:
   LOG_URL: logs/latest/SERVER_CLIENT/TEST/index.html
   CI_ARTIFACTS_BUCKET: s2n-quic-ci-artifacts
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
 #
