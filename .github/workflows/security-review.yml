@@ -139,7 +139,8 @@ jobs:
           publish="$(./.github/scripts/security-review-workflow.sh reconcile "$PR_NUMBER" "$REPOSITORY")"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
-      # REVIEW_STATUS is finer-grained than CodeBuild's own success/failure status.
+      # REVIEW_STATUS and REVIEW_FINDINGS_COUNT distinguish blocking,
+      # non-blocking-only, and clean reviews from CodeBuild's success status.
       - name: Publish security review status
         if: always() && steps.security_review.outputs.result != '' && steps.reconcile.outputs.publish == 'true'
         env:
