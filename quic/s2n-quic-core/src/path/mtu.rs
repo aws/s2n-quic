@@ -605,6 +605,12 @@ impl Controller {
     #[inline]
     pub fn enable_bimodal_search(&mut self) {
         self.bimodal_search = true;
+
+        // If a search was already requested (e.g. `enable()` ran first and picked a
+        // binary-search midpoint), refresh the probed size so bimodal probes the max.
+        if self.state == State::SearchRequested {
+            self.update_probed_size();
+        }
     }
 
     /// Enable path MTU probing

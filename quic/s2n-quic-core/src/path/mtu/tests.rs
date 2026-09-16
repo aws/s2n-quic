@@ -1069,6 +1069,22 @@ fn on_transmit_probe() {
     assert_eq!(State::Searching(packet_number, now), controller.state);
 }
 
+// If bimodal is enabled after a search was already requested, the probed size updates to the max.
+#[test]
+fn bimodal_enabled_after_enable_probes_max() {
+    let mut controller = new_controller(8940);
+    let max_udp_payload = controller.max_udp_payload;
+
+    // enable() first: the search is requested with a binary-search midpoint probe size.
+    controller.enable();
+    assert_eq!(State::SearchRequested, controller.state);
+    assert_ne!(max_udp_payload, controller.probed_size);
+
+    // Enabling bimodal afterwards must snap the probed size to the max.
+    controller.enable_bimodal_search();
+    assert_eq!(max_udp_payload, controller.probed_size);
+}
+
 #[test]
 fn bimodal_jumbo_acked() {
     let mut controller = new_controller(8940);
