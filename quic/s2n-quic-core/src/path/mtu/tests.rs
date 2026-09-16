@@ -1125,6 +1125,8 @@ fn bimodal_falls_back_to_base() {
     assert_eq!(State::SearchComplete, controller.state);
 }
 
+// TODO: Update this test once bimodal_search is enabled through MtuConfig
+// and if we prohibit an initial MTU configuration between base and max.
 #[test]
 fn bimodal_falls_back_from_odd_initial_mtu() {
     let addr: SocketAddr = "127.0.0.1:443".parse().unwrap();

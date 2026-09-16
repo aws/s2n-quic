@@ -549,7 +549,7 @@ impl Controller {
         {
             // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
             // instead try probing for an MTU larger than the Ethernet MTU
-            Self::next_probe_size(plpmtu, max_udp_payload)
+            Self::next_binary_search_probe_size(plpmtu, max_udp_payload)
         } else {
             // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
             // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
@@ -792,8 +792,8 @@ impl Controller {
                             search_complete: true,
                         });
 
-                        // Return MtuUpdated so the caller notifies the congestion
-                        // controller and DC manager that the MTU dropped to the base.
+                        // Return MtuUpdated so the caller notifies the
+                        // DC manager that the MTU dropped to the base.
                         return MtuResult::MtuUpdated(self.plpmtu);
                     } else {
                         self.max_probe_size = self.probed_size;
@@ -870,13 +870,13 @@ impl Controller {
         self.probed_size = if self.bimodal_search {
             self.max_probe_size
         } else {
-            Self::next_probe_size(self.plpmtu, self.max_probe_size)
+            Self::next_binary_search_probe_size(self.plpmtu, self.max_probe_size)
         };
     }
 
     /// Calculates the next probe size as halfway from the current to the max size
     #[inline]
-    fn next_probe_size(current: u16, max: u16) -> u16 {
+    fn next_binary_search_probe_size(current: u16, max: u16) -> u16 {
         current + ((max - current) / 2)
     }
 
