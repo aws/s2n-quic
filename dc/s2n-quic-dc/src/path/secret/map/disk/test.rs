@@ -35,13 +35,11 @@ fn roundtrip_with(
     current_epoch: Epoch,
     configure: impl FnOnce(SerializerBuilder) -> SerializerBuilder,
 ) -> (SystemTime, Vec<DiskEntry>) {
-    let weak: Vec<Weak<Entry>> = entries.iter().map(Arc::downgrade).collect();
-
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("secrets");
 
     let serializer = configure(Serializer::builder(&path)).build().unwrap();
-    serializer.serialize(&weak, current_epoch).unwrap();
+    serializer.serialize(entries, current_epoch).unwrap();
 
     let entries = deserialize(serializer.path()).unwrap();
     let started_at = entries.started_at;
@@ -197,7 +195,6 @@ fn max_size_stops_adding_entries() {
         .map(|i| SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, i as u8), i)))
         .collect();
     let entries: Vec<Arc<Entry>> = peers.iter().map(|peer| Entry::fake(*peer, None)).collect();
-    let weak: Vec<Weak<Entry>> = entries.iter().map(Arc::downgrade).collect();
 
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("secrets");
@@ -206,7 +203,7 @@ fn max_size_stops_adding_entries() {
     // Prefix is HEADER + VERSION + 8-byte timestamp; allow ~3 more entries' worth of room.
     let prefix = (HEADER.len() + VERSION.len() + 8) as u64;
     serializer
-        .serialize_with_max_size(&weak, Epoch(0), prefix + 20)
+        .serialize_with_max_size(&entries, Epoch(0), prefix + 20)
         .unwrap();
 
     let decoded: Vec<DiskEntry> = deserialize(serializer.path())

@@ -11,7 +11,7 @@ use std::{
     io::{self, BufWriter, Read, Write},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
-    sync::{Mutex, Weak},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
@@ -240,14 +240,14 @@ impl Serializer {
     /// Writes the entries in `entries` to the configured path, filtering by recency of access
     /// relative to `current_epoch`.
     ///
-    /// `entries` is iterated and any still-live entry passing the recency filter is written.
+    /// `entries` is iterated in order and any entry passing the recency filter is written.
     /// Returns the number of entries written and the resulting file size.
     ///
     /// This is `pub(crate)` because it references the crate-internal [`Entry`] and [`Epoch`] types;
     /// callers outside the crate drive serialization through the path secret map builder instead.
-    pub(crate) fn serialize(
+    pub(crate) fn serialize<'a>(
         &self,
-        entries: &[Weak<Entry>],
+        entries: impl IntoIterator<Item = &'a Arc<Entry>>,
         current_epoch: Epoch,
     ) -> io::Result<SerializeStats> {
         self.serialize_with_max_size(entries, current_epoch, MAX_SERIALIZED_SIZE)
@@ -255,9 +255,9 @@ impl Serializer {
 
     /// As [`Serializer::serialize`], but stops adding entries once the file grows past `max_size`.
     /// Exposed separately so tests can exercise the size cap without writing tens of megabytes.
-    fn serialize_with_max_size(
+    fn serialize_with_max_size<'a>(
         &self,
-        entries: &[Weak<Entry>],
+        entries: impl IntoIterator<Item = &'a Arc<Entry>>,
         current_epoch: Epoch,
         max_size: u64,
     ) -> io::Result<SerializeStats> {
@@ -284,17 +284,13 @@ impl Serializer {
         output.write_all(&started_at.to_le_bytes())?;
 
         let mut written = 0;
-        for entry in entries.iter() {
+        for entry in entries {
             // Stop adding new entries once the file has grown past the maximum serialized size.
             // Entries are tiny (tens of bytes) relative to the margin we keep below MAX_FILE_SIZE,
             // so checking after the fact rather than predicting each entry's size is fine.
             if output.bytes_written() > max_size {
                 break;
             }
-
-            let Some(entry) = entry.upgrade() else {
-                continue;
-            };
 
             // Skip entries idle for longer than the configured window.
             if min_epoch.is_some_and(|min| entry.accessed_at_epoch().get() < min) {

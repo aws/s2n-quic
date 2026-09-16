@@ -12,6 +12,10 @@ env:
   CDN: https://dnglbrstg7yg.cloudfront.net
   CI_ARTIFACTS_BUCKET: s2n-quic-ci-artifacts
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # By default depandabot only receives read permissions. Explicitly give it write
 # permissions which is needed by the ouzi-dev/commit-status-updater task.
 #
@@ -47,7 +51,7 @@ jobs:
         with:
           folder: target/book
 
-      - uses: aws-actions/configure-aws-credentials@v6.2.3
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
         if: github.event_name == 'push' || github.repository == github.event.pull_request.head.repo.full_name
         with:
           role-to-assume: arn:aws:iam::024603541914:role/GitHubOIDCRole

@@ -19,6 +19,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use std::{
+    cmp::Reverse,
     collections::VecDeque,
     hash::BuildHasher,
     mem::ManuallyDrop,
@@ -614,32 +615,31 @@ where
             return Ok(());
         };
 
-        // Clone the weak references out under the lock so we don't hold it across the write.
-        let mut entries: Vec<Weak<Entry>> = {
+        // Snapshot the live entries under the lock so we don't hold it across the write. The sort
+        // key is captured here too: `accessed_at_epoch` can change concurrently, and sorting on a
+        // key that changes mid-sort violates the total order the sort requires (and may panic).
+        let mut entries: Vec<(Reverse<u64>, Arc<Entry>)> = {
             let queue = self
                 .eviction_queue
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            queue.iter().cloned().collect()
+            queue
+                .iter()
+                .filter_map(|weak| {
+                    let entry = weak.upgrade()?;
+                    Some((Reverse(entry.accessed_at_epoch().get()), entry))
+                })
+                .collect()
         };
 
         // Order by access recency (newest first), so the most-active peers come first regardless
-        // of when they were created.
-        //
-        // Caching the key is required for correctness, not just speed: entries are still live and
-        // `accessed_at_epoch` can change concurrently (and `upgrade()` can start failing) while we
-        // sort. Recomputing the key on every comparison would then violate the total order the
-        // sort requires, which is allowed to panic. Caching reads each key exactly once, sorting a
-        // consistent snapshot.
-        entries.sort_by_cached_key(|weak| {
-            core::cmp::Reverse(
-                weak.upgrade()
-                    .map_or(0, |entry| entry.accessed_at_epoch().get()),
-            )
-        });
+        // of when they were created. The sort is stable, so peers with the same access epoch keep
+        // their eviction-queue (creation) order.
+        entries.sort_by_key(|(recency, _)| *recency);
 
         let start = self.clock.get_time();
-        let result = serializer.serialize(&entries, self.cleaner.epoch());
+        let result =
+            serializer.serialize(entries.iter().map(|(_, entry)| entry), self.cleaner.epoch());
         let duration = self.clock.get_time().saturating_duration_since(start);
 
         let (entries_written, file_size) = match &result {
