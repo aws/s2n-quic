@@ -405,6 +405,30 @@ impl ReceiveStream {
                 ref mut missing_data,
                 ..
             } => {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# The receiver MUST use the final size of the stream to
+                //# account for all bytes sent on the stream in its connection level flow
+                //# controller.
+
+                // If we don't know the final size then try acquiring flow control
+                // for any data that arrived before the peer processed STOP_SENDING.
+                if self.receive_buffer.final_size().is_none() {
+                    let data_end = frame
+                        .offset
+                        .checked_add_usize(frame.data.len())
+                        .ok_or_else(|| {
+                            transport::Error::FLOW_CONTROL_ERROR
+                                .with_reason("data size overflow")
+                                .with_frame_type(frame.tag().into())
+                        })?;
+                    self.flow_controller
+                        .acquire_window_up_to(data_end, frame.tag().into())?;
+                }
+
+                // Release any outstanding credits immediately since the data
+                // will not be consumed by the application on this stream.
+                self.flow_controller.release_outstanding_window();
+
                 if missing_data.on_data(frame).is_ready() {
                     self.stop_sending_sync.stop_sync();
                     self.final_state_observed = true;
@@ -762,14 +786,12 @@ impl ReceiveStream {
                     self.state = ReceiveStreamState::DataRead;
                     self.final_state_observed = true;
                     response.status = ops::Status::Finished;
-                    return Ok(response);
                 }
                 // If we've already buffered everything, transition to the final state
                 ReceiveStreamState::Receiving if self.receive_buffer.is_writing_complete() => {
                     self.state = ReceiveStreamState::DataRead;
                     self.final_state_observed = true;
                     response.status = ops::Status::Finished;
-                    return Ok(response);
                 }
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-3.5
                 //# If the stream is in the "Recv" or "Size Known" states, the transport
@@ -785,6 +807,8 @@ impl ReceiveStream {
                         error,
                         missing_data,
                     };
+
+                    response.status = ops::Status::Reset(error);
                 }
             }
 
@@ -795,9 +819,11 @@ impl ReceiveStream {
             // space which had been allocated but not used
             self.receive_buffer.reset();
 
-            // Mark the stream as reset. Note that the request doesn't have a flush so there's
-            // currently no way to wait for the reset to be acknowledged.
-            response.status = ops::Status::Reset(error);
+            // Stop synchronizing the stream flow control window and release all
+            // outstanding connection flow control credits so that other streams
+            // are not starved.
+            self.flow_controller.stop_sync();
+            self.flow_controller.release_outstanding_window();
 
             return Ok(response);
         }
