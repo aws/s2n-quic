@@ -19,10 +19,12 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
 
 mod cleaner;
+mod collector;
 mod disk;
 mod entry;
 pub mod handshake;
 mod peer;
+mod persist;
 mod rehandshake;
 mod size_of;
 mod state;
@@ -35,8 +37,12 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
+#[cfg(any(test, feature = "testing"))]
+pub use collector::CollectedBuilder;
+pub use collector::{CollectRequest, Collected, EntryConsumer};
 pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
+pub use persist::{InsertPersistedError, RestoreDisposition, RestoreParams};
 use state::StateBuilderError;
 use store::Store;
 
@@ -123,6 +129,29 @@ where
         self
     }
 
+    /// Registers an [`EntryConsumer`], which receives live entries gathered by the cleaner.
+    ///
+    /// The consumer is consulted once per cleaner cycle (roughly once a minute) to ask what it
+    /// wants, and handed a batch after the eviction queue mutex is released. See
+    /// [`EntryConsumer`] for the ordering and cost guarantees.
+    ///
+    /// At most one consumer per map; a second call replaces the first.
+    pub fn with_entry_consumer(mut self, consumer: Arc<dyn EntryConsumer>) -> Self {
+        self.inner = self.inner.with_entry_consumer(consumer);
+        self
+    }
+
+    /// Builds the map without spawning the background cleaner thread.
+    ///
+    /// For tests and benchmarks that drive the cleaner synchronously via [`Map::run_cleaner_once`]:
+    /// the thread is never started, rather than started and immediately stopped, so no background
+    /// cycle can race the caller. A production map always runs its cleaner.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn without_cleaner_thread(mut self) -> Self {
+        self.inner = self.inner.without_cleaner_thread();
+        self
+    }
+
     /// Builds the [`Map`].
     pub fn build(self) -> Result<Map, MapBuilderError> {
         Ok(Map {
@@ -189,6 +218,29 @@ impl Map {
 
     pub fn drop_state(&self) {
         self.store.drop_state();
+    }
+
+    /// Restores a single entry from a persisted blob, inserting it into both indexes and the
+    /// eviction queue.
+    ///
+    /// `bytes` is a blob produced by [`Entry::to_persisted_bytes`] and carried across a restart by
+    /// the embedding application. The map does not interpret the blob's contents beyond this crate.
+    /// `application_data` is the value the application resolved for this entry: the map does not
+    /// persist application data (it is opaque to the map), so the caller supplies it here -- pass
+    /// `None` for an entry that had none. `params` carries the caller's tunable restore advance (see
+    /// [`RestoreParams`]); the security floors are enforced regardless of what is passed.
+    ///
+    /// The security-critical restore transforms -- advancing the sender and receiver counters so no
+    /// key material is reused, and rebuilding the creation-time clock -- are applied inside this
+    /// call. A malformed blob returns an [`InsertPersistedError`] rather than panicking, so a
+    /// corrupt file cannot prevent startup; the worst case is a smaller restored map.
+    pub fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<entry::Entry>, InsertPersistedError> {
+        self.store.insert_persisted(bytes, application_data, params)
     }
 
     /// Serializes the current map to disk using the serializer configured at construction.
@@ -350,6 +402,18 @@ impl Map {
         }
     }
 
+    /// Sends an already-encoded secret control packet in `buffer` to `dst` using the map's
+    /// control socket, emitting the corresponding packet-sent metric (e.g.
+    /// `UnknownPathSecretPacketSent`).
+    ///
+    /// `buffer` should contain a fully-encoded secret control packet, such as the one written
+    /// into the `control_out` buffer by [`Map::open_once`],
+    /// [`Map::open_once_with_application_data`], and related methods when the path secret is
+    /// unknown. Sending is best-effort: if the map has no control socket the packet is dropped.
+    pub fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]) {
+        self.store.send_control_packet(dst, buffer);
+    }
+
     pub fn handle_stale_key_packet<'a>(
         &self,
         packet: &'a control::stale_key::Packet,
@@ -435,6 +499,25 @@ impl Map {
         self.store.test_stop_cleaner();
     }
 
+    /// Stops the background cleaner thread.
+    ///
+    /// For the B0 validation harness: stop the periodic cleaner so a manually driven
+    /// [`Map::run_cleaner_once`] pass runs in isolation.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn stop_cleaner(&self) {
+        self.store.test_stop_cleaner();
+    }
+
+    /// Runs a single cleaner pass synchronously.
+    ///
+    /// For the B0 validation harness; call [`Map::stop_cleaner`] first so the background thread does
+    /// not race the pass. Drives one `clean()`, which asks any registered `EntryConsumer` for a
+    /// batch and delivers it.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn run_cleaner_once(&self) {
+        self.store.run_cleaner_once();
+    }
+
     #[doc(hidden)]
     #[cfg(test)]
     pub fn reset_all_senders(&self) {
@@ -443,10 +526,11 @@ impl Map {
 
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
-    pub fn test_insert(&self, peer: SocketAddr) {
+    pub fn test_insert(&self, peer: SocketAddr) -> Arc<entry::Entry> {
         let receiver = super::receiver::State::new();
         let entry = Entry::fake(peer, Some(receiver));
-        self.store.test_insert(entry);
+        self.store.test_insert(entry.clone());
+        entry
     }
 
     #[cfg(any(test, feature = "testing"))]

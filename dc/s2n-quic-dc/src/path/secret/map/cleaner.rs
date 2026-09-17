@@ -4,7 +4,7 @@
 use super::state::State;
 use crate::{
     event::{self, EndpointPublisher as _},
-    path::secret::map::store::Store,
+    path::secret::map::{collector, store::Store},
 };
 use rand::RngExt as _;
 use s2n_quic_core::time;
@@ -16,7 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
+pub(super) const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
 
 /// The cleaner loop runs roughly once per this interval. Serialization periods are expressed as a
 /// number of these cycles, and the access-time epoch advances once per cycle.
@@ -44,6 +44,11 @@ impl Epoch {
     #[inline]
     pub fn get(self) -> u64 {
         self.0
+    }
+
+    pub(crate) fn duration_since(&self, base: Epoch) -> Duration {
+        let delta = self.0.saturating_sub(base.0);
+        CLEANER_CYCLE.saturating_mul(u32::try_from(delta).unwrap_or(u32::MAX))
     }
 }
 
@@ -188,6 +193,19 @@ impl Cleaner {
         // pressure relative to the rate at which we re-handshake peers.
         let mut id_entries_in_last_hs_period = 0usize;
 
+        // Ask the consumer (if any) what it wants, and allocate its buffer, before taking the
+        // eviction queue lock. Both the dynamic call and the allocation are deliberately outside the
+        // lock: the whole point of collecting from within `retain` is to keep this work off a mutex
+        // that handshake completion also takes.
+        //
+        // `collecting` is `None` when no consumer is registered or it asked for nothing, which
+        // makes the per-entry cost inside `retain` a single `Option` check.
+        let mut collecting = state.entry_consumer.as_ref().and_then(|c| {
+            // Size the buffer from the id map rather than the queue, so we don't need the queue lock
+            // to do it. The two track each other closely; `Collector` carries slack for the drift.
+            collector::Collector::new(c.request(), state.ids.len())
+        });
+
         // We want to avoid taking long lived locks which affect gets on the maps (where we want
         // p100 latency to be in microseconds at most).
         //
@@ -267,7 +285,8 @@ impl Cleaner {
             };
 
             if !retained {
-                let (id_removed, peer_removed) = state.evict(&entry);
+                let (id_removed, peer_removed) =
+                    state.evict(&entry, event::builder::EvictionReason::Retiring);
                 if id_removed {
                     id_entries_retired += 1;
                 }
@@ -275,6 +294,20 @@ impl Cleaner {
                     address_entries_retired += 1;
                 }
                 return false;
+            }
+
+            // Collection is last, because `push` moves `entry` and everything above needs it.
+            // An entry evicted by this pass returned `false` above, so is never collected.
+            //
+            // Taking the entry is an 8-byte move into a pre-allocated buffer. The count was already
+            // incremented by the `upgrade` at the top of this closure, and moving the `Arc` out
+            // rather than dropping it here means no atomic operation at all. `push` drops the entry
+            // itself when it isn't wanted, exactly as this closure would have done.
+            //
+            // This preserves queue order, which is insertion order, because `retain` walks the
+            // `VecDeque` front to back. `EntryConsumer` documents that as a guarantee.
+            if let Some(collecting) = &mut collecting {
+                collecting.push(entry);
             }
 
             true
@@ -324,6 +357,19 @@ impl Cleaner {
                 duration: state.clock.get_time().saturating_duration_since(start),
             },
         );
+
+        // Last in the cycle, after the metrics above, so a consumer may do its work on this thread
+        // without delaying anything else here and without inflating the cleaner's own `duration`. A
+        // consumer times itself.
+        //
+        // `collecting` is `Some` exactly when the request was not `Nothing`, so a consumer that
+        // asked for something always hears back -- including with an empty batch, which is how it
+        // distinguishes "nothing matched" from "not asked".
+        if let (Some(collecting), Some(entry_consumer)) =
+            (collecting.take(), state.entry_consumer.as_ref())
+        {
+            entry_consumer.consume(collecting.finish());
+        }
     }
 
     pub fn epoch(&self) -> Epoch {

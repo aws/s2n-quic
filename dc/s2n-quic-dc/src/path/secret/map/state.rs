@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner,
+    collector::EntryConsumer,
+    disk,
+    persist::{InsertPersistedError, RestoreParams},
+    stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -65,6 +69,11 @@ where
     clock: Option<C>,
     subscriber: Option<S>,
     serializer: Option<disk::Serializer>,
+    entry_consumer: Option<Arc<dyn EntryConsumer>>,
+    /// Whether to spawn the background cleaner thread on `build`. Always true except in tests and
+    /// benchmarks that drive the cleaner themselves. Never exposed except under `testing`, so a
+    /// production map always has its cleaner.
+    spawn_cleaner: bool,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -80,6 +89,8 @@ where
             clock: None,
             subscriber: None,
             serializer: None,
+            entry_consumer: None,
+            spawn_cleaner: true,
         }
     }
 
@@ -109,6 +120,8 @@ where
             signer: self.signer,
             capacity: self.capacity,
             serializer: self.serializer,
+            entry_consumer: self.entry_consumer,
+            spawn_cleaner: self.spawn_cleaner,
         }
     }
 
@@ -120,6 +133,8 @@ where
             signer: self.signer,
             capacity: self.capacity,
             serializer: self.serializer,
+            entry_consumer: self.entry_consumer,
+            spawn_cleaner: self.spawn_cleaner,
         }
     }
 
@@ -130,6 +145,26 @@ where
     /// cleaner serializes the map periodically (jittered within the period).
     pub fn with_serializer(mut self, serializer: disk::Serializer) -> Self {
         self.serializer = Some(serializer);
+        self
+    }
+
+    /// Registers an [`EntryConsumer`], which receives live entries gathered by the cleaner.
+    ///
+    /// The cleaner asks the collector what it wants once per cycle, then hands over a batch after
+    /// releasing the eviction queue mutex. A second call replaces the first.
+    pub fn with_entry_consumer(mut self, consumer: Arc<dyn EntryConsumer>) -> Self {
+        self.entry_consumer = Some(consumer);
+        self
+    }
+
+    /// Builds the map without spawning the background cleaner thread.
+    ///
+    /// For tests and benchmarks that drive the cleaner synchronously (via `run_cleaner_once`): the
+    /// thread is never started, rather than started and immediately stopped, so there is no window
+    /// in which a background cycle can race the test. A production map always runs its cleaner.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn without_cleaner_thread(mut self) -> Self {
+        self.spawn_cleaner = false;
         self
     }
 
@@ -148,6 +183,8 @@ where
             clock,
             subscriber,
             self.serializer,
+            self.entry_consumer,
+            self.spawn_cleaner,
         )
         .map_err(StateBuilderError::Io)
     }
@@ -444,6 +481,11 @@ where
     // periodic serialization driven by the cleaner.
     pub(super) serializer: Option<disk::Serializer>,
 
+    // If set, receives live entries from the cleaner once per cycle. Consulted before the eviction
+    // queue lock is taken and handed the batch after it is released, so it never extends the time
+    // that lock is held.
+    pub(super) entry_consumer: Option<Arc<dyn EntryConsumer>>,
+
     // Avoids allocating/deallocating on each cleaner run.
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
     pub(super) cleaner_peer_seen: PeerMap,
@@ -540,6 +582,8 @@ where
         clock: C,
         subscriber: S,
         serializer: Option<disk::Serializer>,
+        entry_consumer: Option<Arc<dyn EntryConsumer>>,
+        spawn_cleaner: bool,
     ) -> std::io::Result<Arc<Self>> {
         let control_socket = control_socket();
 
@@ -559,6 +603,7 @@ where
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
             serializer,
+            entry_consumer,
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
             )?),
@@ -592,7 +637,9 @@ where
 
         let state = Arc::new(state);
 
-        state.cleaner.spawn_thread(state.clone())?;
+        if spawn_cleaner {
+            state.cleaner.spawn_thread(state.clone())?;
+        }
 
         state
             .subscriber()
@@ -643,9 +690,15 @@ where
     }
 
     // Sometimes called with queue lock held -- must not acquire it.
-    pub(super) fn evict(&self, evicted: &Arc<Entry>) -> (bool, bool) {
+    pub(super) fn evict(
+        &self,
+        evicted: &Arc<Entry>,
+        reason: event::builder::EvictionReason,
+    ) -> (bool, bool) {
         let mut id_removed = false;
         let mut peer_removed = false;
+
+        let current_epoch = self.cleaner.epoch();
 
         // A concurrent cleaner can drop the entry from the `ids` map so we need to
         // re-check whether we actually evicted something.
@@ -656,6 +709,9 @@ where
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
                     age: evicted.age(),
+                    reason: reason.clone(),
+                    time_since_last_accessed: current_epoch
+                        .duration_since(evicted.accessed_at_epoch()),
                 },
             );
         }
@@ -673,6 +729,9 @@ where
                     peer_address: SocketAddress::from(*evicted.peer()).into_event(),
                     credential_id: evicted.id().into_event(),
                     age: evicted.age(),
+                    reason,
+                    time_since_last_accessed: current_epoch
+                        .duration_since(evicted.accessed_at_epoch()),
                 },
             );
         }
@@ -836,7 +895,7 @@ where
                 drop(queue);
 
                 if let Some(evicted) = element.upgrade() {
-                    self.evict(&evicted);
+                    self.evict(&evicted, event::builder::EvictionReason::Capacity);
                 }
             }
         }
@@ -867,6 +926,7 @@ where
                     peer_address: SocketAddress::from(peer).into_event(),
                     new_credential_id: id.into_event(),
                     previous_credential_id: prev_id.into_event(),
+                    replaced_age: prev.age(),
                 },
             );
         }
@@ -881,6 +941,70 @@ where
                 peer_address: SocketAddress::from(peer).into_event(),
                 credential_id: id.into_event(),
             });
+    }
+
+    fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<Entry>, InsertPersistedError> {
+        // Decode the blob and rebuild the entry, applying the sender/receiver/created_at restore
+        // transforms. A malformed blob or bad field (invalid endpoint or ciphersuite byte, the
+        // receiver sentinel, or a counter that would overflow) fails here without touching the map.
+        let entry = Arc::new(Entry::restore(bytes, application_data, params)?);
+        let id = *entry.id();
+
+        // The credential id is derived from the export secret, so a duplicate here means the same
+        // secret was inserted twice (an entry present in both a snapshot and a journal, say). Detect
+        // it *before* mutating either index, so a rejected duplicate leaves the map untouched --
+        // unlike `on_new_path_secrets`, which panics. Loading is single-threaded and precedes the
+        // map going live (R.FUN8), so this check-then-insert races nothing.
+        if self.ids.get(id).is_some() {
+            return Err(InsertPersistedError::DuplicateCredentialId);
+        }
+
+        // Insert into the id index. This is the only place other than `on_new_path_secrets` that
+        // inserts into it.
+        let same = self.ids().insert(entry.clone());
+        debug_assert!(
+            same.is_none(),
+            "duplicate credential id slipped past the pre-check"
+        );
+
+        // Push onto the eviction queue and honour capacity exactly as `on_new_path_secrets` does, so
+        // a restore that overfills the map evicts oldest-first (the loader trims to capacity itself,
+        // but this keeps the invariant if it does not).
+        {
+            let mut queue = self
+                .eviction_queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+
+            queue.push_back(Arc::downgrade(&entry));
+
+            if queue.len() > self.max_capacity {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "queue is non-empty here because its length was just checked to exceed max_capacity"
+                )]
+                let element = queue.pop_front().unwrap();
+                drop(queue);
+
+                if let Some(evicted) = element.upgrade() {
+                    self.evict(&evicted, event::builder::EvictionReason::Capacity);
+                }
+            }
+        }
+
+        // Insert into the address index last. A rehandshaked peer can appear twice across the files
+        // with distinct credential ids; inserting in encounter order makes the later one win the
+        // address index, which is the property the loader relies on (see the collector's ordering
+        // guarantee). We do not retire the displaced entry here: both are legitimately restored, and
+        // which is "newer" cannot be told apart from the address index alone.
+        let _prev = self.peers().insert(entry.clone());
+
+        Ok(entry)
     }
 
     fn register_request_handshake(
@@ -1027,19 +1151,44 @@ where
             return None;
         };
 
+        // Only evict if it's been at least 10 seconds since this entry was created.
+        //
+        // If this is on the server (i.e. a client is telling a server that it did not have the
+        // secret cached), this is entirely harmless to skip because clients can always
+        // negotiate a new secret. It carries the benefit that if the client has learned of the
+        // unknown path secret *after* sending UnknownPathSecret (e.g., because the server started
+        // encrypting for a secret before the handshake finished inserting on the client), we will
+        // no longer drop the just-created secret for no reason.
+        //
+        // If this is a client (i.e., the server did not have the secret cached), then evicting
+        // a just-inserted secret due to a late-arriving UnknownPathSecret is actively harmful
+        // (likely to cause impact). If the entry is genuinely unknown to the server, the
+        // requested handshake above should allow us to recover soon regardless (or we will
+        // naturally do so on a subsequent request).
+        //
+        // For a repeated fast server restart, this does lengthen the time period in which we will
+        // repeatedly see exceptions thrown on connect() rather than delaying until a handshake
+        // completes. But such fast server restarts in short succession should be rare, so this
+        // seems like a reasonable tradeoff.
+        let should_evict = self.should_evict_on_unknown_path_secret()
+            // FIXME: Adjust our tests to backdate/forward date entries instead?
+            && (cfg!(test) || entry.age() > Duration::from_secs(10));
+        let scheduled_handshake = self
+            .request_handshake(*entry.peer(), HandshakeReason::Remote)
+            .is_some();
+
         self.subscriber().on_unknown_path_secret_packet_accepted(
             event::builder::UnknownPathSecretPacketAccepted {
                 credential_id: packet.credential_id.into_event(),
                 peer_address,
+                age: entry.age(),
+                evicted: should_evict,
+                scheduled_handshake,
             },
         );
 
-        // FIXME: More actively schedule a new handshake.
-        // See comment on requested_handshakes for details.
-        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
-
-        if self.should_evict_on_unknown_path_secret() {
-            self.evict(&entry);
+        if should_evict {
+            self.evict(&entry, event::builder::EvictionReason::UnknownPathSecret);
         }
 
         Some(packet)
@@ -1268,9 +1417,14 @@ where
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     fn test_stop_cleaner(&self) {
         self.cleaner.stop();
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn run_cleaner_once(&self) {
+        self.cleaner.clean(self, super::cleaner::EVICTION_CYCLES);
     }
 
     fn application_data(

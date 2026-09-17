@@ -237,11 +237,20 @@ impl HandshakingPathInner {
 
         let receiver = receiver::State::new();
 
+        let secret = match self.secret.take() {
+            Some(secret) => secret,
+            None => {
+                // TODO: Figure out root cause of why this is happening;
+                // for now, avoid crashing the server
+                tracing::warn!("peer tokens are only received after secrets are ready");
+                tracing::warn!("Not creating entry for connection from: {}", self.peer.ip());
+                return;
+            }
+        };
+
         let entry = Entry::new(
             self.peer,
-            self.secret
-                .take()
-                .expect("peer tokens are only received after secrets are ready"),
+            secret,
             sender,
             receiver,
             self.parameters.clone(),
@@ -250,15 +259,15 @@ impl HandshakingPathInner {
         );
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());
-        self.map.store.on_new_path_secrets(entry);
+        self.map.store.on_new_path_secrets(entry.clone());
+        // TODO We reverted https://github.com/aws/s2n-quic/pull/2358, since it's causing some issues for tests
+        //      that assume that the server has the entry immediately after `client.handshake_with()` returns.
+        //      We'll need to figure out how to reapply this change.
+        self.map.store.on_handshake_complete(entry);
     }
 
     fn on_dc_handshake_complete(&mut self) {
-        let entry = self.entry.clone().expect(
-            "the dc handshake cannot be complete without \
-        on_peer_stateless_reset_tokens creating a map entry",
-        );
-        self.map.store.on_handshake_complete(entry);
+        // TODO mark the handshake as complete
     }
 
     fn on_mtu_updated(&mut self, mtu: u16) {

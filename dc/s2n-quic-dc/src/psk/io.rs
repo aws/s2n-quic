@@ -139,11 +139,11 @@ impl Server {
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
         macro_rules! build_and_start {
-            ($tls:expr) => {{
+            ($tls:expr, $limits:expr) => {{
                 let s = s2n_quic::Server::builder()
                     .with_io(io)?
                     .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
-                    .with_limits(connection_limits)?
+                    .with_limits($limits)?
                     .with_dc(map.clone())?
                     .with_event((event, builder.event_subscriber))?
                     .with_tls($tls)?;
@@ -177,9 +177,15 @@ impl Server {
                 .with_executor(TokioExecutor { runtime })
                 .build();
 
-            build_and_start!(tls)
+            // We need packet storage when offloading is turned on due to this issue:
+            // https://github.com/aws/s2n-quic/issues/2601. The size needs to be large enough
+            // to store a packet with the given MTU.
+            let connection_limits =
+                connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
+
+            build_and_start!(tls, connection_limits)
         } else {
-            build_and_start!(tls_materials_provider)
+            build_and_start!(tls_materials_provider, connection_limits)
         };
 
         Ok(Self { server })
@@ -362,6 +368,9 @@ pub(crate) struct HandshakeQueueConfig {
     /// Upper bound on the jitter delay after a successful handshake before allowing
     /// another handshake with the same peer.
     pub(crate) success_jitter: Duration,
+    /// Upper bound on the jitter delay after a failed handshake before allowing
+    /// another handshake with the same peer.
+    pub(crate) error_jitter: Duration,
     /// Maximum number of TLS handshakes that can be started concurrently.
     ///
     /// TLS handshakes have high CPU cost (~1ms) which stalls out the endpoint, so we
@@ -373,14 +382,17 @@ pub(crate) struct HandshakeQueueConfig {
     /// Keeping this bounded helps avoid unbounded work ongoing in s2n-quic (which
     /// implies unbounded packet transmit/receive work).
     pub(crate) inflight_limit: usize,
+    pub(crate) await_dedup_removal: bool,
 }
 
 impl Default for HandshakeQueueConfig {
     fn default() -> Self {
         Self {
             success_jitter: Duration::from_secs(60),
+            error_jitter: Duration::from_secs(120),
             start_limit: 5,
             inflight_limit: 750,
+            await_dedup_removal: false,
         }
     }
 }
@@ -390,6 +402,8 @@ struct HandshakeQueue {
     limiter_start: Semaphore,
     limiter_inflight: Arc<Semaphore>,
     success_jitter: Duration,
+    error_jitter: Duration,
+    await_dedup_removal: bool,
     hasher: std::collections::hash_map::RandomState,
 }
 
@@ -401,6 +415,8 @@ impl HandshakeQueue {
             success_jitter: config.success_jitter,
             inner: Default::default(),
             hasher: Default::default(),
+            error_jitter: config.error_jitter,
+            await_dedup_removal: config.await_dedup_removal,
         }
     }
 
@@ -540,7 +556,7 @@ impl HandshakeQueue {
             // This task also owns pruning our de-duplication tracking.
             let this = self.clone();
             let map_clone = map.clone();
-            tokio::spawn(async move {
+            let cleanup = tokio::spawn(async move {
                 // Use the same deadline for MTU probing - any remaining time from the 10s budget
                 if tokio::time::timeout_at(
                     deadline,
@@ -576,6 +592,10 @@ impl HandshakeQueue {
                 this.remove_entry(&entry);
             });
 
+            if self.await_dedup_removal {
+                let _ = cleanup.await;
+            }
+
             Ok::<_, io::Error>(())
         };
 
@@ -589,31 +609,38 @@ impl HandshakeQueue {
                     // eventually, but keeping it for parity for now.
                     tracing::error!("handshake with {peer} failed: {e}");
 
-                    let this = self.clone();
-                    tokio::spawn(async move {
-                        // Delay deleting the entry by a random time, up to 2 minutes.
-                        //
-                        // This avoids aggressively reconnecting to a given peer if handshakes
-                        // fail (instead we keep returning the cached error). This is good both for
-                        // fast failure (e.g., certificate issues) and for slow errors (timeouts).
-                        // In the first case, it's very unlikely the issue will be fixed within
-                        // seconds, so backing off is natural to keep aggregate handshake volume
-                        // more bounded. For the latter, backing off avoids generating undue load
-                        // on the network or server. The specific duration is not chosen
-                        // with any particular rationale, mostly intended to be a relatively small
-                        // amount (to avoid significantly extending recovery times if the server
-                        // was temporarily overloaded) while still significantly reducing handshake
-                        // volume (>60x for fast-failing handshakes and >10x for timeouts).
-                        let duration = {
-                            let mut rng = rand::rng();
-                            rng.random_range(1000..120_000)
-                        };
-                        tokio::time::sleep(Duration::from_millis(duration)).await;
+                    // Delay deleting the entry by a random time, up to 2 minutes.
+                    //
+                    // This avoids aggressively reconnecting to a given peer if handshakes
+                    // fail (instead we keep returning the cached error). This is good both for
+                    // fast failure (e.g., certificate issues) and for slow errors (timeouts).
+                    // In the first case, it's very unlikely the issue will be fixed within
+                    // seconds, so backing off is natural to keep aggregate handshake volume
+                    // more bounded. For the latter, backing off avoids generating undue load
+                    // on the network or server. The specific duration is not chosen
+                    // with any particular rationale, mostly intended to be a relatively small
+                    // amount (to avoid significantly extending recovery times if the server
+                    // was temporarily overloaded) while still significantly reducing handshake
+                    // volume (>60x for fast-failing handshakes and >10x for timeouts).
+                    if self.error_jitter.is_zero() {
+                        self.remove_entry(&entry3);
+                    } else {
+                        let this = self.clone();
+                        let error_jitter = self.error_jitter;
+                        let cleanup = tokio::spawn(async move {
+                            let duration = {
+                                let mut rng = rand::rng();
+                                let min = 1000.min(error_jitter.as_millis() as u64);
+                                rng.random_range(min..=error_jitter.as_millis() as u64)
+                            };
+                            tokio::time::sleep(Duration::from_millis(duration)).await;
+                            this.remove_entry(&entry3);
+                        });
 
-                        // If the handshake fails, we also remove the entry from the map.
-                        // This permits another handshake to start for the same peer.
-                        this.remove_entry(&entry3);
-                    });
+                        if self.await_dedup_removal {
+                            let _ = cleanup.await;
+                        }
+                    }
 
                     Err(HandshakeFailed(e))
                 } else {

@@ -11,7 +11,6 @@ pub mod seal {
 
     use crate::{event, event::ConnectionPublisher, stream::shared};
     pub use awslc::seal::control;
-    use s2n_quic_core::event::IntoEvent;
 
     pub const TEST_MAX_RECORDS: u64 = 4096;
 
@@ -70,7 +69,10 @@ pub mod seal {
             subscriber
                 .publisher(clock.get_time())
                 .on_stream_write_key_updated(event::builder::StreamWriteKeyUpdated {
-                    key_phase: self.key_phase.into_event(),
+                    key_phase: match self.key_phase {
+                        KeyPhase::Zero => 0,
+                        KeyPhase::One => 1,
+                    },
                 })
         }
     }
@@ -150,7 +152,6 @@ pub mod open {
 
     use crate::{event, event::ConnectionPublisher, stream::shared};
     pub use awslc::open::control;
-    use s2n_quic_core::event::IntoEvent;
 
     macro_rules! with_dedup {
         () => {
@@ -232,7 +233,10 @@ pub mod open {
             subscriber
                 .publisher(clock.get_time())
                 .on_stream_read_key_updated(event::builder::StreamReadKeyUpdated {
-                    key_phase: self.key_phase.into_event(),
+                    key_phase: match self.key_phase {
+                        KeyPhase::Zero => 0,
+                        KeyPhase::One => 1,
+                    },
                 })
         }
     }

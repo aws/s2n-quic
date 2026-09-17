@@ -22,7 +22,10 @@ type Subscriber = (
 fn sub() -> Arc<Subscriber> {
     crate::testing::init_tracing();
 
-    Arc::new((event::testing::Subscriber::snapshot(), Default::default()))
+    Arc::new((
+        event::testing::Subscriber::no_snapshot(),
+        Default::default(),
+    ))
 }
 
 #[track_caller]
