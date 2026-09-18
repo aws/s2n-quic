@@ -471,6 +471,17 @@ where
             >,
         >,
     >,
+
+    #[allow(clippy::type_complexity)]
+    application_data_serializer: RwLock<
+        Option<
+            Box<
+                dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError>
+                    + Send
+                    + Sync,
+            >,
+        >,
+    >,
 }
 
 // FIXME: Avoid the whole socket.
@@ -571,6 +582,7 @@ where
             subscriber,
             request_handshake: RwLock::new(None),
             mk_application_data: RwLock::new(None),
+            application_data_serializer: RwLock::new(None),
         };
 
         // Growing to double our maximum inserted entries should ensure that we never grow again, see:
@@ -933,6 +945,20 @@ where
         // FIXME: Maybe panic if already initialized?
         *self
             .mk_application_data
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(cb);
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn register_application_data_serializer(
+        &self,
+        cb: Box<
+            dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync,
+        >,
+    ) {
+        // FIXME: Maybe panic if already initialized?
+        *self
+            .application_data_serializer
             .write()
             .unwrap_or_else(|e| e.into_inner()) = Some(cb);
     }
@@ -1369,6 +1395,21 @@ where
             .unwrap_or_else(|e| e.into_inner())
         {
             (ctxt)(session)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError> {
+        if let Some(serializer) = &*self
+            .application_data_serializer
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+        {
+            (serializer)(data)
         } else {
             Ok(None)
         }

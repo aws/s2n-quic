@@ -880,8 +880,8 @@ where
             let credentials = &initial_packet.credentials;
 
             let map = &context.secrets;
-            let Some((export_secret, ciphersuite, keys, application_params)) = map
-                .secret_for_credentials(
+            let Some((export_secret, ciphersuite, keys, application_params, _application_data)) =
+                map.secret_for_credentials(
                     credentials,
                     initial_packet.source_queue_id,
                     &TransportFeatures::TCP,
