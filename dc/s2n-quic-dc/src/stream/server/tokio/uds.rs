@@ -7,7 +7,7 @@ use crate::{
     msg::recv::Message,
     packet::uds::decoder,
     path::secret::{
-        map::{ApplicationPair, Bidirectional, Dedup},
+        map::{ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, Dedup},
         schedule::{ExportSecret, Initiator, Secret},
         stateless_reset, Map,
     },
@@ -35,9 +35,19 @@ use std::{
     io::{self, ErrorKind},
     os::fd::OwnedFd,
     path::Path,
+    sync::Arc,
     time::Duration,
 };
 use tokio::net::TcpStream;
+
+/// Reconstructs opaque application-data bytes carried in a UDS handoff packet back into the
+/// type-erased [`ApplicationData`] attached to accepted streams.
+///
+/// The dc crate never inspects the bytes; the callback is the application's inverse of the
+/// serializer registered on the forwarding side. Returning `Ok(None)` or `Err` results in the
+/// stream being accepted with no application data (fail-open).
+pub type ApplicationDataDeserializer =
+    Arc<dyn Fn(&[u8]) -> Result<Option<ApplicationData>, ApplicationDataError> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct Receiver<Sub>
@@ -47,6 +57,7 @@ where
     receiver: uds::receiver::Receiver,
     env: Environment<Sub>,
     map: Map, // placeholder map
+    application_data_deserializer: Option<ApplicationDataDeserializer>,
 }
 
 impl<Sub> Receiver<Sub>
@@ -67,7 +78,18 @@ where
             receiver,
             env: env.clone(),
             map,
+            application_data_deserializer: None,
         })
+    }
+
+    /// Registers the callback used to reconstruct [`ApplicationData`] from the opaque blob carried
+    /// in a UDS handoff packet. When unset, accepted streams carry no application data.
+    pub fn with_application_data_deserializer(
+        mut self,
+        deserializer: ApplicationDataDeserializer,
+    ) -> Self {
+        self.application_data_deserializer = Some(deserializer);
+        self
     }
 
     pub async fn receive_stream(&self) -> std::io::Result<Builder<Sub>> {
@@ -152,6 +174,18 @@ where
             local_port,
             recv_buffer,
         };
+
+        let application_data = decoded_packet
+            .application_data()
+            .zip(self.application_data_deserializer.as_ref())
+            .and_then(|(blob, de)| match de(blob) {
+                Ok(v) => v,
+                Err(err) => {
+                    tracing::warn!(?err, "failed to deserialize application data");
+                    None
+                }
+            });
+
         let stream_builder = match endpoint::accept_stream(
             now,
             &self.env,
@@ -163,9 +197,7 @@ where
             crypto,
             decoded_packet.application_params().clone(),
             secret_control,
-            // application_data is not available for UDS streams because the in-application
-            // map does not contain the credential ID used by the forwarding process.
-            None,
+            application_data,
         ) {
             Ok(stream) => stream,
             Err(error) => {
