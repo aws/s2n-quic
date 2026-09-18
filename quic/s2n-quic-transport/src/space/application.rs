@@ -615,7 +615,6 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             event::builder::PacketHeader::new(packet.packet_number, publisher.quic_version());
         let decrypted = self.key_set.decrypt_packet(
             packet,
-            largest_acked,
             //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
             //# For a short period after a key
             //# update completes, up to the PTO, endpoints MAY defer generation of
