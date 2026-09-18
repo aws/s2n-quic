@@ -59,13 +59,11 @@ pub struct KeySet<K> {
 
     limits: limited::Limits,
 
-    /// The largest packet number that has been successfully authenticated.
+    /// The packet number that initiated a key change.
     ///
-    /// This is used to distinguish a genuine key update from a reordered or
-    /// replayed packet carrying the opposite Key Phase bit: only a packet whose
-    /// number is higher than any previously authenticated packet may initiate a
-    /// key-phase rotation (RFC 9001 Section 6.5).
-    largest_authenticated_packet_number: Option<PacketNumber>,
+    /// This is used to distinguish a reordered or replayed packet carrying the opposite Key Phase bit
+    /// from a badly formed packet carrying new data under an old key.
+    key_change_packet_number: Option<PacketNumber>,
 }
 
 impl<K: OneRttKey> KeySet<K> {
@@ -99,7 +97,7 @@ impl<K: OneRttKey> KeySet<K> {
             generation: 0,
             crypto: KeyArray([active_key, next_key]),
             limits,
-            largest_authenticated_packet_number: None,
+            key_change_packet_number: None,
         }
     }
 
@@ -173,13 +171,8 @@ impl<K: OneRttKey> KeySet<K> {
                 //# recovered packet number that is higher than any packet number from
                 //# the current key phase requires the use of the next packet protection
                 //# keys.
-                // A key-phase rotation is only initiated when an opposite-phase packet
-                // advances the packet number beyond anything previously authenticated.
-                // A reordered or replayed packet carrying the previous phase (i.e. a
-                // lower packet number) was decrypted with the retained previous keys and
-                // MUST NOT change the key phase, generation, or derivation timer.
                 let advances_packet_number = self
-                    .largest_authenticated_packet_number
+                    .key_change_packet_number
                     .is_none_or(|largest| packet_number > largest);
 
                 let generation = if phase_switch && advances_packet_number {
@@ -224,20 +217,17 @@ impl<K: OneRttKey> KeySet<K> {
                     //# retain old keys for some time after unprotecting a packet sent using
                     //# the new keys.
                     self.set_derivation_timer(pto);
+
+                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                    //# For receiving packets during a key update, packets protected with
+                    //# older keys might arrive if they were delayed by the network.
+                    // Record the packet number that carried the key change so we can
+                    // distinguish delayed packets from badly formed packets.
+                    self.key_change_packet_number = Some(packet_number);
                     Some(self.generation)
                 } else {
                     None
                 };
-
-                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
-                //# For receiving packets during a key update, packets protected with
-                //# older keys might arrive if they were delayed by the network.
-                // Record the largest authenticated packet number so that later
-                // delayed or replayed packets cannot be mistaken for a key update.
-                self.largest_authenticated_packet_number = Some(
-                    self.largest_authenticated_packet_number
-                        .map_or(packet_number, |largest| largest.max(packet_number)),
-                );
 
                 Ok((packet, generation))
             }
@@ -713,9 +703,9 @@ mod tests {
         // 1. Legitimate key update: a NEW-phase (One) packet with a higher packet
         //    number. This rotates the endpoint to phase One, bumps the generation,
         //    and arms the derivation timer while retaining the old (phase Zero) key.
-        let mut update_bytes = [0u8; 128];
-        let update = make_short_packet(&mut update_bytes, true, 10);
-        let (_pkt, gen) = keyset.decrypt_packet(update, pto).unwrap();
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 10);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
         assert_eq!(gen, Some(1));
         assert_eq!(keyset.key_phase(), KeyPhase::One);
         assert_eq!(keyset.generation, 1);
@@ -723,9 +713,9 @@ mod tests {
 
         // 2. Reordered/replayed OLD-phase (Zero) packet with a LOWER packet number,
         //    delivered within the PTO window while the retired key is still held.
-        let mut replay_bytes = [0u8; 128];
-        let replay = make_short_packet(&mut replay_bytes, false, 7);
-        let (_pkt, gen) = keyset.decrypt_packet(replay, pto).unwrap();
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 7);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
 
         // The replayed packet still authenticates but does not drive the key-update state machine:
         assert_eq!(
@@ -744,10 +734,58 @@ mod tests {
 
         // 3. OLD-phase (Zero) packet with a HIGHER packet number. This is an error case as it indicates
         //    a bad peer who is encrypting newer packets with old keys.
-        let mut replay_bytes = [0u8; 128];
-        let replay = make_short_packet(&mut replay_bytes, false, 12);
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 12);
         let err = keyset
-            .decrypt_packet(replay, pto)
+            .decrypt_packet(short_packet, pto)
+            .expect_err("Higher packet number should not be accepted with older key");
+
+        assert_eq!(
+            err,
+            ProcessingError::ConnectionError(
+                transport::Error::KEY_UPDATE_ERROR
+                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn old_keys_new_packet_number() {
+        let clock = Clock::default();
+        let pto = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
+
+        // Start in phase Zero, generation 0, with no update in progress.
+        assert_eq!(keyset.key_phase(), KeyPhase::Zero);
+        assert_eq!(keyset.generation, 0);
+        assert!(!keyset.key_update_in_progress());
+
+        // First key switch initiates keyupdate
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 10);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, Some(1));
+        assert_eq!(keyset.key_phase(), KeyPhase::One);
+        assert_eq!(keyset.generation, 1);
+        assert!(keyset.key_update_in_progress());
+
+        // Next packet raises highest packet number seen
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 13);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+
+        // The replayed packet still authenticates but does not drive the key-update state machine:
+        assert_eq!(gen, None,);
+        assert_eq!(keyset.key_phase(), KeyPhase::One,);
+        assert_eq!(keyset.generation, 1,);
+
+        // Packet number indicates that peer is encrypting new packets with old keys. This is an error
+        // case.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 12);
+        let err = keyset
+            .decrypt_packet(short_packet, pto)
             .expect_err("Higher packet number should not be accepted with older key");
 
         assert_eq!(
