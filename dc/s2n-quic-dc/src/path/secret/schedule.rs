@@ -196,6 +196,15 @@ impl Secret {
         &self.ciphersuite
     }
 
+    /// The endpoint role (client or server) this secret was negotiated as.
+    ///
+    /// Needed for persistence: the endpoint type selects the label used in key derivation, so a
+    /// restored secret must be reconstructed with the same role it was created with.
+    #[inline]
+    pub fn endpoint(&self) -> endpoint::Type {
+        self.endpoint
+    }
+
     #[inline]
     pub fn application_pair(
         &self,
