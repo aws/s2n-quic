@@ -6,6 +6,7 @@ use s2n_codec::Encoder;
 use s2n_quic_core::{dc::ApplicationParams, varint::VarInt};
 
 pub const PACKET_VERSION: u8 = 0;
+pub const PACKET_VERSION_V1: u8 = 1;
 pub const APP_PARAMS_VERSION: u8 = 0;
 
 #[inline(always)]
@@ -15,11 +16,17 @@ pub fn encode<E: Encoder>(
     export_secret: &[u8],
     application_params: &ApplicationParams,
     encode_time: u64,
+    application_data: Option<&[u8]>,
     payload: &[u8],
 ) -> usize {
     let start_len = encoder.len();
 
-    encoder.encode(&PACKET_VERSION);
+    let version_tag = if application_data.is_some() {
+        PACKET_VERSION_V1
+    } else {
+        PACKET_VERSION
+    };
+    encoder.encode(&version_tag);
 
     let ciphersuite_byte: u8 = (*ciphersuite).into();
     encoder.encode(&ciphersuite_byte);
@@ -31,6 +38,10 @@ pub fn encode<E: Encoder>(
     encoder.encode(application_params);
 
     encoder.encode(&encode_time);
+
+    if let Some(application_data) = application_data {
+        encoder.encode_with_len_prefix::<VarInt, _>(&application_data);
+    }
 
     encoder.encode_with_len_prefix::<VarInt, _>(&payload);
 

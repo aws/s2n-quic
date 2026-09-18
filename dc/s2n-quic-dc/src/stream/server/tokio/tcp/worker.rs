@@ -941,6 +941,7 @@ where
                 &export_secret,
                 &application_params,
                 encode_time,
+                None,
                 recv_buffer,
             );
             let mut buffer = vec![0u8; size];
@@ -951,6 +952,7 @@ where
                 &export_secret,
                 &application_params,
                 encode_time,
+                None,
                 recv_buffer,
             );
             let tcp_stream = socket.into_std().map_err(|error| WorkerError {
