@@ -134,14 +134,28 @@ impl<'a> Retry<'a> {
             return None;
         }
 
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
+        //# When an Initial packet is sent by a client that has not previously
+        //# received an Initial or Retry packet from the server, the client
+        //# populates the Destination Connection ID field with an unpredictable
+        //# value.  This Destination Connection ID MUST be at least 8 bytes in
+        //# length.
+        // The Retry token is bound to the original destination connection ID. The endpoint
+        // validates the length before dispatching a Retry, so this conversion and the one below
+        // are fallible only as defense in depth: decline rather than panic if this is ever
+        // reached with a connection ID it cannot represent.
+        let original_destination_connection_id =
+            connection::InitialId::try_from_bytes(packet.destination_connection_id())?;
+
         let retry_packet = Retry::from_initial(packet, local_connection_id.as_ref());
         let pseudo_packet = retry_packet.pseudo_packet(packet.destination_connection_id());
 
         let mut buffer = EncoderBuffer::new(packet_buf);
         pseudo_packet.encode(&mut buffer);
 
+        // The decoder already bounds the peer's source connection ID, so this cannot fail today.
         let destination_connection_id =
-            &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id).unwrap();
+            &connection::PeerId::try_from_bytes(retry_packet.destination_connection_id)?;
         let mut context = token::Context::new(remote_address, destination_connection_id, random);
 
         let mut outcome = None;
@@ -149,7 +163,7 @@ impl<'a> Retry<'a> {
         buffer.write_sized(T::TOKEN_LEN, |token_buf| {
             outcome = token_format.generate_retry_token(
                 &mut context,
-                &connection::InitialId::try_from_bytes(packet.destination_connection_id()).unwrap(),
+                &original_destination_connection_id,
                 token_buf,
             );
         });
