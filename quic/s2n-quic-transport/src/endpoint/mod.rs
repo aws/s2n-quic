@@ -767,6 +767,35 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     //# the handshake to proceed.
                     outcome
                 } else {
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
+                    //# When an Initial packet is sent by a client that has not previously
+                    //# received an Initial or Retry packet from the server, the client
+                    //# populates the Destination Connection ID field with an unpredictable
+                    //# value.  This Destination Connection ID MUST be at least 8 bytes in
+                    //# length.
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
+                    //# If the packet is an Initial packet fully conforming with the
+                    //# specification, the server proceeds with the handshake (Section 7).
+
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-5.2.2
+                    //# Servers MUST drop incoming packets under all other circumstances.
+                    // No token, so this is the client's first Initial and it chose the
+                    // destination connection ID itself.
+                    if connection::InitialId::try_from_bytes(packet.destination_connection_id())
+                        .is_none()
+                    {
+                        let reason =
+                            event::builder::DatagramDropReason::InvalidDestinationConnectionId;
+                        publisher.on_endpoint_datagram_dropped(
+                            event::builder::EndpointDatagramDropped {
+                                len: payload_len as u16,
+                                reason,
+                            },
+                        );
+                        return;
+                    }
+
                     //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                     //# Upon receiving the client's Initial packet, the server can request
                     //# address validation by sending a Retry packet (Section 17.2.5)

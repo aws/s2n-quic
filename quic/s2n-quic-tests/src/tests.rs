@@ -46,6 +46,7 @@ mod offload;
 mod platform_events;
 mod pto;
 mod resumption;
+mod retry_short_cid;
 mod self_test;
 mod skip_packets;
 mod slow_tls;
