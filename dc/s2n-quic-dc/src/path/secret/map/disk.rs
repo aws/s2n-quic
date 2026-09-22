@@ -3,7 +3,7 @@
 
 //! This module implements on-disk persistence for the path secret map.
 //!
-//! Only part of the information is persisted (today, just entry socket addresses).
+//! Only part of the information is persisted (today, entry socket addresses and credential IDs).
 
 use std::{
     fmt,
@@ -11,16 +11,42 @@ use std::{
     io::{self, BufWriter, Read, Write},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
-    sync::{Mutex, Weak},
+    sync::{Arc, Mutex},
     time::{Duration, SystemTime},
 };
 
-use crate::path::secret::map::{cleaner::CLEANER_CYCLE, Entry, Epoch};
+use crate::{
+    credentials,
+    path::secret::map::{cleaner::CLEANER_CYCLE, Entry, Epoch},
+};
 
 const HEADER: &str = "s2n-quic-dc path secret map";
 
-/// The version identifier written immediately after the [`HEADER`].
-const VERSION: &[u8] = b"v0";
+/// Peer address per entry.
+const VERSION_V0: &[u8] = b"v0";
+/// Adds the credential id.
+const VERSION_V1: &[u8] = b"v1";
+
+/// The version new files are written in: always the latest.
+const VERSION: &[u8] = VERSION_V1;
+
+/// The format version of a file being read, recovered from its version tag.
+/// Carried so per-entry decoding knows which fields are present.
+#[derive(Clone, Copy)]
+enum Version {
+    V0,
+    V1,
+}
+
+impl Version {
+    fn from_tag(tag: &[u8]) -> Option<Version> {
+        match tag {
+            _ if tag == VERSION_V0 => Some(Version::V0),
+            _ if tag == VERSION_V1 => Some(Version::V1),
+            _ => None,
+        }
+    }
+}
 
 /// Maximum size of a persisted file we are willing to read into memory.
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
@@ -214,14 +240,14 @@ impl Serializer {
     /// Writes the entries in `entries` to the configured path, filtering by recency of access
     /// relative to `current_epoch`.
     ///
-    /// `entries` is iterated and any still-live entry passing the recency filter is written.
+    /// `entries` is iterated in order and any entry passing the recency filter is written.
     /// Returns the number of entries written and the resulting file size.
     ///
     /// This is `pub(crate)` because it references the crate-internal [`Entry`] and [`Epoch`] types;
     /// callers outside the crate drive serialization through the path secret map builder instead.
-    pub(crate) fn serialize(
+    pub(crate) fn serialize<'a>(
         &self,
-        entries: &[Weak<Entry>],
+        entries: impl IntoIterator<Item = &'a Arc<Entry>>,
         current_epoch: Epoch,
     ) -> io::Result<SerializeStats> {
         self.serialize_with_max_size(entries, current_epoch, MAX_SERIALIZED_SIZE)
@@ -229,9 +255,9 @@ impl Serializer {
 
     /// As [`Serializer::serialize`], but stops adding entries once the file grows past `max_size`.
     /// Exposed separately so tests can exercise the size cap without writing tens of megabytes.
-    fn serialize_with_max_size(
+    fn serialize_with_max_size<'a>(
         &self,
-        entries: &[Weak<Entry>],
+        entries: impl IntoIterator<Item = &'a Arc<Entry>>,
         current_epoch: Epoch,
         max_size: u64,
     ) -> io::Result<SerializeStats> {
@@ -258,17 +284,13 @@ impl Serializer {
         output.write_all(&started_at.to_le_bytes())?;
 
         let mut written = 0;
-        for entry in entries.iter() {
+        for entry in entries {
             // Stop adding new entries once the file has grown past the maximum serialized size.
             // Entries are tiny (tens of bytes) relative to the margin we keep below MAX_FILE_SIZE,
             // so checking after the fact rather than predicting each entry's size is fine.
             if output.bytes_written() > max_size {
                 break;
             }
-
-            let Some(entry) = entry.upgrade() else {
-                continue;
-            };
 
             // Skip entries idle for longer than the configured window.
             if min_epoch.is_some_and(|min| entry.accessed_at_epoch().get() < min) {
@@ -299,6 +321,8 @@ impl Serializer {
                     }
                 }
             }
+
+            output.write_all(&entry.id()[..])?;
         }
 
         output.flush()?;
@@ -326,8 +350,12 @@ pub(crate) struct SerializeStats {
 /// A single entry read back from a persisted file.
 #[derive(Clone, Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
+#[non_exhaustive]
 pub struct DiskEntry {
     pub peer: SocketAddr,
+    /// The peer's credential id, or `None` for an entry read from a v0 file,
+    /// which predates credential ids.
+    pub id: Option<credentials::Id>,
 }
 
 /// Reads the file at `path` fully into memory and returns an iterator yielding the entries it
@@ -357,9 +385,8 @@ pub fn deserialize(path: &Path) -> io::Result<Entries> {
     if reader.take(HEADER.len())? != HEADER.as_bytes() {
         return Err(invalid_data("missing or invalid header"));
     }
-    if reader.take(VERSION.len())? != VERSION {
-        return Err(invalid_data("missing or unsupported version"));
-    }
+    let version = Version::from_tag(reader.take(VERSION.len())?)
+        .ok_or_else(|| invalid_data("missing or unsupported version"))?;
 
     let started_at = {
         let secs = u64::from_le_bytes(reader.take_array::<8>()?);
@@ -376,6 +403,7 @@ pub fn deserialize(path: &Path) -> io::Result<Entries> {
         bytes,
         pos,
         started_at,
+        version,
     })
 }
 
@@ -387,6 +415,7 @@ pub struct Entries {
     pos: usize,
     /// The time at which the file started being written, as recorded in its header.
     pub started_at: SystemTime,
+    version: Version,
 }
 
 impl Iterator for Entries {
@@ -400,7 +429,7 @@ impl Iterator for Entries {
         let mut reader = Reader {
             bytes: &self.bytes[self.pos..],
         };
-        let result = read_entry(&mut reader);
+        let result = read_entry(&mut reader, self.version);
         // Advance past whatever was consumed. On error we jump to the end so iteration stops
         // rather than spinning on the same malformed bytes.
         self.pos = if result.is_ok() {
@@ -413,7 +442,7 @@ impl Iterator for Entries {
 }
 
 /// Decodes a single entry from `reader`.
-fn read_entry(reader: &mut Reader) -> io::Result<DiskEntry> {
+fn read_entry(reader: &mut Reader, version: Version) -> io::Result<DiskEntry> {
     let tag = reader.take(1)?[0];
     let peer = match tag {
         0 => {
@@ -437,7 +466,12 @@ fn read_entry(reader: &mut Reader) -> io::Result<DiskEntry> {
         other => return Err(invalid_data(format!("unknown peer tag {other}"))),
     };
 
-    Ok(DiskEntry { peer })
+    let id = match version {
+        Version::V0 => None,
+        Version::V1 => Some(credentials::Id::from(reader.take_array::<16>()?)),
+    };
+
+    Ok(DiskEntry { peer, id })
 }
 
 /// A cursor over an in-memory byte buffer.

@@ -10,6 +10,7 @@ mod behavior;
 #[cfg(future)] // TODO remove this since they're quite expensive
 mod cardinality;
 mod deterministic;
+mod fast_fail;
 mod idle_timeout;
 mod key_update;
 mod recv;

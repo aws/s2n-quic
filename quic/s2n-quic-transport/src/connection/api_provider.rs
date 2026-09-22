@@ -16,7 +16,6 @@ use core::{
     task::{Context, Poll},
 };
 use s2n_quic_core::{
-    application,
     application::ServerName,
     inet::SocketAddress,
     query::{Query, QueryMut},
@@ -53,7 +52,7 @@ pub(crate) trait ConnectionApiProvider: Sync + Send {
         context: &Context,
     ) -> Poll<Result<Stream, connection::Error>>;
 
-    fn close_connection(&self, code: Option<application::Error>);
+    fn close_connection(&self, code: Option<connection::Error>);
 
     fn server_name(&self) -> Result<Option<ServerName>, connection::Error>;
 

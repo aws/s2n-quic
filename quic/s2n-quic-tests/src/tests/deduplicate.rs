@@ -3,7 +3,9 @@
 
 use super::*;
 use s2n_quic::provider::endpoint_limits::Outcome;
-use s2n_quic_core::{dc::testing::MockDcEndpoint, stateless_reset::token::testing::TEST_TOKEN_1};
+use s2n_quic_core::{
+    dc::testing::MockDcEndpoint, stateless_reset::token::testing::TEST_TOKEN_1, stream::StreamError,
+};
 
 const LEN: usize = 1_000_000;
 
@@ -29,16 +31,30 @@ fn deduplicate_successfully() {
 
         let addr = server.local_addr()?;
         spawn(async move {
-            let mut conn = server.accept().await.unwrap();
-            for _ in 0..2 {
-                let mut stream = conn.open_bidirectional_stream().await.unwrap();
-                stream.send(vec![42; LEN].into()).await.unwrap();
-                stream.flush().await.unwrap();
+            // The client only establishes a single connection, so the second `accept`
+            // never resolves and this task is still running when the test finishes.
+            // Dropping the endpoint at that point closes the connection, so errors here
+            // are expected and shouldn't fail the test.
+            let _: Result<(), StreamError> = async move {
+                let Some(mut conn) = server.accept().await else {
+                    return Ok(());
+                };
+                for _ in 0..2 {
+                    let mut stream = conn.open_bidirectional_stream().await?;
+                    stream.send(vec![42; LEN].into()).await?;
+                    stream.flush().await?;
+                }
+
+                let Some(mut conn) = server.accept().await else {
+                    return Ok(());
+                };
+                let mut stream = conn.open_bidirectional_stream().await?;
+                stream.send(vec![42; LEN].into()).await?;
+                stream.flush().await?;
+
+                Ok(())
             }
-            let mut conn = server.accept().await.unwrap();
-            let mut stream = conn.open_bidirectional_stream().await.unwrap();
-            stream.send(vec![42; LEN].into()).await.unwrap();
-            stream.flush().await.unwrap();
+            .await;
         });
 
         let mut server2 = Server::builder()
@@ -180,16 +196,30 @@ fn deduplicate_non_terminal() {
 
         let addr = server.local_addr()?;
         spawn(async move {
-            let mut conn = server.accept().await.unwrap();
-            for _ in 0..2 {
-                let mut stream = conn.open_bidirectional_stream().await.unwrap();
-                stream.send(vec![42; LEN].into()).await.unwrap();
-                stream.flush().await.unwrap();
+            // The client only establishes a single connection, so the second `accept`
+            // never resolves and this task is still running when the test finishes.
+            // Dropping the endpoint at that point closes the connection, so errors here
+            // are expected and shouldn't fail the test.
+            let _: Result<(), StreamError> = async move {
+                let Some(mut conn) = server.accept().await else {
+                    return Ok(());
+                };
+                for _ in 0..2 {
+                    let mut stream = conn.open_bidirectional_stream().await?;
+                    stream.send(vec![42; LEN].into()).await?;
+                    stream.flush().await?;
+                }
+
+                let Some(mut conn) = server.accept().await else {
+                    return Ok(());
+                };
+                let mut stream = conn.open_bidirectional_stream().await?;
+                stream.send(vec![42; LEN].into()).await?;
+                stream.flush().await?;
+
+                Ok(())
             }
-            let mut conn = server.accept().await.unwrap();
-            let mut stream = conn.open_bidirectional_stream().await.unwrap();
-            stream.send(vec![42; LEN].into()).await.unwrap();
-            stream.flush().await.unwrap();
+            .await;
         });
 
         let tokens = [TEST_TOKEN_1];

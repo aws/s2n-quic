@@ -1775,6 +1775,9 @@ pub mod api {
         /// Handshake failed to produce credentials.
         Handshake {},
         #[non_exhaustive]
+        /// Emitted when no psk was cached for the peer.
+        PeerPskMissing {},
+        #[non_exhaustive]
         /// When the connect future is dropped prior to returning any result.
         ///
         /// This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect
@@ -1804,18 +1807,23 @@ pub mod api {
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
+                name: aggregate::info::Str::new("PEER_PSK_MISSING\0"),
                 id: 2usize,
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_HANDSHAKE\0"),
                 id: 3usize,
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("ABORTED_PENDING_BOTH\0"),
+                name: aggregate::info::Str::new("ABORTED_PENDING_CONNECT\0"),
                 id: 4usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ABORTED_PENDING_BOTH\0"),
+                id: 5usize,
             }
             .build(),
         ];
@@ -1824,9 +1832,10 @@ pub mod api {
             match self {
                 Self::TcpConnect { .. } => 0usize,
                 Self::Handshake { .. } => 1usize,
-                Self::AbortedPendingHandshake { .. } => 2usize,
-                Self::AbortedPendingConnect { .. } => 3usize,
-                Self::AbortedPendingBoth { .. } => 4usize,
+                Self::PeerPskMissing { .. } => 2usize,
+                Self::AbortedPendingHandshake { .. } => 3usize,
+                Self::AbortedPendingConnect { .. } => 4usize,
+                Self::AbortedPendingBoth { .. } => 5usize,
             }
         }
     }
@@ -6338,6 +6347,8 @@ pub mod builder {
         TcpConnect,
         /// Handshake failed to produce credentials.
         Handshake,
+        /// Emitted when no psk was cached for the peer.
+        PeerPskMissing,
         /// When the connect future is dropped prior to returning any result.
         ///
         /// This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect
@@ -6359,6 +6370,7 @@ pub mod builder {
             match self {
                 Self::TcpConnect => TcpConnect {},
                 Self::Handshake => Handshake {},
+                Self::PeerPskMissing => PeerPskMissing {},
                 Self::AbortedPendingHandshake => AbortedPendingHandshake {},
                 Self::AbortedPendingConnect => AbortedPendingConnect {},
                 Self::AbortedPendingBoth => AbortedPendingBoth {},

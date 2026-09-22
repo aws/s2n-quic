@@ -371,6 +371,9 @@ pub enum StreamTcpConnectErrorReason {
     /// Handshake failed to produce credentials.
     Handshake,
 
+    /// Emitted when no psk was cached for the peer.
+    PeerPskMissing,
+
     /// When the connect future is dropped prior to returning any result.
     ///
     /// This means the TCP connect succeeded, but the handshake hasn't yet by the time the connect

@@ -21,7 +21,6 @@ use core::{
 };
 use s2n_codec::DecoderBufferMut;
 use s2n_quic_core::{
-    application,
     application::ServerName,
     event::{self, builder::DatagramDropReason, supervisor, ConnectionPublisher, IntoEvent},
     inet::{DatagramInfo, SocketAddress},
@@ -518,7 +517,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
         context: &Context,
     ) -> Poll<Result<stream::StreamId, connection::Error>>;
 
-    fn application_close(&mut self, error: Option<application::Error>);
+    fn application_close(&mut self, error: Option<connection::Error>);
 
     fn server_name(&self) -> Option<ServerName>;
 

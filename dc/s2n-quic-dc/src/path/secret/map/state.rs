@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, stateless_reset, ApplicationData, ApplicationDataError, Entry, Store,
+    cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
+    ApplicationDataError, DiskEntry, Entry, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -18,6 +19,7 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use std::{
+    cmp::Reverse,
     collections::VecDeque,
     hash::BuildHasher,
     mem::ManuallyDrop,
@@ -613,17 +615,31 @@ where
             return Ok(());
         };
 
-        // Clone the weak references out under the lock so we don't hold it across the write.
-        let entries: Vec<Weak<Entry>> = {
+        // Snapshot the live entries under the lock so we don't hold it across the write. The sort
+        // key is captured here too: `accessed_at_epoch` can change concurrently, and sorting on a
+        // key that changes mid-sort violates the total order the sort requires (and may panic).
+        let mut entries: Vec<(Reverse<u64>, Arc<Entry>)> = {
             let queue = self
                 .eviction_queue
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            queue.iter().cloned().collect()
+            queue
+                .iter()
+                .filter_map(|weak| {
+                    let entry = weak.upgrade()?;
+                    Some((Reverse(entry.accessed_at_epoch().get()), entry))
+                })
+                .collect()
         };
 
+        // Order by access recency (newest first), so the most-active peers come first regardless
+        // of when they were created. The sort is stable, so peers with the same access epoch keep
+        // their eviction-queue (creation) order.
+        entries.sort_by_key(|(recency, _)| *recency);
+
         let start = self.clock.get_time();
-        let result = serializer.serialize(&entries, self.cleaner.epoch());
+        let result =
+            serializer.serialize(entries.iter().map(|(_, entry)| entry), self.cleaner.epoch());
         let duration = self.clock.get_time().saturating_duration_since(start);
 
         let (entries_written, file_size) = match &result {
@@ -1240,6 +1256,38 @@ where
                 tracing::warn!("Failed to send control packet to {:?}: {:?}", dst, e);
             }
         }
+    }
+
+    fn send_unknown_path_secrets(
+        &self,
+        entries: &mut dyn ExactSizeIterator<Item = DiskEntry>,
+        rate: core::num::NonZeroU32,
+        timeout: Duration,
+    ) -> std::io::Result<SendStats> {
+        let Some(control_socket) = self.control_socket.clone() else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotConnected,
+                "path secret map has no control socket to send on",
+            ));
+        };
+
+        Ok(proactive_unknown_path_secret::emit_packets(
+            entries,
+            rate,
+            timeout,
+            &self.signer,
+            |id, bytes, peer| {
+                control_socket.send_to(bytes, peer)?;
+                // On success only (matching the reactive path in `send_control_packet`).
+                self.subscriber().on_unknown_path_secret_packet_sent(
+                    event::builder::UnknownPathSecretPacketSent {
+                        peer_address: SocketAddress::from(*peer).into_event(),
+                        credential_id: id.into_event(),
+                    },
+                );
+                Ok(())
+            },
+        ))
     }
 
     fn rehandshake_period(&self) -> Duration {

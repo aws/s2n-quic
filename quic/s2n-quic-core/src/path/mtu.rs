@@ -516,6 +516,10 @@ pub struct Controller {
     needs_to_send_completion: bool,
     /// Flag indicating MtuProbingComplete frame is enabled
     mtu_probing_complete_support: bool,
+    /// Flag indicating whether the bimodal MTU search is enabled. When enabled, the
+    /// search first probes the maximum size and completes at the base MTU if that probe
+    /// fails. This skips the default binary search.
+    bimodal_search: bool,
 }
 
 impl Controller {
@@ -545,7 +549,7 @@ impl Controller {
         {
             // An initial MTU was provided within the probe threshold of the Ethernet MTU, so we can
             // instead try probing for an MTU larger than the Ethernet MTU
-            Self::next_probe_size(plpmtu, max_udp_payload)
+            Self::next_binary_search_probe_size(plpmtu, max_udp_payload)
         } else {
             // The UDP payload size for the most likely MTU is based on standard Ethernet MTU minus
             // the minimum length IP headers (without IPv4 options or IPv6 extensions) and UPD header
@@ -582,6 +586,7 @@ impl Controller {
             pmtu_raise_timer: Timer::default(),
             needs_to_send_completion: false,
             mtu_probing_complete_support: false,
+            bimodal_search: false,
         }
     }
 
@@ -593,6 +598,18 @@ impl Controller {
         // we need to send the completion frame
         if self.state.is_search_complete() {
             self.needs_to_send_completion = true;
+        }
+    }
+
+    /// Enable the bimodal search
+    #[inline]
+    pub fn enable_bimodal_search(&mut self) {
+        self.bimodal_search = true;
+
+        // If a search was already requested (e.g. `enable()` ran first and picked a
+        // binary-search midpoint), refresh the probed size so bimodal probes the max.
+        if self.state == State::SearchRequested {
+            self.update_probed_size();
         }
     }
 
@@ -760,11 +777,35 @@ impl Controller {
             State::Searching(probe_pn, _) if *probe_pn == packet_number => {
                 // The MTU probe was lost
                 if self.probe_count == MAX_PROBES {
-                    // We've sent MAX_PROBES without acknowledgement, so
-                    // attempt a smaller probe size
-                    self.max_probe_size = self.probed_size;
-                    self.update_probed_size();
-                    self.request_new_search(None);
+                    if self.bimodal_search {
+                        // The only probed size (the max) was lost, so fall back to
+                        // the base MTU and complete without any further probing.
+                        self.plpmtu = self.base_plpmtu;
+                        congestion_controller.on_mtu_update(
+                            self.plpmtu,
+                            &mut congestion_controller::PathPublisher::new(publisher, path_id),
+                        );
+                        self.set_search_complete();
+                        debug_assert_eq!(
+                            self.plpmtu, self.base_plpmtu,
+                            "bimodal search must complete at the base MTU"
+                        );
+
+                        publisher.on_mtu_updated(event::builder::MtuUpdated {
+                            path_id: path_id.into_event(),
+                            mtu: self.plpmtu,
+                            cause: MtuUpdatedCause::LargerProbesLost,
+                            search_complete: true,
+                        });
+
+                        // Return MtuUpdated so the caller notifies the
+                        // DC manager that the MTU dropped to the base.
+                        return MtuResult::MtuUpdated(self.plpmtu);
+                    } else {
+                        self.max_probe_size = self.probed_size;
+                        self.update_probed_size();
+                        self.request_new_search(None);
+                    }
 
                     if self.is_search_completed() {
                         // Emit an on_mtu_updated event as the search has now completed
@@ -825,18 +866,23 @@ impl Controller {
         self.state.is_search_complete()
     }
 
-    /// Sets `probed_size` to the next MTU size to probe for based on a binary search
+    /// Sets `probed_size` to the next MTU size to probe for based on a binary search.
+    /// In bimodal search the max size is the only size probed, dropping to the base if it fails.
     #[inline]
     fn update_probed_size(&mut self) {
         //= https://www.rfc-editor.org/rfc/rfc8899#section-5.3.2
         //# Implementations SHOULD select the set of probe packet sizes to
         //# maximize the gain in PLPMTU from each search step.
-        self.probed_size = Self::next_probe_size(self.plpmtu, self.max_probe_size);
+        self.probed_size = if self.bimodal_search {
+            self.max_probe_size
+        } else {
+            Self::next_binary_search_probe_size(self.plpmtu, self.max_probe_size)
+        };
     }
 
     /// Calculates the next probe size as halfway from the current to the max size
     #[inline]
-    fn next_probe_size(current: u16, max: u16) -> u16 {
+    fn next_binary_search_probe_size(current: u16, max: u16) -> u16 {
         current + ((max - current) / 2)
     }
 
@@ -864,6 +910,10 @@ impl Controller {
     /// of the current PLPMTU
     #[inline]
     fn request_new_search(&mut self, last_probe_time: Option<Timestamp>) {
+        if self.bimodal_search {
+            self.update_probed_size();
+        }
+
         if self.is_next_probe_size_above_threshold() {
             self.probe_count = 0;
             self.state = State::SearchRequested;

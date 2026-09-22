@@ -1,15 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{ApplicationData, ApplicationDataError, Entry};
+use super::{ApplicationData, ApplicationDataError, DiskEntry, Entry, SendStats};
 use crate::{
     credentials::{Credentials, Id},
-    packet::{secret_control as control, Packet, WireVersion},
+    packet::{secret_control as control, Packet},
     path::secret::{receiver, stateless_reset},
     psk::io::HandshakeReason,
 };
 use core::time::Duration;
-use s2n_codec::EncoderBuffer;
 use s2n_quic_core::varint::VarInt;
 use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
@@ -62,6 +61,22 @@ pub trait Store: 'static + Send + Sync {
     fn signer(&self) -> &stateless_reset::Signer;
 
     fn send_control_packet(&self, dst: &SocketAddr, buffer: &mut [u8]);
+
+    /// Paced, proactive emission of `UnknownPathSecret` packets to the given peers.
+    ///
+    /// Takes a `&mut dyn Iterator` rather than a generic `impl IntoIterator` so the trait stays
+    /// object-safe (`Store` is used as `Arc<dyn Store>`); the public [`Map`] method exposes the
+    /// ergonomic `impl IntoIterator` signature and adapts to this. See
+    /// [`Map::send_unknown_path_secrets`] for the full contract.
+    ///
+    /// [`Map`]: crate::path::secret::Map
+    /// [`Map::send_unknown_path_secrets`]: crate::path::secret::Map::send_unknown_path_secrets
+    fn send_unknown_path_secrets(
+        &self,
+        entries: &mut dyn ExactSizeIterator<Item = DiskEntry>,
+        rate: core::num::NonZeroU32,
+        timeout: core::time::Duration,
+    ) -> std::io::Result<SendStats>;
 
     fn rehandshake_period(&self) -> Duration;
 
@@ -117,15 +132,13 @@ pub trait Store: 'static + Send + Sync {
         control_out: &mut Vec<u8>,
     ) -> Option<Arc<Entry>> {
         let Some(state) = self.get_by_id_tracked(&identity.id) else {
-            let packet = control::UnknownPathSecret {
-                wire_version: WireVersion::ZERO,
-                credential_id: identity.id,
-                queue_id,
-            };
             control_out.resize(control::UnknownPathSecret::MAX_PACKET_SIZE, 0);
-            let stateless_reset = self.signer().sign(&identity.id);
-            let encoder = EncoderBuffer::new(control_out);
-            let len = packet.encode(encoder, &stateless_reset);
+            let len = super::encode_unknown_path_secret(
+                control_out,
+                self.signer(),
+                identity.id,
+                queue_id,
+            );
             control_out.truncate(len);
             return None;
         };

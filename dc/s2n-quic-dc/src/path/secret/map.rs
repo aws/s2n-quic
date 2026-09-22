@@ -4,7 +4,7 @@
 use crate::{
     credentials::{Credentials, Id},
     event,
-    packet::{secret_control as control, Packet},
+    packet::{secret_control as control, Packet, WireVersion},
     path::secret::{
         open,
         schedule::{Ciphersuite, ExportSecret},
@@ -14,6 +14,7 @@ use crate::{
     stream::TransportFeatures,
 };
 use core::fmt;
+use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
@@ -23,6 +24,7 @@ mod disk;
 mod entry;
 pub mod handshake;
 mod peer;
+mod proactive_unknown_path_secret;
 mod rehandshake;
 mod size_of;
 mod state;
@@ -37,6 +39,7 @@ mod event_tests;
 
 pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
+pub use proactive_unknown_path_secret::SendStats;
 use state::StateBuilderError;
 use store::Store;
 
@@ -49,6 +52,28 @@ pub use peer::Peer;
 
 pub(crate) use size_of::SizeOf;
 pub(crate) use status::Dedup;
+
+/// Encodes an authenticated `UnknownPathSecret` packet for `credential_id` into `buffer`,
+/// returning the encoded length. Shared by the reactive reply, when an incoming packet's
+/// credentials are unknown (see [`Store::pre_authentication`]), and proactive emission (see the
+/// `proactive_unknown_path_secret` module). `buffer` must be at least
+/// [`control::UnknownPathSecret::MAX_PACKET_SIZE`] bytes.
+///
+/// [`Store::pre_authentication`]: store::Store::pre_authentication
+fn encode_unknown_path_secret(
+    buffer: &mut [u8],
+    signer: &stateless_reset::Signer,
+    credential_id: Id,
+    queue_id: Option<VarInt>,
+) -> usize {
+    let packet = control::UnknownPathSecret {
+        wire_version: WireVersion::ZERO,
+        credential_id,
+        queue_id,
+    };
+    let stateless_reset = signer.sign(&credential_id);
+    packet.encode(EncoderBuffer::new(buffer), &stateless_reset)
+}
 
 // FIXME: Most of this comment is not true today, we're expecting to implement the details
 // contained here. This is presented as a roadmap.
@@ -198,6 +223,41 @@ impl Map {
     /// serialization on their own schedule.
     pub fn serialize_to_disk(&self) -> std::io::Result<()> {
         self.store.serialize_to_disk()
+    }
+
+    /// Proactively sends an authenticated [`control::UnknownPathSecret`] packet to each peer in
+    /// `entries`, telling peers holding stale cached secrets to re-handshake.
+    ///
+    /// This is the proactive counterpart to the `UnknownPathSecret` the map already sends reactively
+    /// when it receives a packet with unknown credentials. It is intended to be called once, at
+    /// startup (e.g. after a restart, over the peers recovered from the persisted map), and blocks
+    /// the calling thread until every entry has been handled or `timeout` of wall-clock time (from
+    /// the call) elapses.
+    ///
+    /// Packets are emitted at approximately `rate` packets per second (see [`SendStats`] and the
+    /// pacer in `proactive_unknown_path_secret.rs`). Entries are handled as follows:
+    ///
+    /// * An entry with a credential id has an `UnknownPathSecret` packet built, signed with the
+    ///   map's signer, and sent to its peer address. Success is counted in [`SendStats::sent`];
+    ///   an individual send failure (including a `WouldBlock` on the shared, non-blocking control
+    ///   socket, which is dropped rather than retried) is counted in [`SendStats::failed`] and does
+    ///   not abort the run.
+    /// * A v0 entry (no credential id) cannot be turned into a packet and is counted in
+    ///   [`SendStats::skipped`]; those peers recover reactively.
+    /// * Entries not reached before `timeout` elapses are counted in [`SendStats::remaining`].
+    ///
+    /// Returns `Err` only if the map has no control socket to send on. Socket creation is
+    /// best-effort at construction, so a map can lack one. Per-entry send failures are reported via
+    /// [`SendStats::failed`], not as an error.
+    pub fn send_unknown_path_secrets(
+        &self,
+        entries: impl IntoIterator<Item = DiskEntry, IntoIter: ExactSizeIterator>,
+        rate: core::num::NonZeroU32,
+        timeout: core::time::Duration,
+    ) -> std::io::Result<SendStats> {
+        let mut entries = entries.into_iter();
+        self.store
+            .send_unknown_path_secrets(&mut entries, rate, timeout)
     }
 
     pub fn contains(&self, peer: &SocketAddr) -> bool {
