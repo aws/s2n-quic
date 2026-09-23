@@ -204,6 +204,15 @@ impl<'a> TlsSession<'a> {
         self.session.client_cert_chain_der()
     }
 
+    // Currently intended only for unstable usage
+    #[doc(hidden)]
+    #[cfg(feature = "alloc")]
+    pub fn selected_cert_der(
+        &self,
+    ) -> Result<Option<Vec<Vec<u8>>>, crate::crypto::tls::ChainError> {
+        self.session.selected_cert_der()
+    }
+
     pub fn cipher_suite(&self) -> crate::event::api::CipherSuite {
         self.session.cipher_suite().into_event()
     }
