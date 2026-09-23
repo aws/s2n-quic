@@ -139,6 +139,18 @@ impl tls::TlsSession for Session {
             .map_err(|_| tls::ChainError::failure())?
             .map(|v| v.to_owned()))
     }
+
+    fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, tls::ChainError> {
+        let Some(chain) = self.connection.selected_cert() else {
+            return Ok(None);
+        };
+        let der = chain
+            .iter()
+            .map(|v| Ok(v?.der()?.to_vec()))
+            .collect::<Result<Vec<Vec<u8>>, s2n_tls::error::Error>>()
+            .map_err(|_| tls::ChainError::failure())?;
+        Ok(Some(der))
+    }
 }
 
 impl tls::Session for Session {

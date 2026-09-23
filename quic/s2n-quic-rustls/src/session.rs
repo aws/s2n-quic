@@ -78,6 +78,11 @@ impl tls::TlsSession for Session {
         // As far as I can tell, rustls doesn't support retrieving unverified cert chains.
         Err(tls::ChainError::failure())
     }
+
+    fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, tls::ChainError> {
+        // rustls doesn't expose the local endpoint's selected cert chain from the connection.
+        Err(tls::ChainError::failure())
+    }
 }
 
 impl fmt::Debug for Session {
