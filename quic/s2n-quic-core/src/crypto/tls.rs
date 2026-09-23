@@ -126,6 +126,13 @@ pub trait TlsSession: Send {
     // https://docs.rs/s2n-tls/latest/s2n_tls/connection/struct.Connection.html#method.client_cert_chain_bytes
     #[cfg(feature = "alloc")]
     fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError>;
+
+    // The local endpoint's own selected cert chain (the cert this side presented in the
+    // handshake).
+    //
+    // https://docs.rs/s2n-tls/latest/s2n_tls/connection/struct.Connection.html#method.selected_cert
+    #[cfg(feature = "alloc")]
+    fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError>;
 }
 
 #[cfg(feature = "alloc")]
