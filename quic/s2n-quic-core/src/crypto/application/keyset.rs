@@ -59,11 +59,11 @@ pub struct KeySet<K> {
 
     limits: limited::Limits,
 
-    /// The packet number that initiated a key change.
-    ///
-    /// This is used to distinguish a reordered or replayed packet carrying the opposite Key Phase bit
-    /// from a badly formed packet carrying new data under an old key.
+    /// The lowest packet number observed in the current key phase.
     key_change_packet_number: Option<PacketNumber>,
+
+    /// The largest packet number observed in the current key phase.
+    largest_packet_number: Option<PacketNumber>,
 }
 
 impl<K: OneRttKey> KeySet<K> {
@@ -98,6 +98,7 @@ impl<K: OneRttKey> KeySet<K> {
             crypto: KeyArray([active_key, next_key]),
             limits,
             key_change_packet_number: None,
+            largest_packet_number: None,
         }
     }
 
@@ -165,67 +166,117 @@ impl<K: OneRttKey> KeySet<K> {
 
         match result {
             Ok(packet) => {
-                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
-                //# A recovered packet number that is lower than any packet number from
-                //# the current key phase uses the previous packet protection keys; a
-                //# recovered packet number that is higher than any packet number from
-                //# the current key phase requires the use of the next packet protection
-                //# keys.
-                let advances_packet_number = self
-                    .key_change_packet_number
-                    .is_none_or(|largest| packet_number > largest);
-
-                let generation = if phase_switch && advances_packet_number {
+                let generation = if phase_switch {
                     if self.key_update_in_progress() {
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                        //# A recovered packet number that is lower than any packet number from
+                        //# the current key phase uses the previous packet protection keys; a
+                        //# recovered packet number that is higher than any packet number from
+                        //# the current key phase requires the use of the next packet protection
+                        //# keys.
+                        // A key update is in progress, so the opposite-phase slot still holds the
+                        // retired keys and this packet was decrypted with them. If its packet
+                        // number is at or below the lowest number seen in the current phase, it is a
+                        // straggler that was delayed by the network from before the update; accept
+                        // it without disturbing the key-update state machine.
+                        let is_delayed = self
+                            .key_change_packet_number
+                            .is_some_and(|smallest| packet_number <= smallest);
+
+                        if !is_delayed {
+                            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+                            //# An endpoint that successfully removes protection with old
+                            //# keys when newer keys were used for packets with lower packet
+                            //# numbers MUST treat this as a connection error of type
+                            //# KEY_UPDATE_ERROR.
+                            // An opposite-phase (old-key) packet with a packet number above a
+                            // current-phase packet means old keys protected a higher-numbered packet
+                            // than newer keys, which is illegal.
+                            return Err(transport::Error::KEY_UPDATE_ERROR
+                                .with_reason(
+                                    "packet protected with old keys carried a larger packet number",
+                                )
+                                .into());
+                        }
+
+                        None
+                    } else {
+                        // No key update is in progress, so the opposite-phase slot holds the next
+                        // (newer) keys: this packet was protected with them and therefore signals a
+                        // key update initiated by the peer.
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+                        //# Packets with higher packet numbers MUST be protected with either the
+                        //# same or newer packet protection keys than packets with lower packet
+                        //# numbers.
+
                         //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
                         //# An endpoint that successfully removes protection with old
                         //# keys when newer keys were used for packets with lower packet
                         //# numbers MUST treat this as a connection error of type
                         //# KEY_UPDATE_ERROR.
-                        // A key update is in progress, so the opposite-phase slot still
-                        // holds the retired keys. An opposite-phase packet with a higher
-                        // packet number was therefore protected with old keys, which is
-                        // illegal.
-                        return Err(transport::Error::KEY_UPDATE_ERROR
-                            .with_reason(
-                                "packet protected with old keys carried a larger packet number",
-                            )
-                            .into());
+                        // The packet that initiates the update must carry a higher packet number
+                        // than every packet already protected with the current (about to be retired)
+                        // keys. Otherwise those older keys protected a higher-numbered packet than
+                        // these newer keys, which is illegal.
+                        if self
+                            .largest_packet_number
+                            .is_some_and(|largest| packet_number < largest)
+                        {
+                            return Err(transport::Error::KEY_UPDATE_ERROR
+                                .with_reason(
+                                    "key update carried a smaller packet number than a packet protected with old keys",
+                                )
+                                .into());
+                        }
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
+                        //# Sending keys MUST be updated before sending an
+                        //# acknowledgement for the packet that was received with updated keys.
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
+                        //# The endpoint MUST update its
+                        //# send keys to the corresponding key phase in response, as described in
+                        //# Section 6.1.
+                        self.rotate_phase();
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
+                        //# Endpoints responding to an apparent key update MUST NOT generate a
+                        //# timing side-channel signal that might indicate that the Key Phase bit
+                        //# was invalid (see Section 9.4).
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                        //# An endpoint SHOULD retain old read keys for no more than three times
+                        //# the PTO after having received a packet protected using the new keys.
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.1
+                        //# An endpoint SHOULD
+                        //# retain old keys for some time after unprotecting a packet sent using
+                        //# the new keys.
+                        self.set_derivation_timer(pto);
+
+                        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                        //# For receiving packets during a key update, packets protected with
+                        //# older keys might arrive if they were delayed by the network.
+                        // Reset the current-phase packet-number extent to the packet that carried
+                        // the key change: so far it is both the lowest and the highest number seen
+                        // in the new phase.
+                        self.key_change_packet_number = Some(packet_number);
+                        self.largest_packet_number = Some(packet_number);
+                        Some(self.generation)
                     }
-
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
-                    //# Sending keys MUST be updated before sending an
-                    //# acknowledgement for the packet that was received with updated keys.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
-                    //# The endpoint MUST update its
-                    //# send keys to the corresponding key phase in response, as described in
-                    //# Section 6.1.
-                    self.rotate_phase();
-
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
-                    //# Endpoints responding to an apparent key update MUST NOT generate a
-                    //# timing side-channel signal that might indicate that the Key Phase bit
-                    //# was invalid (see Section 9.4).
-
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
-                    //# An endpoint SHOULD retain old read keys for no more than three times
-                    //# the PTO after having received a packet protected using the new keys.
-
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.1
-                    //# An endpoint SHOULD
-                    //# retain old keys for some time after unprotecting a packet sent using
-                    //# the new keys.
-                    self.set_derivation_timer(pto);
-
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
-                    //# For receiving packets during a key update, packets protected with
-                    //# older keys might arrive if they were delayed by the network.
-                    // Record the packet number that carried the key change so we can
-                    // distinguish delayed packets from badly formed packets.
-                    self.key_change_packet_number = Some(packet_number);
-                    Some(self.generation)
                 } else {
+                    // A packet in the current key phase. Track the lowest and highest packet numbers
+                    // seen so both section 6.4 checks above stay correct regardless of the order in
+                    // which packets arrive on the network.
+                    self.key_change_packet_number = Some(
+                        self.key_change_packet_number
+                            .map_or(packet_number, |smallest| smallest.min(packet_number)),
+                    );
+                    self.largest_packet_number = Some(
+                        self.largest_packet_number
+                            .map_or(packet_number, |largest| largest.max(packet_number)),
+                    );
                     None
                 };
 
@@ -787,6 +838,160 @@ mod tests {
         let err = keyset
             .decrypt_packet(short_packet, pto)
             .expect_err("Higher packet number should not be accepted with older key");
+
+        assert_eq!(
+            err,
+            ProcessingError::ConnectionError(
+                transport::Error::KEY_UPDATE_ERROR
+                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .into()
+            )
+        );
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+    //= type=test
+    //# Packets with higher packet numbers MUST be protected with either the
+    //# same or newer packet protection keys than packets with lower packet
+    //# numbers.
+    //
+    // Regression test: the packet the receiver first accepts in the new key phase
+    // is not necessarily the lowest-numbered one, because the network can reorder
+    // packets. The section 6.4 threshold must track the lowest current-phase packet
+    // number observed, so that an old-key packet numbered above a later-observed,
+    // lower-numbered new-key packet is still detected as illegal.
+    #[test]
+    fn reordered_key_update_detects_old_keys_new_packet_number() {
+        let clock = Clock::default();
+        let pto = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
+
+        // Legitimate key update, observed via a high-numbered new-phase packet that
+        // was reordered ahead of lower-numbered new-phase packets.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 20);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, Some(1));
+        assert_eq!(keyset.key_phase(), KeyPhase::One);
+        assert!(keyset.key_update_in_progress());
+
+        // A lower-numbered packet in the same (new) phase arrives afterwards. It
+        // does not rotate keys, but it lowers the recorded current-phase minimum
+        // from 20 to 10.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 10);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, None);
+        assert_eq!(keyset.key_phase(), KeyPhase::One);
+
+        // An old-phase (retired-key) packet numbered above that lower new-key packet
+        // (10), but below the packet that triggered the update (20), must be rejected:
+        // a lower-numbered packet (10) already used newer keys.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 15);
+        let err = keyset
+            .decrypt_packet(short_packet, pto)
+            .expect_err("old keys must not protect a packet above a newer-key packet number");
+
+        assert_eq!(
+            err,
+            ProcessingError::ConnectionError(
+                transport::Error::KEY_UPDATE_ERROR
+                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .into()
+            )
+        );
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+    //= type=test
+    //# An endpoint that successfully removes protection with old
+    //# keys when newer keys were used for packets with lower packet
+    //# numbers MUST treat this as a connection error of type
+    //# KEY_UPDATE_ERROR.
+    //
+    // The packet that initiates a key update must carry a higher packet number
+    // than every packet already processed with the current (soon to be retired)
+    // keys. If the update is triggered by a lower-numbered packet, then a
+    // higher-numbered packet was protected with the older keys, which is illegal.
+    #[test]
+    fn key_update_below_old_key_packet_number() {
+        let clock = Clock::default();
+        let pto = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
+
+        // Process a current-phase (Zero) packet with a high packet number, so the
+        // current phase has seen a packet numbered 100.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 100);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, None);
+        assert_eq!(keyset.key_phase(), KeyPhase::Zero);
+        assert!(!keyset.key_update_in_progress());
+
+        // A key update signalled by an opposite-phase (One) packet whose packet
+        // number is below the highest number already protected with the current
+        // keys must be rejected: packet 100 used older keys than this lower-numbered
+        // packet.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 50);
+        let err = keyset
+            .decrypt_packet(short_packet, pto)
+            .expect_err("a key update numbered below an old-key packet must be rejected");
+
+        assert_eq!(
+            err,
+            ProcessingError::ConnectionError(
+                transport::Error::KEY_UPDATE_ERROR
+                    .with_reason(
+                        "key update carried a smaller packet number than a packet protected with old keys"
+                    )
+                    .into()
+            )
+        );
+    }
+
+    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+    //= type=test
+    //# An endpoint that successfully removes protection with old
+    //# keys when newer keys were used for packets with lower packet
+    //# numbers MUST treat this as a connection error of type
+    //# KEY_UPDATE_ERROR.
+    //
+    // Sequence K1/PN10 -> K1/PN12 -> K0/PN12. The keyset raises KEY_UPDATE_ERROR
+    // for the final old-key packet even though packet number 12 was already seen in
+    // the new phase. Duplicate detection lives in the transport layer
+    // (ApplicationSpace::validate_and_decrypt_packet) and must not swallow this
+    // connection error, so the keyset must surface it independently of any
+    // packet-number reuse.
+    #[test]
+    fn old_key_error_independent_of_duplicate_packet_number() {
+        let clock = Clock::default();
+        let pto = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
+
+        // K1/PN10: key update to phase One.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 10);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, Some(1));
+        assert_eq!(keyset.key_phase(), KeyPhase::One);
+
+        // K1/PN12: another packet in the new phase, raising the current-phase maximum
+        // to 12 while the current-phase minimum stays 10.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 12);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, None);
+
+        // K0/PN12: an old-key packet reusing a packet number already seen in the new
+        // phase (12 > current-phase minimum of 10). It must still trigger
+        // KEY_UPDATE_ERROR at the keyset boundary.
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 12);
+        let err = keyset
+            .decrypt_packet(short_packet, pto)
+            .expect_err("old-key packet above the new-key minimum must be rejected");
 
         assert_eq!(
             err,
