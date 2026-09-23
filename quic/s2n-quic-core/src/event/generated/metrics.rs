@@ -30,6 +30,7 @@ pub struct Context<R: Recorder> {
     server_name_information: u64,
     key_exchange_group: u64,
     signature_scheme: u64,
+    signature_public_key_type: u64,
     packet_skipped: u64,
     packet_sent: u64,
     packet_received: u64,
@@ -105,6 +106,7 @@ where
             server_name_information: 0,
             key_exchange_group: 0,
             signature_scheme: 0,
+            signature_public_key_type: 0,
             packet_skipped: 0,
             packet_sent: 0,
             packet_received: 0,
@@ -200,6 +202,17 @@ where
         context.signature_scheme += 1;
         self.subscriber
             .on_signature_scheme(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_signature_public_key_type(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::SignaturePublicKeyType,
+    ) {
+        context.signature_public_key_type += 1;
+        self.subscriber
+            .on_signature_public_key_type(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_packet_skipped(
@@ -768,6 +781,10 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("key_exchange_group", self.key_exchange_group as _);
         self.recorder
             .increment_counter("signature_scheme", self.signature_scheme as _);
+        self.recorder.increment_counter(
+            "signature_public_key_type",
+            self.signature_public_key_type as _,
+        );
         self.recorder
             .increment_counter("packet_skipped", self.packet_skipped as _);
         self.recorder
