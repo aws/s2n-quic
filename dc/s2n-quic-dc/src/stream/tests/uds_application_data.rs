@@ -53,10 +53,14 @@ use std::{
 type TestValue = u64;
 const TEST_VALUE: TestValue = 42;
 
+/// Boxed serializer callback shape accepted by
+/// `Map::register_application_data_serializer`.
+type TestSerializer =
+    Box<dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync>;
+
 /// Serializer used by the positive and negative tests. It downcasts the
 /// type-erased `ApplicationData` to `u64` and writes it as big-endian bytes.
-fn u64_serializer(
-) -> Box<dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync> {
+fn u64_serializer() -> TestSerializer {
     Box::new(|data| {
         let value = data
             .downcast_ref::<TestValue>()
