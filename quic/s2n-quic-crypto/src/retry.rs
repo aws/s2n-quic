@@ -112,6 +112,63 @@ mod tests {
         }
     }
 
+    //= https://www.rfc-editor.org/rfc/rfc9000#section-7.2
+    //= type=test
+    //# When an Initial packet is sent by a client that has not previously
+    //# received an Initial or Retry packet from the server, the client
+    //# populates the Destination Connection ID field with an unpredictable
+    //# value.  This Destination Connection ID MUST be at least 8 bytes in
+    //# length.
+    // Encoding declines rather than panics when the client violates this.
+    #[test]
+    fn test_odcid_too_short() {
+        const EMPTY_TOKEN: &[u8] = &[];
+        let remote_address = inet::ip::SocketAddress::default();
+
+        for len in connection::LocalId::MIN_LEN..connection::InitialId::MIN_LEN {
+            let odcid = vec![0u8; len];
+            let mut token_format = token::testing::Format::new();
+
+            let packet = packet::initial::Initial {
+                version: 0x01,
+                destination_connection_id: &odcid[..],
+                source_connection_id: &retry::example::DCID[..],
+                token: EMPTY_TOKEN,
+                packet_number: pn(PacketNumberSpace::Initial),
+                payload: &[1u8, 2, 3, 4, 5][..],
+            };
+
+            let mut buf = vec![0u8; 1200];
+            let mut encoder = EncoderBuffer::new(&mut buf);
+            encoder.encode(&packet);
+            let encoded_len = encoder.len();
+
+            let decoder = DecoderBufferMut::new(&mut buf[..encoded_len]);
+            let connection_info = ConnectionInfo::new(&remote_address);
+            let packet =
+                match packet::ProtectedPacket::decode(decoder, &connection_info, &len).unwrap() {
+                    (packet::ProtectedPacket::Initial(packet), _) => packet,
+                    _ => panic!("expected initial packet type"),
+                };
+
+            let local_conn_id = connection::LocalId::try_from_bytes(&retry::example::SCID).unwrap();
+            let mut output_buf = vec![0u8; 1200];
+
+            assert!(
+                packet::retry::Retry::encode_packet::<_, RetryKey>(
+                    &remote_address,
+                    &packet,
+                    &local_conn_id,
+                    &mut random::testing::Generator(5),
+                    &mut token_format,
+                    &mut output_buf,
+                )
+                .is_none(),
+                "a {len} byte destination connection id should not produce a Retry"
+            );
+        }
+    }
+
     #[test]
     #[should_panic]
     fn test_odcid_different_from_local_cid() {
