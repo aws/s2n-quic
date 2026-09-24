@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{frame::Tag, varint::VarInt};
-use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
+use s2n_codec::{decoder_parameterized_value, Encoder, EncoderValue};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
 //# A server sends a NEW_TOKEN frame (type=0x07) to provide the client
@@ -51,12 +51,6 @@ decoder_parameterized_value!(
             let (token, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
             let token = token.into_less_safe_slice();
 
-            //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
-            //# A client MUST treat receipt of a NEW_TOKEN frame
-            //# with an empty Token field as a connection error
-            //# of type FRAME_ENCODING_ERROR.
-            decoder_invariant!(!token.is_empty(), "empty Token field");
-
             let frame = NewToken { token };
 
             Ok((frame, buffer))
@@ -68,5 +62,26 @@ impl EncoderValue for NewToken<'_> {
     fn encode<E: Encoder>(&self, buffer: &mut E) {
         buffer.encode(&self.tag());
         buffer.encode_with_len_prefix::<VarInt, _>(&self.token);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::frame::{Frame, FrameMut};
+    use s2n_codec::DecoderBufferMut;
+
+    #[test]
+    fn empty_token_decodes_for_endpoint_validation() {
+        let mut bytes = [new_token_tag!(), 0];
+        let buffer = DecoderBufferMut::new(&mut bytes);
+        let (frame, remaining) = buffer.decode::<FrameMut>().unwrap();
+
+        assert!(remaining.is_empty());
+
+        let Frame::NewToken(frame) = frame else {
+            panic!("expected NEW_TOKEN frame");
+        };
+
+        assert!(frame.token.is_empty());
     }
 }
