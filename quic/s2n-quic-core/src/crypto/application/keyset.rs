@@ -702,7 +702,9 @@ mod tests {
         wire_pn: u8,
     ) -> EncryptedShort<'_> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-17.3.1
-        // The Key Phase bit is 0x04 of the first (tag) byte of a short header.
+        //# The next bit (0x04) of byte 0 indicates the key phase,
+        //# which allows a recipient of a packet to identify the packet
+        //# protection keys that are used to protect the packet.
         const KEY_PHASE_BIT: u8 = 0x04;
 
         let tag = if key_phase_one { KEY_PHASE_BIT } else { 0 };
