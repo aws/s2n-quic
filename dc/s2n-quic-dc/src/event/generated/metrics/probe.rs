@@ -60,6 +60,8 @@ mod id {
         ACCEPTOR_TCP_SOCKET_RECEIVED,
         ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME,
         ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
+        ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+        ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
         ACCEPTOR_UDP_STARTED,
         ACCEPTOR_UDP_DATAGRAM_RECEIVED,
         ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN,
@@ -435,6 +437,10 @@ mod id {
         InfoId::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME as usize;
     pub const ACCEPTOR_TCP_SOCKET_RECEIVED__LEN: usize =
         InfoId::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN as usize;
+    pub const ACCEPTOR_TCP_APPLICATION_DATA_DROPPED: usize =
+        InfoId::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED as usize;
+    pub const ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON: usize =
+        InfoId::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_STARTED: usize = InfoId::ACCEPTOR_UDP_STARTED as usize;
     pub const ACCEPTOR_UDP_DATAGRAM_RECEIVED: usize =
         InfoId::ACCEPTOR_UDP_DATAGRAM_RECEIVED as usize;
@@ -971,6 +977,9 @@ mod counter {
                     Self(acceptor_tcp_socket_sent__blocked_count_host)
                 }
                 id::ACCEPTOR_TCP_SOCKET_RECEIVED => Self(acceptor_tcp_socket_received),
+                id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED => {
+                    Self(acceptor_tcp_application_data_dropped)
+                }
                 id::ACCEPTOR_UDP_STARTED => Self(acceptor_udp_started),
                 id::ACCEPTOR_UDP_DATAGRAM_RECEIVED => Self(acceptor_udp_datagram_received),
                 id::ACCEPTOR_UDP_PACKET_RECEIVED => Self(acceptor_udp_packet_received),
@@ -1173,6 +1182,9 @@ mod counter {
             #[link_name =
         s2n_quic_dc__event__counter__acceptor_tcp_socket_received]
             fn acceptor_tcp_socket_received(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_tcp_application_data_dropped]
+            fn acceptor_tcp_application_data_dropped(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__acceptor_udp_started]
             fn acceptor_udp_started(value: u64);
@@ -1632,6 +1644,9 @@ mod counter {
                         Self(acceptor_tcp_packet_dropped__reason)
                     }
                     id::ACCEPTOR_TCP_IO_ERROR__SOURCE => Self(acceptor_tcp_io_error__source),
+                    id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON => {
+                        Self(acceptor_tcp_application_data_dropped__reason)
+                    }
                     id::ACCEPTOR_UDP_PACKET_DROPPED__REASON => {
                         Self(acceptor_udp_packet_dropped__reason)
                     }
@@ -1759,6 +1774,13 @@ mod counter {
                 #[link_name =
             s2n_quic_dc__event__counter__nominal__acceptor_tcp_io_error__source]
                 fn acceptor_tcp_io_error__source(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_tcp_application_data_dropped__reason]
+                fn acceptor_tcp_application_data_dropped__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,

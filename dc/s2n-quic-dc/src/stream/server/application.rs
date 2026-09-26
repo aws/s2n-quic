@@ -7,7 +7,10 @@ use crate::{
     event,
     stream::{
         environment::tokio as env,
-        server::tokio::{common_builder_methods, uds},
+        server::tokio::{
+            common_builder_methods,
+            uds::{self, ApplicationDataDeserializer},
+        },
         socket,
     },
 };
@@ -57,6 +60,7 @@ pub struct Builder {
     enable_udp: bool,
     enable_tcp: bool,
     socket_path: Option<PathBuf>,
+    application_data_deserializer: Option<ApplicationDataDeserializer>,
 }
 
 impl Default for Builder {
@@ -66,6 +70,7 @@ impl Default for Builder {
             enable_udp: true,
             enable_tcp: false,
             socket_path: None,
+            application_data_deserializer: None,
         }
     }
 }
@@ -79,6 +84,18 @@ impl Builder {
     /// are the responsibility of the application owner.
     pub fn with_socket_path(mut self, path: &Path) -> Self {
         self.socket_path = Some(path.to_path_buf());
+        self
+    }
+
+    /// Registers a callback that reconstructs `ApplicationData` from the opaque blob carried in a
+    /// UDS handoff packet. Accepted streams will then have their `application_data()` populated
+    /// with the value returned by the callback. Absent this registration, accepted streams carry
+    /// no application data (pre-existing behavior).
+    pub fn with_application_data_deserializer(
+        mut self,
+        deserializer: ApplicationDataDeserializer,
+    ) -> Self {
+        self.application_data_deserializer = Some(deserializer);
         self
     }
 
@@ -111,7 +128,10 @@ impl Builder {
             io::ErrorKind::InvalidInput,
             "Unix domain socket path is required",
         ))?;
-        let receiver = uds::Receiver::new(&path, &env)?;
+        let mut receiver = uds::Receiver::new(&path, &env)?;
+        if let Some(deserializer) = self.application_data_deserializer {
+            receiver = receiver.with_application_data_deserializer(deserializer);
+        }
         let server = Server { receiver, span };
 
         Ok(server)

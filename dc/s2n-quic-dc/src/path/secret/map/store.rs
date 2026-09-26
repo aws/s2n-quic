@@ -171,6 +171,19 @@ pub trait Store: 'static + Send + Sync {
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Option<ApplicationData>, ApplicationDataError>;
 
+    #[allow(clippy::type_complexity)]
+    fn register_application_data_serializer(
+        &self,
+        cb: Box<
+            dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync,
+        >,
+    );
+
+    fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError>;
+
     #[cfg(test)]
     fn reset_all_senders(&self);
 
