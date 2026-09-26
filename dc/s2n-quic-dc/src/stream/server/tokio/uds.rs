@@ -175,16 +175,42 @@ where
             recv_buffer,
         };
 
-        let application_data = decoded_packet
-            .application_data()
-            .zip(self.application_data_deserializer.as_ref())
-            .and_then(|(blob, de)| match de(blob) {
-                Ok(v) => v,
+        // Reconstruct the forwarded application data, if any. Every failure is fail-open (the
+        // stream is accepted with no application data) and published as a drop event so it is
+        // counted by cause.
+        let application_data = match (
+            decoded_packet.application_data(),
+            self.application_data_deserializer.as_ref(),
+        ) {
+            // No blob on the wire: nothing to attach (v0 packet, or nothing to forward).
+            (None, _) => None,
+            (Some(blob), Some(deserializer)) => match deserializer(blob) {
+                Ok(application_data) => application_data,
                 Err(err) => {
+                    publisher.on_acceptor_tcp_application_data_dropped(
+                        event::builder::AcceptorTcpApplicationDataDropped {
+                            remote_address: &remote_address.into(),
+                            reason: event::builder::AcceptorTcpApplicationDataDropReason::DeserializeFailed,
+                        },
+                    );
                     tracing::warn!(?err, "failed to deserialize application data");
                     None
                 }
-            });
+            },
+            // A blob arrived but this server has no deserializer registered. There is no error
+            // text to log and a misconfigured server would repeat it on every stream, so the
+            // counter is the only signal.
+            (Some(_), None) => {
+                publisher.on_acceptor_tcp_application_data_dropped(
+                    event::builder::AcceptorTcpApplicationDataDropped {
+                        remote_address: &remote_address.into(),
+                        reason:
+                            event::builder::AcceptorTcpApplicationDataDropReason::NoDeserializer,
+                    },
+                );
+                None
+            }
+        };
 
         let stream_builder = match endpoint::accept_stream(
             now,

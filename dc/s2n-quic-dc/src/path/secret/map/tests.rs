@@ -22,12 +22,12 @@ fn test_map() -> Map {
 }
 
 #[test]
-fn serialize_application_data_returns_none_when_unregistered() {
+fn serialize_application_data_returns_ok_none_when_unregistered() {
     let map = test_map();
 
     let data: ApplicationData = Arc::new(42u64);
 
-    assert!(map.serialize_application_data(&data).is_none());
+    assert!(matches!(map.serialize_application_data(&data), Ok(None)));
 }
 
 #[test]
@@ -46,14 +46,18 @@ fn serialize_application_data_invokes_registered_callback() {
     }));
 
     let data: ApplicationData = Arc::new(42u64);
-    let blob = map.serialize_application_data(&data);
+    let blob = map
+        .serialize_application_data(&data)
+        .expect("a registered callback that succeeds yields Ok");
 
     assert_eq!(calls.load(Ordering::Relaxed), 1);
     assert_eq!(blob, Some(42u64.to_be_bytes().to_vec()));
 }
 
+/// The map passes a callback error through unchanged: it has no publisher of its own, so the
+/// caller (the forwarding worker) owns both the event and the log line.
 #[test]
-fn serialize_application_data_returns_none_on_callback_error() {
+fn serialize_application_data_returns_err_from_callback() {
     let map = test_map();
 
     map.register_application_data_serializer(Box::new(|_data| {
@@ -65,5 +69,8 @@ fn serialize_application_data_returns_none_on_callback_error() {
 
     let data: ApplicationData = Arc::new(42u64);
 
-    assert!(map.serialize_application_data(&data).is_none());
+    let err = map
+        .serialize_application_data(&data)
+        .expect_err("a failing callback yields Err");
+    assert_eq!(err.msg, "serialization failed");
 }

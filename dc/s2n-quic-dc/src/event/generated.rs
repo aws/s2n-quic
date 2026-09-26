@@ -435,6 +435,26 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted when application data is dropped from a UDS handoff instead of being forwarded
+    pub struct AcceptorTcpApplicationDataDropped<'a> {
+        /// The remote address of the TCP stream
+        pub remote_address: SocketAddress<'a>,
+        pub reason: AcceptorTcpApplicationDataDropReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpApplicationDataDropped<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpApplicationDataDropped");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpApplicationDataDropped<'a> {
+        const NAME: &'static str = "acceptor:tcp:application_data_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Emitted when a UDP acceptor is started
     pub struct AcceptorUdpStarted<'a> {
         /// The id of the acceptor worker
@@ -753,6 +773,55 @@ pub mod api {
                 Self::Local { .. } => 5usize,
                 Self::UnknownPathSecret { .. } => 6usize,
                 Self::System { .. } => 7usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum AcceptorTcpApplicationDataDropReason {
+        #[non_exhaustive]
+        /// The registered serializer returned an error
+        SerializeFailed {},
+        #[non_exhaustive]
+        /// The encoded handoff packet would exceed the Unix datagram size limit
+        PacketTooLarge {},
+        #[non_exhaustive]
+        /// The registered deserializer returned an error
+        DeserializeFailed {},
+        #[non_exhaustive]
+        /// The handoff carried application data but no deserializer is registered
+        NoDeserializer {},
+    }
+    impl aggregate::AsVariant for AcceptorTcpApplicationDataDropReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SERIALIZE_FAILED\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("PACKET_TOO_LARGE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("DESERIALIZE_FAILED\0"),
+                id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("NO_DESERIALIZER\0"),
+                id: 3usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::SerializeFailed { .. } => 0usize,
+                Self::PacketTooLarge { .. } => 1usize,
+                Self::DeserializeFailed { .. } => 2usize,
+                Self::NoDeserializer { .. } => 3usize,
             }
         }
     }
@@ -3132,6 +3201,24 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpApplicationDataDropped {
+                remote_address,
+                reason,
+            } = event;
+            tracing::event!(
+                target : "acceptor_tcp_application_data_dropped", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), reason =
+                tracing::field::debug(reason) }
+            );
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -5133,6 +5220,28 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Emitted when application data is dropped from a UDS handoff instead of being forwarded
+    pub struct AcceptorTcpApplicationDataDropped<'a> {
+        /// The remote address of the TCP stream
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        pub reason: AcceptorTcpApplicationDataDropReason,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpApplicationDataDropped<'a>>
+        for AcceptorTcpApplicationDataDropped<'a>
+    {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpApplicationDataDropped<'a> {
+            let AcceptorTcpApplicationDataDropped {
+                remote_address,
+                reason,
+            } = self;
+            api::AcceptorTcpApplicationDataDropped {
+                remote_address: remote_address.into_event(),
+                reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// Emitted when a UDP acceptor is started
     pub struct AcceptorUdpStarted<'a> {
         /// The id of the acceptor worker
@@ -5395,6 +5504,29 @@ pub mod builder {
                 Self::Local => Local {},
                 Self::UnknownPathSecret => UnknownPathSecret {},
                 Self::System => System {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum AcceptorTcpApplicationDataDropReason {
+        /// The registered serializer returned an error
+        SerializeFailed,
+        /// The encoded handoff packet would exceed the Unix datagram size limit
+        PacketTooLarge,
+        /// The registered deserializer returned an error
+        DeserializeFailed,
+        /// The handoff carried application data but no deserializer is registered
+        NoDeserializer,
+    }
+    impl IntoEvent<api::AcceptorTcpApplicationDataDropReason> for AcceptorTcpApplicationDataDropReason {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpApplicationDataDropReason {
+            use api::AcceptorTcpApplicationDataDropReason::*;
+            match self {
+                Self::SerializeFailed => SerializeFailed {},
+                Self::PacketTooLarge => PacketTooLarge {},
+                Self::DeserializeFailed => DeserializeFailed {},
+                Self::NoDeserializer => NoDeserializer {},
             }
         }
     }
@@ -7482,6 +7614,16 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `AcceptorTcpApplicationDataDropped` event is triggered
+        #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `AcceptorUdpStarted` event is triggered
         #[inline]
         fn on_acceptor_udp_started(
@@ -8543,6 +8685,15 @@ mod traits {
             self.as_ref().on_acceptor_tcp_socket_received(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            self.as_ref()
+                .on_acceptor_tcp_application_data_dropped(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -9447,6 +9598,15 @@ mod traits {
             (self.1).on_acceptor_tcp_socket_received(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            (self.0).on_acceptor_tcp_application_data_dropped(meta, event);
+            (self.1).on_acceptor_tcp_application_data_dropped(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -10287,6 +10447,11 @@ mod traits {
         fn on_acceptor_tcp_socket_sent(&self, event: builder::AcceptorTcpSocketSent);
         ///Publishes a `AcceptorTcpSocketReceived` event to the publisher's subscriber
         fn on_acceptor_tcp_socket_received(&self, event: builder::AcceptorTcpSocketReceived);
+        ///Publishes a `AcceptorTcpApplicationDataDropped` event to the publisher's subscriber
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            event: builder::AcceptorTcpApplicationDataDropped,
+        );
         ///Publishes a `AcceptorUdpStarted` event to the publisher's subscriber
         fn on_acceptor_udp_started(&self, event: builder::AcceptorUdpStarted);
         ///Publishes a `AcceptorUdpDatagramReceived` event to the publisher's subscriber
@@ -10576,6 +10741,16 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_acceptor_tcp_socket_received(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            event: builder::AcceptorTcpApplicationDataDropped,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_application_data_dropped(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11427,6 +11602,7 @@ pub mod testing {
             pub acceptor_tcp_io_error: AtomicU64,
             pub acceptor_tcp_socket_sent: AtomicU64,
             pub acceptor_tcp_socket_received: AtomicU64,
+            pub acceptor_tcp_application_data_dropped: AtomicU64,
             pub acceptor_udp_started: AtomicU64,
             pub acceptor_udp_datagram_received: AtomicU64,
             pub acceptor_udp_packet_received: AtomicU64,
@@ -11525,6 +11701,7 @@ pub mod testing {
                     acceptor_tcp_io_error: AtomicU64::new(0),
                     acceptor_tcp_socket_sent: AtomicU64::new(0),
                     acceptor_tcp_socket_received: AtomicU64::new(0),
+                    acceptor_tcp_application_data_dropped: AtomicU64::new(0),
                     acceptor_udp_started: AtomicU64::new(0),
                     acceptor_udp_datagram_received: AtomicU64::new(0),
                     acceptor_udp_packet_received: AtomicU64::new(0),
@@ -11771,6 +11948,18 @@ pub mod testing {
                 event: &api::AcceptorTcpSocketReceived,
             ) {
                 self.acceptor_tcp_socket_received
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_tcp_application_data_dropped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpApplicationDataDropped,
+            ) {
+                self.acceptor_tcp_application_data_dropped
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -12392,6 +12581,7 @@ pub mod testing {
         pub acceptor_tcp_io_error: AtomicU64,
         pub acceptor_tcp_socket_sent: AtomicU64,
         pub acceptor_tcp_socket_received: AtomicU64,
+        pub acceptor_tcp_application_data_dropped: AtomicU64,
         pub acceptor_udp_started: AtomicU64,
         pub acceptor_udp_datagram_received: AtomicU64,
         pub acceptor_udp_packet_received: AtomicU64,
@@ -12523,6 +12713,7 @@ pub mod testing {
                 acceptor_tcp_io_error: AtomicU64::new(0),
                 acceptor_tcp_socket_sent: AtomicU64::new(0),
                 acceptor_tcp_socket_received: AtomicU64::new(0),
+                acceptor_tcp_application_data_dropped: AtomicU64::new(0),
                 acceptor_udp_started: AtomicU64::new(0),
                 acceptor_udp_datagram_received: AtomicU64::new(0),
                 acceptor_udp_packet_received: AtomicU64::new(0),
@@ -12802,6 +12993,18 @@ pub mod testing {
             event: &api::AcceptorTcpSocketReceived,
         ) {
             self.acceptor_tcp_socket_received
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            self.acceptor_tcp_application_data_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -13891,6 +14094,7 @@ pub mod testing {
         pub acceptor_tcp_io_error: AtomicU64,
         pub acceptor_tcp_socket_sent: AtomicU64,
         pub acceptor_tcp_socket_received: AtomicU64,
+        pub acceptor_tcp_application_data_dropped: AtomicU64,
         pub acceptor_udp_started: AtomicU64,
         pub acceptor_udp_datagram_received: AtomicU64,
         pub acceptor_udp_packet_received: AtomicU64,
@@ -14012,6 +14216,7 @@ pub mod testing {
                 acceptor_tcp_io_error: AtomicU64::new(0),
                 acceptor_tcp_socket_sent: AtomicU64::new(0),
                 acceptor_tcp_socket_received: AtomicU64::new(0),
+                acceptor_tcp_application_data_dropped: AtomicU64::new(0),
                 acceptor_udp_started: AtomicU64::new(0),
                 acceptor_udp_datagram_received: AtomicU64::new(0),
                 acceptor_udp_packet_received: AtomicU64::new(0),
@@ -14235,6 +14440,17 @@ pub mod testing {
         }
         fn on_acceptor_tcp_socket_received(&self, event: builder::AcceptorTcpSocketReceived) {
             self.acceptor_tcp_socket_received
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            event: builder::AcceptorTcpApplicationDataDropped,
+        ) {
+            self.acceptor_tcp_application_data_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);

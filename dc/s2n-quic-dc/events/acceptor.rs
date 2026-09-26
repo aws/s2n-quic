@@ -340,6 +340,29 @@ struct AcceptorTcpSocketReceived<'a> {
     payload_len: usize,
 }
 
+/// Emitted when application data is dropped from a UDS handoff instead of being forwarded
+#[event("acceptor:tcp:application_data_dropped")]
+#[subject(endpoint)]
+struct AcceptorTcpApplicationDataDropped<'a> {
+    /// The remote address of the TCP stream
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    #[nominal_counter("reason")]
+    reason: AcceptorTcpApplicationDataDropReason,
+}
+
+enum AcceptorTcpApplicationDataDropReason {
+    /// The registered serializer returned an error
+    SerializeFailed,
+    /// The encoded handoff packet would exceed the Unix datagram size limit
+    PacketTooLarge,
+    /// The registered deserializer returned an error
+    DeserializeFailed,
+    /// The handoff carried application data but no deserializer is registered
+    NoDeserializer,
+}
+
 /// Emitted when a UDP acceptor is started
 #[event("acceptor:udp:started")]
 #[subject(endpoint)]

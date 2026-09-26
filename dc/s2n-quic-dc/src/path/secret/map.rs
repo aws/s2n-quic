@@ -625,15 +625,14 @@ impl Map {
     /// Serializes `data` into an opaque blob using the callback registered via
     /// [`Map::register_application_data_serializer`].
     ///
-    /// Returns `None` if no serializer is registered, if the callback yields `None`, or if the
-    /// callback returns an error (the error is logged and swallowed so callers can fail open).
-    pub(crate) fn serialize_application_data(&self, data: &ApplicationData) -> Option<Vec<u8>> {
-        match self.store.serialize_application_data(data) {
-            Ok(blob) => blob,
-            Err(err) => {
-                tracing::warn!(?err, "failed to serialize application data");
-                None
-            }
-        }
+    /// Returns `Ok(None)` if no serializer is registered or if the callback yields `None`, and
+    /// passes the callback's error through unchanged. The map has no event publisher, so the
+    /// caller decides how a failure is reported; the forwarding worker publishes an event and
+    /// logs the error, then forwards the stream without a blob.
+    pub(crate) fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError> {
+        self.store.serialize_application_data(data)
     }
 }
