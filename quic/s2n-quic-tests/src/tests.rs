@@ -40,6 +40,7 @@ mod issue_1427;
 mod issue_1464;
 mod issue_1717;
 mod issue_954;
+mod key_update;
 mod mtu;
 mod new_token;
 mod no_tls;
