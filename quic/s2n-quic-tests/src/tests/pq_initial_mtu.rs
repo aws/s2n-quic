@@ -7,12 +7,26 @@
 //! support that MTU. These tests help track that regression and our fixes for it.
 
 use super::*;
-use s2n_quic::provider::tls::default::{self as tls, security};
+use s2n_quic::provider::{
+    dc,
+    tls::default::{self as tls, security},
+};
+use s2n_quic_core::{
+    dc::testing::MockDcEndpoint,
+    stateless_reset::{
+        self,
+        token::testing::{TEST_TOKEN_1, TEST_TOKEN_2},
+    },
+};
 
 const BASE_MTU: u16 = 1450;
 const JUMBO_MTU: u16 = 8940;
 
 const RTT: Duration = Duration::from_millis(1);
+const MAX_ACK_DELAY: Duration = Duration::from_millis(25);
+
+const SERVER_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_1];
+const CLIENT_TOKENS: [stateless_reset::Token; 1] = [TEST_TOKEN_2];
 
 /// A packet buffer large enough to hold a full jumbo datagram, as s2n-quic-dc configures.
 const PACKET_BUFFER: u32 = JUMBO_MTU as u32;
@@ -59,14 +73,29 @@ struct Scenario<'a> {
     path_mtu: u16,
     client_mtu: Mtu,
     server_mtu: Mtu,
+    /// Size of the server's packet buffer.
+    server_packet_buffer: u32,
     /// Size of the client's packet buffer, which holds handshake packets that arrive before
     /// the keys needed to decrypt them are available. `0` disables buffering, dropping them.
     client_packet_buffer: u32,
 }
 
 impl Scenario<'_> {
-    /// Runs the handshake and returns how long it took in simulated time.
+    /// Runs the TLS and dcQUIC handshakes and returns how long it took both endpoints to reach
+    /// `ConfirmComplete` in simulated time.
     fn handshake_time(&self) -> Duration {
+        self.handshake_time_with_max_ack_delay(MAX_ACK_DELAY)
+    }
+
+    fn handshake_time_with_max_ack_delay(&self, max_ack_delay: Duration) -> Duration {
+        self.handshake_time_with_options(max_ack_delay, false)
+    }
+
+    fn slow_server_handshake_time(&self) -> Duration {
+        self.handshake_time_with_options(MAX_ACK_DELAY, true)
+    }
+
+    fn handshake_time_with_options(&self, max_ack_delay: Duration, slow_server: bool) -> Duration {
         let model = Model::default();
         model.set_max_udp_payload(self.path_mtu);
         model.set_delay(RTT / 2);
@@ -76,6 +105,7 @@ impl Scenario<'_> {
 
         let policy = security::Policy::from_version(self.policy_version).unwrap();
         let (client_mtu, server_mtu) = (self.client_mtu, self.server_mtu);
+        let server_packet_buffer = self.server_packet_buffer;
         let client_packet_buffer = self.client_packet_buffer;
 
         test(model.clone(), |handle| {
@@ -92,7 +122,7 @@ impl Scenario<'_> {
                 builder.build()?
             });
 
-            let server = Server::builder()
+            let server_builder = Server::builder()
                 .with_io(
                     handle
                         .builder()
@@ -101,15 +131,24 @@ impl Scenario<'_> {
                         .with_max_mtu(server_mtu.max_mtu)
                         .build()?,
                 )?
-                .with_tls(server)?
+                .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
                 // The oversized first flight is dropped by the network, which this
                 // harness would otherwise treat as a fatal event.
-                .with_event(tracing_events(false, model.clone()))?
+                .with_event((dc::ConfirmComplete, tracing_events(false, model.clone())))?
                 .with_random(Random::with_seed(456))?
                 .with_limits(
-                    provider::limits::Limits::default().with_initial_round_trip_time(RTT)?,
-                )?
-                .start()?;
+                    provider::limits::Limits::default()
+                        .with_initial_round_trip_time(RTT)?
+                        .with_max_ack_delay(max_ack_delay)?
+                        .with_packet_buffer_size(server_packet_buffer)?,
+                )?;
+            let mut server = if slow_server {
+                server_builder
+                    .with_tls(SlowTlsProvider { endpoint: server })?
+                    .start()?
+            } else {
+                server_builder.with_tls(server)?.start()?
+            };
 
             let client = tls::Client::from_loader({
                 let mut builder = tls::config::Config::builder();
@@ -131,26 +170,55 @@ impl Scenario<'_> {
                         .build()?,
                 )?
                 .with_tls(client)?
-                .with_event(tracing_events(false, model.clone()))?
+                .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?
+                .with_event((dc::ConfirmComplete, tracing_events(false, model.clone())))?
                 .with_random(Random::with_seed(456))?
                 .with_limits(
                     provider::limits::Limits::default()
                         .with_initial_round_trip_time(RTT)?
+                        .with_max_ack_delay(max_ack_delay)?
                         // dc's client sets this, so that a handshake flight arriving before
                         // its keys can be derived is buffered rather than dropped.
                         .with_packet_buffer_size(client_packet_buffer)?,
                 )?
                 .start()?;
 
-            let addr = start_server(server)?;
+            let addr = server.local_addr()?;
+            let (server_complete, mut server_complete_rx) = tokio::sync::watch::channel(None);
+
+            spawn(async move {
+                let succeeded = if let Some(mut connection) = server.accept().await {
+                    dc::ConfirmComplete::wait_ready(&mut connection)
+                        .await
+                        .is_ok()
+                } else {
+                    false
+                };
+                server_complete.send_replace(Some(succeeded));
+            });
 
             primary::spawn(async move {
                 let start = io::time::now();
                 let connection = client
                     .connect(Connect::new(addr).with_server_name("localhost"))
                     .await;
+
+                let succeeded = if let Ok(mut connection) = connection {
+                    let client_complete = dc::ConfirmComplete::wait_ready(&mut connection)
+                        .await
+                        .is_ok();
+
+                    while server_complete_rx.borrow().is_none()
+                        && server_complete_rx.changed().await.is_ok()
+                    {}
+
+                    client_complete && server_complete_rx.borrow().unwrap_or(false)
+                } else {
+                    false
+                };
+
                 let elapsed = io::time::now() - start;
-                *handshake.lock().unwrap() = Some((elapsed, connection.is_ok()));
+                *handshake.lock().unwrap() = Some((elapsed, succeeded));
             });
 
             Ok(addr)
@@ -161,6 +229,66 @@ impl Scenario<'_> {
         assert!(succeeded, "handshake failed after {elapsed:?}");
         elapsed
     }
+}
+
+/// Delayed server-side TLS processing can leave the server unable to process the client's first
+/// 1-RTT `DC_STATELESS_RESET_TOKENS` packet. Without packet-buffer capacity the packet is dropped,
+/// and recovery waits for an application-data PTO that includes the peer's 25ms max ACK delay.
+#[test]
+fn server_packet_buffer_avoids_dc_token_pto() {
+    let mut scenario = Scenario {
+        policy_version: ML_KEM_POLICY,
+        path_mtu: 9001,
+        client_mtu: NO_MTU_DISCOVERY,
+        server_mtu: NO_MTU_DISCOVERY,
+        server_packet_buffer: NO_PACKET_BUFFER,
+        client_packet_buffer: PACKET_BUFFER,
+    };
+
+    let unbuffered = scenario.slow_server_handshake_time();
+    scenario.server_packet_buffer = PACKET_BUFFER;
+    let buffered = scenario.slow_server_handshake_time();
+
+    let unbuffered_min = MAX_ACK_DELAY + RTT * 3;
+    let unbuffered_max = MAX_ACK_DELAY + RTT * 4;
+    assert!(
+        unbuffered > unbuffered_min && unbuffered < unbuffered_max,
+        "expected the 1-RTT PTO to complete between {unbuffered_min:?} and {unbuffered_max:?}, \
+         got {unbuffered:?}"
+    );
+    assert!(
+        buffered < RTT * 3,
+        "expected packet buffering to avoid the PTO, got {buffered:?}"
+    );
+}
+
+#[test]
+fn dc_mtu_on_jumbo_path() {
+    let classical = Scenario {
+        policy_version: CLASSICAL_POLICY,
+        path_mtu: 9001,
+        client_mtu: NO_MTU_DISCOVERY,
+        server_mtu: NO_MTU_DISCOVERY,
+        server_packet_buffer: PACKET_BUFFER,
+        client_packet_buffer: PACKET_BUFFER,
+    }
+    .handshake_time();
+
+    let ml_kem_scenario = Scenario {
+        policy_version: ML_KEM_POLICY,
+        path_mtu: 9001,
+        client_mtu: NO_MTU_DISCOVERY,
+        server_mtu: NO_MTU_DISCOVERY,
+        server_packet_buffer: PACKET_BUFFER,
+        client_packet_buffer: PACKET_BUFFER,
+    };
+    let ml_kem = ml_kem_scenario.handshake_time();
+    let ml_kem_short_ack =
+        ml_kem_scenario.handshake_time_with_max_ack_delay(Duration::from_millis(1));
+
+    assert_eq!(classical, ml_kem);
+    assert_eq!(ml_kem, ml_kem_short_ack);
+    assert!(ml_kem < RTT * 3, "expected ~2.5 RTT, got {ml_kem:?}");
 }
 
 /// On a path that cannot carry the oversized first flight, an ML-KEM ClientHello takes far
@@ -183,6 +311,7 @@ fn ml_kem_client_hello_exceeds_pto_probe() {
         path_mtu: 1500,
         client_mtu: JUMBO_INITIAL_MTU,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
@@ -193,6 +322,7 @@ fn ml_kem_client_hello_exceeds_pto_probe() {
         path_mtu: 1500,
         client_mtu: JUMBO_INITIAL_MTU,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
@@ -209,7 +339,8 @@ fn ml_kem_client_hello_exceeds_pto_probe() {
 
 /// The regression is caused by the first flight being padded above the path MTU, not by the
 /// size of the ClientHello itself: when the path can carry the jumbo first flight, both
-/// policies complete in a single round trip.
+/// policies complete the TLS handshake in a single round trip and the full dcQUIC token exchange
+/// in 2.5 round trips.
 #[test]
 fn no_regression_when_path_supports_initial_mtu() {
     let classical = Scenario {
@@ -217,6 +348,7 @@ fn no_regression_when_path_supports_initial_mtu() {
         path_mtu: 9001,
         client_mtu: JUMBO_INITIAL_MTU,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
@@ -226,16 +358,18 @@ fn no_regression_when_path_supports_initial_mtu() {
         path_mtu: 9001,
         client_mtu: JUMBO_INITIAL_MTU,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
 
     assert_eq!(classical, ml_kem);
-    assert!(ml_kem < RTT * 2, "expected ~1 RTT, got {ml_kem:?}");
+    assert!(ml_kem < RTT * 3, "expected ~2.5 RTT, got {ml_kem:?}");
 }
 
 /// With MTU discovery disabled on both endpoints no first flight is padded above the path MTU, so
-/// nothing is lost and the PQ handshake costs exactly what the classical one does.
+/// nothing is lost and the PQ handshake costs exactly what the classical one does. The full
+/// dcQUIC token exchange completes in 2.5 round trips.
 #[test]
 fn no_jumbo_config_is_unaffected() {
     let classical = Scenario {
@@ -243,6 +377,7 @@ fn no_jumbo_config_is_unaffected() {
         path_mtu: 1500,
         client_mtu: NO_MTU_DISCOVERY,
         server_mtu: NO_MTU_DISCOVERY,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
@@ -252,12 +387,13 @@ fn no_jumbo_config_is_unaffected() {
         path_mtu: 1500,
         client_mtu: NO_MTU_DISCOVERY,
         server_mtu: NO_MTU_DISCOVERY,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
 
     assert_eq!(classical, ml_kem);
-    assert!(ml_kem < RTT * 2, "expected ~1 RTT, got {ml_kem:?}");
+    assert!(ml_kem < RTT * 3, "expected ~2.5 RTT, got {ml_kem:?}");
 }
 
 /// This test confirms that we get reasonable behavior from only deploying the fixes client side
@@ -276,6 +412,7 @@ fn client_initial_mtu_at_base_avoids_pto_ladder() {
         path_mtu: 1500,
         client_mtu,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
@@ -286,6 +423,7 @@ fn client_initial_mtu_at_base_avoids_pto_ladder() {
         path_mtu: 1500,
         client_mtu,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();
@@ -314,6 +452,7 @@ fn client_packet_buffering_saves_round_trips() {
         path_mtu: 1500,
         client_mtu,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: NO_PACKET_BUFFER,
     }
     .handshake_time();
@@ -324,6 +463,7 @@ fn client_packet_buffering_saves_round_trips() {
         path_mtu: 1500,
         client_mtu,
         server_mtu: JUMBO_INITIAL_MTU,
+        server_packet_buffer: PACKET_BUFFER,
         client_packet_buffer: PACKET_BUFFER,
     }
     .handshake_time();

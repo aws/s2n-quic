@@ -156,7 +156,13 @@ impl Server {
             .with_bidirectional_local_data_window(builder.data_window)?
             .with_bidirectional_remote_data_window(initial_max_data)?
             .with_pto_jitter_percentage(builder.pto_jitter_percentage)?
-            .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?;
+            .with_initial_round_trip_time(DEFAULT_INITIAL_RTT)?
+            // The peer can send 1-RTT DC_STATELESS_RESET_TOKENS immediately after its TLS
+            // handshake completes. Buffer the packet if the server is still completing TLS.
+            //
+            // This is also needed for offloading (https://github.com/aws/s2n-quic/issues/2601) but
+            // is useful without it (see server_packet_buffer_avoids_dc_token_pto).
+            .with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
@@ -202,12 +208,6 @@ impl Server {
                 })
                 .with_executor(TokioExecutor { runtime, monitor })
                 .build();
-
-            // We need packet storage when offloading is turned on due to this issue:
-            // https://github.com/aws/s2n-quic/issues/2601. The size needs to be large enough
-            // to store a packet with the given MTU.
-            let connection_limits =
-                connection_limits.with_packet_buffer_size(DEFAULT_MTU as u32)?;
 
             build_and_start!(tls, connection_limits, io)
         } else {
