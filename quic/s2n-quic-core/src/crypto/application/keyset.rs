@@ -31,6 +31,15 @@ pub struct KeySet<K> {
     /// The number of times the key has been rotated
     generation: u16,
 
+    /// The largest packet number that has been successfully authenticated in this space
+    ///
+    /// The Key Phase bit alone cannot distinguish a key update from a packet protected with
+    /// the previous (retained) keys, since both use the same value. This high water mark is
+    /// used as the discriminator, as described in [RFC 9001 6.5].
+    ///
+    /// [RFC 9001 6.5]: https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+    largest_authenticated_packet_number: Option<PacketNumber>,
+
     /// Set of keys for the current and next phase
     crypto: KeyArray<K>,
 
@@ -47,7 +56,7 @@ impl<K: OneRttKey> KeySet<K> {
         //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
         //# Endpoints responding to an apparent key update MUST NOT generate a
         //# timing side-channel signal that might indicate that the Key Phase bit
-        //# was invalid (see Section 9.4).
+        //# was invalid (see Section 9.5).
 
         //= https://www.rfc-editor.org/rfc/rfc9001#section-5.4
         //# The same header protection key is used for the duration of the
@@ -66,6 +75,7 @@ impl<K: OneRttKey> KeySet<K> {
             packet_decryption_failures: 0,
             aead_integrity_limit,
             generation: 0,
+            largest_authenticated_packet_number: None,
             crypto: KeyArray([active_key, next_key]),
             limits,
         }
@@ -113,34 +123,19 @@ impl<K: OneRttKey> KeySet<K> {
     pub fn decrypt_packet<'a>(
         &mut self,
         packet: EncryptedShort<'a>,
-        largest_acknowledged_packet_number: PacketNumber,
         pto: Timestamp,
     ) -> Result<(CleartextShort<'a>, Option<u16>), ProcessingError> {
-        let mut phase_to_use = self.key_phase() as u8;
         let packet_phase = packet.key_phase();
-        let phase_switch = phase_to_use != (packet_phase as u8);
-        phase_to_use ^= phase_switch as u8;
+        let packet_number = packet.packet_number;
 
-        if self.key_update_in_progress() && phase_switch {
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
-            //# An endpoint MAY allow a period of approximately the Probe Timeout
-            //# (PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
-            //# keys to be current before it creates the subsequent set of packet
-            //# protection keys.
-
-            //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
-            //# Packets with higher packet numbers MUST be protected with either the
-            //# same or newer packet protection keys than packets with lower packet
-            //# numbers.
-            // During this PTO we can still process delayed packets, reducing retransmits
-            // required from the peer. We know the packets are delayed because they have a
-            // lower packet number than expected and the old key phase.
-            if packet.packet_number < largest_acknowledged_packet_number {
-                phase_to_use = packet.key_phase() as u8;
-            }
-        }
-
-        let key = &mut self.crypto[phase_to_use.into()];
+        //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
+        //# Endpoints responding to an apparent key update MUST NOT generate a
+        //# timing side-channel signal that might indicate that the Key Phase bit
+        //# was invalid (see Section 9.5).
+        // Protection removal is always attempted with the key that the Key Phase bit selects,
+        // without branching on whether that bit matches the current phase. Whether the packet
+        // actually represents a key update is decided below, after the AEAD result is known.
+        let key = &mut self.crypto[packet_phase];
 
         let result = packet.decrypt(key.key_mut());
 
@@ -148,7 +143,51 @@ impl<K: OneRttKey> KeySet<K> {
 
         match result {
             Ok(packet) => {
-                let generation = if packet_phase != self.key_phase() {
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                //# As packets protected with keys from the next key phase use the same
+                //# Key Phase value as those protected with keys from the previous key
+                //# phase, it is necessary to distinguish between the two if packets
+                //# protected with old keys are to be processed.  This can be done using
+                //# packet numbers.
+
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                //# A recovered packet number that is lower than any
+                //# packet number from the current key phase uses the previous packet
+                //# protection keys; a recovered packet number that is higher than any
+                //# packet number from the current key phase requires the use of the next
+                //# packet protection keys.
+                // A differing Key Phase bit is ambiguous while the previous keys are still
+                // retained: it identifies both the next and the previous phase. It is only an
+                // apparent key update if the packet is also newer than anything we have
+                // authenticated so far. Otherwise it is a packet from the previous phase that
+                // was delayed or replayed, and it must not disturb the key state.
+                let is_key_update = packet_phase != self.key_phase()
+                    && self
+                        .largest_authenticated_packet_number
+                        .is_none_or(|largest| packet_number > largest);
+
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+                //# Packets with higher packet numbers MUST be protected with either the
+                //# same or newer packet protection keys than packets with lower packet
+                //# numbers.
+
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-6.4
+                //# An endpoint that successfully removes protection with old
+                //# keys when newer keys were used for packets with lower packet numbers
+                //# MUST treat this as a connection error of type KEY_UPDATE_ERROR.
+                // While the derivation timer is armed the non-active slot still holds the
+                // retired key rather than the next key, so protection was just removed with old
+                // keys from a packet newer than packets protected with the current keys.
+                if is_key_update && self.key_update_in_progress() {
+                    return Err(transport::Error::KEY_UPDATE_ERROR.into());
+                }
+
+                self.largest_authenticated_packet_number = Some(
+                    self.largest_authenticated_packet_number
+                        .map_or(packet_number, |largest| largest.max(packet_number)),
+                );
+
+                let generation = if is_key_update {
                     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.2
                     //# Sending keys MUST be updated before sending an
                     //# acknowledgement for the packet that was received with updated keys.
@@ -159,11 +198,6 @@ impl<K: OneRttKey> KeySet<K> {
                     //# Section 6.1.
                     self.rotate_phase();
 
-                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.3
-                    //# Endpoints responding to an apparent key update MUST NOT generate a
-                    //# timing side-channel signal that might indicate that the Key Phase bit
-                    //# was invalid (see Section 9.4).
-
                     //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
                     //# An endpoint SHOULD retain old read keys for no more than three times
                     //# the PTO after having received a packet protected using the new keys.
@@ -172,6 +206,14 @@ impl<K: OneRttKey> KeySet<K> {
                     //# An endpoint SHOULD
                     //# retain old keys for some time after unprotecting a packet sent using
                     //# the new keys.
+
+                    //= https://www.rfc-editor.org/rfc/rfc9001#section-6.5
+                    //# An endpoint MAY allow a period of approximately the Probe Timeout
+                    //# (PTO; see [QUIC-RECOVERY]) after promoting the next set of receive
+                    //# keys to be current before it creates the subsequent set of packet
+                    //# protection keys.
+                    // During this period delayed packets from the previous phase can still be
+                    // processed, reducing retransmits required from the peer.
                     self.set_derivation_timer(pto);
                     Some(self.generation)
                 } else {
@@ -429,11 +471,7 @@ mod tests {
 
         assert_eq!(keyset.decryption_error_count(), 0);
         assert!(keyset
-            .decrypt_packet(
-                encrypted_packet,
-                PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                clock.get_time(),
-            )
+            .decrypt_packet(encrypted_packet, clock.get_time())
             .is_err());
         assert_eq!(keyset.decryption_error_count(), 1);
     }
@@ -472,11 +510,7 @@ mod tests {
         assert_eq!(keyset.decryption_error_count(), 0);
         assert_eq!(
             keyset
-                .decrypt_packet(
-                    encrypted_packet,
-                    PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(0)),
-                    clock.get_time(),
-                )
+                .decrypt_packet(encrypted_packet, clock.get_time())
                 .err(),
             Some(ProcessingError::ConnectionError(
                 (transport::Error::AEAD_LIMIT_REACHED).into()
