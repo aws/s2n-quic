@@ -17,18 +17,20 @@ impl Control {
 
         {
             let socket = socket.clone();
-            std::thread::spawn(move || loop {
-                let mut buffer = vec![0; 10_000];
-                let (src, packet) = match socket.recv_from(&mut buffer) {
-                    Ok((length, src)) => (src, DecoderBufferMut::new(&mut buffer[..length])),
-                    Err(_) => continue,
-                };
-                let packet = secret_control::Packet::decode(packet);
-                match packet {
-                    Ok((packet, _remaining)) => map.handle_control_packet(&packet, &src),
-                    Err(_) => continue,
-                }
-            });
+            std::thread::Builder::new()
+                .name("control".into())
+                .spawn(move || loop {
+                    let mut buffer = vec![0; 10_000];
+                    let (src, packet) = match socket.recv_from(&mut buffer) {
+                        Ok((length, src)) => (src, DecoderBufferMut::new(&mut buffer[..length])),
+                        Err(_) => continue,
+                    };
+                    let packet = secret_control::Packet::decode(packet);
+                    match packet {
+                        Ok((packet, _remaining)) => map.handle_control_packet(&packet, &src),
+                        Err(_) => continue,
+                    }
+                })?;
         }
 
         Ok(Control { socket, port })
