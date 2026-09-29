@@ -340,6 +340,40 @@ struct AcceptorTcpSocketReceived<'a> {
     payload_len: usize,
 }
 
+/// Emitted when the [`ApplicationData`](crate::path::secret::map::ApplicationData) associated
+/// with a stream's path secret is dropped from the UDS handoff instead of being forwarded.
+///
+/// This is the type-erased value produced by
+/// [`Map::register_make_application_data`](crate::path::secret::map::Map::register_make_application_data),
+/// not payload sent by the application over the stream. The stream is still forwarded and
+/// accepted without it.
+#[event("acceptor:tcp:application_data_dropped")]
+#[subject(endpoint)]
+struct AcceptorTcpApplicationDataDropped<'a> {
+    /// The remote address of the TCP stream
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    #[nominal_counter("reason")]
+    reason: AcceptorTcpApplicationDataDropReason,
+}
+
+/// Why the path secret's [`ApplicationData`](crate::path::secret::map::ApplicationData) was
+/// dropped from a UDS handoff
+enum AcceptorTcpApplicationDataDropReason {
+    /// The serializer registered with
+    /// [`Map::register_application_data_serializer`](crate::path::secret::map::Map::register_application_data_serializer)
+    /// returned an error
+    SerializeFailed,
+    /// The encoded handoff packet would exceed the Unix datagram size limit
+    PacketTooLarge,
+    /// The deserializer registered on the receiving server returned an error
+    DeserializeFailed,
+    /// The handoff carried a serialized [`ApplicationData`](crate::path::secret::map::ApplicationData)
+    /// blob but the receiving server has no deserializer registered
+    NoDeserializer,
+}
+
 /// Emitted when a UDP acceptor is started
 #[event("acceptor:udp:started")]
 #[subject(endpoint)]

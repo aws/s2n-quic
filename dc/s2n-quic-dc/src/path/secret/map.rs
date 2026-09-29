@@ -37,6 +37,9 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
+#[cfg(test)]
+mod tests;
+
 pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
 pub use proactive_unknown_path_secret::SendStats;
@@ -362,6 +365,7 @@ impl Map {
         Ciphersuite,
         entry::Bidirectional,
         dc::ApplicationParams,
+        Option<entry::ApplicationData>,
     )> {
         let entry = self
             .store
@@ -369,8 +373,15 @@ impl Map {
         let params = entry.parameters();
         let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features); // for dedup check
         let secret = entry.secret();
+        let application_data = entry.application_data().clone();
 
-        Some((*secret.export_secret(), *secret.ciphersuite(), keys, params))
+        Some((
+            *secret.export_secret(),
+            *secret.ciphersuite(),
+            keys,
+            params,
+            application_data,
+        ))
     }
 
     /// This can be called from anywhere to ask the map to handle a packet.
@@ -592,5 +603,36 @@ impl Map {
         >,
     ) {
         self.store.register_make_application_data(cb);
+    }
+
+    /// Registers a callback that serializes an entry's [`ApplicationData`] into opaque bytes.
+    ///
+    /// The callback receives only the type-erased [`ApplicationData`] and returns the serialized
+    /// blob (or `None` when there is nothing to forward). It mirrors
+    /// [`Map::register_make_application_data`]: the dc crate never inspects the bytes and only the
+    /// registering application knows their schema. See [`Map::serialize_application_data`] for how
+    /// the callback is invoked.
+    #[allow(clippy::type_complexity)]
+    pub fn register_application_data_serializer(
+        &self,
+        cb: Box<
+            dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync,
+        >,
+    ) {
+        self.store.register_application_data_serializer(cb);
+    }
+
+    /// Serializes `data` into an opaque blob using the callback registered via
+    /// [`Map::register_application_data_serializer`].
+    ///
+    /// Returns `Ok(None)` if no serializer is registered or if the callback yields `None`, and
+    /// passes the callback's error through unchanged. The map has no event publisher, so the
+    /// caller decides how a failure is reported; the forwarding worker publishes an event and
+    /// logs the error, then forwards the stream without a blob.
+    pub(crate) fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError> {
+        self.store.serialize_application_data(data)
     }
 }
