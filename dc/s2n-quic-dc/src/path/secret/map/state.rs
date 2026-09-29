@@ -1141,7 +1141,16 @@ where
                 peer_address,
             });
 
-        entry.sender().update_for_stale_key(packet.min_key_id);
+        // Bump our sender to the peer's reported minimum. When `update_for_stale_key` rejects an
+        // implausible `min_key_id`, re-handshake in the background to recover. The fresh handshake resets both
+        // sides' key state.
+        //
+        // Replaying a rejected StaleKey to drive this repeatedly does not amplify in practice:
+        // `request_handshake` forwards to the registered handshake callback, which deduplicates per
+        // peer address and caps handshake concurrency.
+        if !entry.sender().update_for_stale_key(packet.min_key_id) {
+            self.request_handshake(*entry.peer(), HandshakeReason::Remote);
+        }
 
         Some(packet)
     }
