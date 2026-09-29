@@ -40,12 +40,17 @@ use std::{
 };
 use tokio::net::TcpStream;
 
-/// Reconstructs opaque application-data bytes carried in a UDS handoff packet back into the
-/// type-erased [`ApplicationData`] attached to accepted streams.
+/// Reconstructs the serialized blob carried in a UDS handoff packet back into the type-erased
+/// [`ApplicationData`] associated with the stream's path secret.
 ///
-/// The dc crate never inspects the bytes; the callback is the application's inverse of the
-/// serializer registered on the forwarding side. Returning `Ok(None)` or `Err` results in the
-/// stream being accepted with no application data (fail-open).
+/// This is the value produced by
+/// [`Map::register_make_application_data`](crate::path::secret::map::Map::register_make_application_data)
+/// on the forwarding side, not payload sent by the application over the stream. The dc crate
+/// never inspects the bytes; the callback is the application's inverse of the serializer
+/// registered with
+/// [`Map::register_application_data_serializer`](crate::path::secret::map::Map::register_application_data_serializer).
+/// Returning `Ok(None)` or `Err` results in the stream being accepted with
+/// `application_data: None` (fail-open).
 pub type ApplicationDataDeserializer =
     Arc<dyn Fn(&[u8]) -> Result<Option<ApplicationData>, ApplicationDataError> + Send + Sync>;
 
@@ -82,8 +87,9 @@ where
         })
     }
 
-    /// Registers the callback used to reconstruct [`ApplicationData`] from the opaque blob carried
-    /// in a UDS handoff packet. When unset, accepted streams carry no application data.
+    /// Registers the callback used to reconstruct the path secret's [`ApplicationData`] from the
+    /// opaque blob carried in a UDS handoff packet. When unset, accepted streams are accepted with
+    /// `application_data: None`.
     pub fn with_application_data_deserializer(
         mut self,
         deserializer: ApplicationDataDeserializer,

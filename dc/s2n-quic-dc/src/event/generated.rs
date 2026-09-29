@@ -435,7 +435,13 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    /// Emitted when application data is dropped from a UDS handoff instead of being forwarded
+    /// Emitted when the [`ApplicationData`](crate::path::secret::map::ApplicationData) associated
+    /// with a stream's path secret is dropped from the UDS handoff instead of being forwarded.
+    ///
+    /// This is the type-erased value produced by
+    /// [`Map::register_make_application_data`](crate::path::secret::map::Map::register_make_application_data),
+    /// not payload sent by the application over the stream. The stream is still forwarded and
+    /// accepted without it.
     pub struct AcceptorTcpApplicationDataDropped<'a> {
         /// The remote address of the TCP stream
         pub remote_address: SocketAddress<'a>,
@@ -778,18 +784,23 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Why the path secret's [`ApplicationData`](crate::path::secret::map::ApplicationData) was
+    /// dropped from a UDS handoff
     pub enum AcceptorTcpApplicationDataDropReason {
         #[non_exhaustive]
-        /// The registered serializer returned an error
+        /// The serializer registered with
+        /// [`Map::register_application_data_serializer`](crate::path::secret::map::Map::register_application_data_serializer)
+        /// returned an error
         SerializeFailed {},
         #[non_exhaustive]
         /// The encoded handoff packet would exceed the Unix datagram size limit
         PacketTooLarge {},
         #[non_exhaustive]
-        /// The registered deserializer returned an error
+        /// The deserializer registered on the receiving server returned an error
         DeserializeFailed {},
         #[non_exhaustive]
-        /// The handoff carried application data but no deserializer is registered
+        /// The handoff carried a serialized [`ApplicationData`](crate::path::secret::map::ApplicationData)
+        /// blob but the receiving server has no deserializer registered
         NoDeserializer {},
     }
     impl aggregate::AsVariant for AcceptorTcpApplicationDataDropReason {
@@ -5220,7 +5231,13 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    /// Emitted when application data is dropped from a UDS handoff instead of being forwarded
+    /// Emitted when the [`ApplicationData`](crate::path::secret::map::ApplicationData) associated
+    /// with a stream's path secret is dropped from the UDS handoff instead of being forwarded.
+    ///
+    /// This is the type-erased value produced by
+    /// [`Map::register_make_application_data`](crate::path::secret::map::Map::register_make_application_data),
+    /// not payload sent by the application over the stream. The stream is still forwarded and
+    /// accepted without it.
     pub struct AcceptorTcpApplicationDataDropped<'a> {
         /// The remote address of the TCP stream
         pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
@@ -5508,14 +5525,19 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Why the path secret's [`ApplicationData`](crate::path::secret::map::ApplicationData) was
+    /// dropped from a UDS handoff
     pub enum AcceptorTcpApplicationDataDropReason {
-        /// The registered serializer returned an error
+        /// The serializer registered with
+        /// [`Map::register_application_data_serializer`](crate::path::secret::map::Map::register_application_data_serializer)
+        /// returned an error
         SerializeFailed,
         /// The encoded handoff packet would exceed the Unix datagram size limit
         PacketTooLarge,
-        /// The registered deserializer returned an error
+        /// The deserializer registered on the receiving server returned an error
         DeserializeFailed,
-        /// The handoff carried application data but no deserializer is registered
+        /// The handoff carried a serialized [`ApplicationData`](crate::path::secret::map::ApplicationData)
+        /// blob but the receiving server has no deserializer registered
         NoDeserializer,
     }
     impl IntoEvent<api::AcceptorTcpApplicationDataDropReason> for AcceptorTcpApplicationDataDropReason {

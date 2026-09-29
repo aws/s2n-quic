@@ -87,10 +87,11 @@ impl Builder {
         self
     }
 
-    /// Registers a callback that reconstructs `ApplicationData` from the opaque blob carried in a
-    /// UDS handoff packet. Accepted streams will then have their `application_data()` populated
-    /// with the value returned by the callback. Absent this registration, accepted streams carry
-    /// no application data (pre-existing behavior).
+    /// Registers a callback that reconstructs the path secret's
+    /// [`ApplicationData`](crate::path::secret::map::ApplicationData) from the opaque blob carried
+    /// in a UDS handoff packet. Accepted streams will then have their `application_data()`
+    /// populated with the value returned by the callback. Absent this registration, accepted
+    /// streams carry no path-secret `ApplicationData` (pre-existing behavior).
     pub fn with_application_data_deserializer(
         mut self,
         deserializer: ApplicationDataDeserializer,

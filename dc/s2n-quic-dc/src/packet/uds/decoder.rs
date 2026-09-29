@@ -51,6 +51,8 @@ impl Packet {
         self.encode_time
     }
 
+    /// The serialized [`ApplicationData`](crate::path::secret::map::ApplicationData) blob carried
+    /// by a v1 packet, if any. The bytes are opaque to the dc crate.
     #[inline]
     pub fn application_data(&self) -> Option<&[u8]> {
         self.application_data.as_deref()
