@@ -40,6 +40,9 @@ pub struct AckManager {
     /// Time at which the AckManager will wake and transmit an ACK
     ack_delay_timer: Timer,
 
+    /// Earliest time at which the next ACK could have been sent.
+    ack_pending_since: Option<Timestamp>,
+
     /// Used to track the ACK-eliciting transmissions sent from the AckManager
     ack_eliciting_transmissions: ack::transmission::Set,
 
@@ -72,6 +75,7 @@ impl AckManager {
     pub fn new(packet_space: PacketNumberSpace, ack_settings: ack::Settings) -> Self {
         Self {
             ack_delay_timer: Timer::default(),
+            ack_pending_since: None,
             ack_eliciting_transmissions: Default::default(),
             ack_settings,
             ack_ranges: ack::Ranges::new(ack_settings.ack_ranges_limit as usize),
@@ -123,6 +127,17 @@ impl AckManager {
             ),
             "`on_transmit_complete` was called when `should_transmit` is false"
         );
+
+        let delay = self
+            .ack_pending_since
+            .take()
+            .map(|pending_since| {
+                context
+                    .current_time()
+                    .saturating_duration_since(pending_since)
+            })
+            .unwrap_or_default();
+        context.on_ack_delay(delay);
 
         // if we transmitted something no need to wake up again to transmit the same thing
         self.ack_delay_timer.cancel();
@@ -270,6 +285,7 @@ impl AckManager {
 
         // Notify the state that the ack_ranges have changed
         self.transmission_state.on_update(&self.ack_ranges);
+        self.ack_pending_since.get_or_insert(now);
         self.processed_packets_since_transmission += 1;
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-13.2.5
@@ -627,6 +643,48 @@ mod tests {
             manager.transmissions_since_elicitation,
             Counter::new(u8::MAX)
         );
+    }
+
+    #[test]
+    fn ack_delay_starts_when_the_first_ack_becomes_pending() {
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
+        let start = time::now();
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
+        let mut publisher = Publisher::no_snapshot();
+
+        for (packet_number, delay) in [(1, Duration::ZERO), (2, Duration::from_millis(5))] {
+            let datagram = DatagramInfo {
+                timestamp: start + delay,
+                ..helper_datagram_info(ExplicitCongestionNotification::NotEct)
+            };
+            let packet_number = PacketNumberSpace::ApplicationData
+                .new_packet_number(VarInt::from_u8(packet_number));
+            let mut processed_packet = ProcessedPacket::new(packet_number, &datagram);
+            processed_packet.ack_elicitation = AckElicitation::Eliciting;
+            manager.on_processed_packet(
+                &processed_packet,
+                path_event!(path, path_id),
+                &mut publisher,
+            );
+        }
+
+        let send_at = start + Duration::from_millis(25);
+        manager.on_timeout(send_at);
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            send_at,
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Server,
+        );
+        assert!(manager.on_transmit(&mut write_context));
+        manager.on_transmit_complete(&mut write_context);
+
+        assert_eq!(write_context.ack_delays, [Duration::from_millis(25)]);
     }
 
     #[test]

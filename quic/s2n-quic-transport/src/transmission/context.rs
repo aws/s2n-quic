@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{contexts::WriteContext, endpoint, path, transmission, transmission::Mode};
-use core::marker::PhantomData;
+use core::{marker::PhantomData, time::Duration};
 use s2n_codec::{encoder::scatter, Encoder, EncoderValue};
 use s2n_quic_core::{
     event::{self, ConnectionPublisher as _, IntoEvent},
@@ -101,6 +101,17 @@ impl<Config: endpoint::Config> WriteContext for Context<'_, '_, '_, Config> {
             }
         }
         res
+    }
+
+    #[inline]
+    fn on_ack_delay(&mut self, delay: Duration) {
+        self.publisher.on_ack_delay(event::builder::AckDelay {
+            packet_header: event::builder::PacketHeader::new(
+                self.packet_number,
+                self.publisher.quic_version(),
+            ),
+            delay,
+        });
     }
 
     #[inline]
@@ -231,6 +242,11 @@ impl<C: WriteContext> WriteContext for RetransmissionContext<'_, C> {
         ack_frame: &Ack<AckRanges>,
     ) -> Option<PacketNumber> {
         self.context.write_ack_frame(ack_frame)
+    }
+
+    #[inline]
+    fn on_ack_delay(&mut self, delay: Duration) {
+        self.context.on_ack_delay(delay)
     }
 
     #[inline]
