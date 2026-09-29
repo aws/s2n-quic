@@ -101,7 +101,7 @@ impl Pool {
         macro_rules! spawn {
             ($create_router:expr) => {
                 if config.blocking {
-                    Self::spawn_blocking(&sockets, create_packets, $create_router)
+                    Self::spawn_blocking(&sockets, create_packets, $create_router)?;
                 } else {
                     let _rt = env.reader_rt.enter();
                     Self::spawn_non_blocking(&sockets, create_packets, $create_router)?;
@@ -177,7 +177,8 @@ impl Pool {
         sockets: &[Socket],
         create_packets: impl Fn() -> Packets,
         create_router: impl Fn(&Packets, &Socket) -> R,
-    ) where
+    ) -> Result<()>
+    where
         R: 'static + Send + Router,
     {
         for (udp_socket_worker, socket) in sockets.iter().enumerate() {
@@ -190,9 +191,9 @@ impl Pool {
                 .spawn(move || {
                     let _span = span.entered();
                     udp::blocking(recv_socket, packets, router);
-                })
-                .expect("failed to spawn udp worker thread");
+                })?;
         }
+        Ok(())
     }
 
     fn spawn_non_blocking<R>(
