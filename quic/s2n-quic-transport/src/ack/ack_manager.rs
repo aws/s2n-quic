@@ -128,16 +128,12 @@ impl AckManager {
             "`on_transmit_complete` was called when `should_transmit` is false"
         );
 
-        let delay = self
-            .ack_pending_since
-            .take()
-            .map(|pending_since| {
-                context
-                    .current_time()
-                    .saturating_duration_since(pending_since)
-            })
-            .unwrap_or_default();
-        context.on_ack_delay(delay);
+        if let Some(pending_since) = self.ack_pending_since.take() {
+            let delay = context
+                .current_time()
+                .saturating_duration_since(pending_since);
+            context.on_ack_delay(delay);
+        }
 
         // if we transmitted something no need to wake up again to transmit the same thing
         self.ack_delay_timer.cancel();
@@ -685,6 +681,66 @@ mod tests {
         manager.on_transmit_complete(&mut write_context);
 
         assert_eq!(write_context.ack_delays, [Duration::from_millis(25)]);
+    }
+
+    #[test]
+    fn retransmitted_ack_does_not_emit_ack_delay_without_new_packets() {
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
+        let start = time::now();
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
+        let mut publisher = Publisher::no_snapshot();
+
+        for packet_number in 1..=2 {
+            let datagram = DatagramInfo {
+                timestamp: start,
+                ..helper_datagram_info(ExplicitCongestionNotification::NotEct)
+            };
+            let packet_number = PacketNumberSpace::ApplicationData
+                .new_packet_number(VarInt::from_u8(packet_number));
+            let mut processed_packet = ProcessedPacket::new(packet_number, &datagram);
+            processed_packet.ack_elicitation = AckElicitation::Eliciting;
+            manager.on_processed_packet(
+                &processed_packet,
+                path_event!(path, path_id),
+                &mut publisher,
+            );
+        }
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        frame_buffer.set_max_packet_size(Some(1200));
+        let lost_packet = frame_buffer
+            .write_frame(&Ping)
+            .expect("ping should fit in packet");
+
+        {
+            let mut write_context = MockWriteContext::new(
+                start + Duration::from_millis(25),
+                &mut frame_buffer,
+                transmission::Constraint::None,
+                transmission::Mode::Normal,
+                endpoint::Type::Server,
+            );
+            assert!(manager.on_transmit(&mut write_context));
+            manager.on_transmit_complete(&mut write_context);
+            assert_eq!(write_context.ack_delays, [Duration::from_millis(25)]);
+        }
+
+        manager.on_packet_loss(&lost_packet);
+        frame_buffer.flush();
+
+        let mut write_context = MockWriteContext::new(
+            start + Duration::from_millis(50),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Server,
+        );
+        assert!(manager.on_transmit(&mut write_context));
+        manager.on_transmit_complete(&mut write_context);
+
+        assert!(write_context.ack_delays.is_empty());
     }
 
     #[test]
