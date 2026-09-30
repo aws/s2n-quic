@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{dc, seal, Bidirectional, Credentials, Entry, Id, Map, TransportFeatures};
+use crate::psk::io::HandshakeReason;
 use std::sync::Arc;
 
 pub struct Peer {
@@ -17,17 +18,37 @@ impl Peer {
         }
     }
 
+    /// Returns `None` if this peer's path secret has exhausted its key IDs, having requested a
+    /// re-handshake.
     #[inline]
-    pub fn seal_once(&self) -> (seal::Once, Credentials, dc::ApplicationParams) {
-        let (sealer, credentials) = self.entry.uni_sealer();
-        (sealer, credentials, self.entry.parameters())
+    pub fn seal_once(&self) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
+        let Some((sealer, credentials)) = self.entry.uni_sealer() else {
+            // Key ID has been exhausted. Therefore, initiate another handshake.
+            self.map
+                .store
+                .request_handshake(*self.entry.peer(), HandshakeReason::Remote);
+            return None;
+        };
+
+        Some((sealer, credentials, self.entry.parameters()))
     }
 
+    /// Returns `None` if this peer's path secret has exhausted its key IDs, having requested a
+    /// re-handshake.
     #[inline]
-    pub fn pair(&self, features: &TransportFeatures) -> (Bidirectional, dc::ApplicationParams) {
-        let keys = self.entry.bidi_local(features);
+    pub fn pair(
+        &self,
+        features: &TransportFeatures,
+    ) -> Option<(Bidirectional, dc::ApplicationParams)> {
+        let Some(keys) = self.entry.bidi_local(features) else {
+            // Key ID has been exhausted. Therefore, initiate another handshake.
+            self.map
+                .store
+                .request_handshake(*self.entry.peer(), HandshakeReason::Remote);
+            return None;
+        };
 
-        (keys, self.entry.parameters())
+        Some((keys, self.entry.parameters()))
     }
 
     #[inline]

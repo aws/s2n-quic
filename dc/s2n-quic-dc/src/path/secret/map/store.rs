@@ -85,6 +85,13 @@ pub trait Store: 'static + Send + Sync {
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     );
 
+    /// Requests a background re-handshake with `peer`, replacing its path secret.
+    fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: HandshakeReason,
+    ) -> Option<JoinHandle<()>>;
+
     fn check_dedup(
         &self,
         entry: &Entry,

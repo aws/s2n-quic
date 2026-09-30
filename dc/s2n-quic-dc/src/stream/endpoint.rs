@@ -48,7 +48,14 @@ where
     Env: Environment,
     P: Peer<Env>,
 {
-    let (crypto, mut parameters) = entry.pair(&peer.features());
+    // Key ID exhaustion means we can't derive keys for another stream without reusing one, so fail
+    // the open rather than reuse. `pair` has already requested a re-handshake, so a later attempt
+    // can succeed on a fresh path secret.
+    let Some((crypto, mut parameters)) = entry.pair(&peer.features()) else {
+        return Err(io::Error::other(
+            "path secret has exhausted its key ID space",
+        ));
+    };
 
     if let Some(o) = parameter_override {
         parameters = o(parameters);

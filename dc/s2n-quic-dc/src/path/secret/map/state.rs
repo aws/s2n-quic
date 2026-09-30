@@ -931,6 +931,14 @@ where
         self.register_request_handshake(cb);
     }
 
+    fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: HandshakeReason,
+    ) -> Option<JoinHandle<()>> {
+        self.request_handshake(peer, reason)
+    }
+
     #[allow(clippy::type_complexity)]
     fn register_make_application_data(
         &self,
