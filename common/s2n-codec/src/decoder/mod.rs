@@ -30,6 +30,8 @@ macro_rules! impl_buffer {
 
                 #[inline]
                 pub fn decode_slice(self, count: usize) -> $result<'a, $name<'a>> {
+                    // Keep malformed peer input on the error path; the slice split below panics
+                    // when `count` exceeds the available bytes.
                     self.ensure_len(count)?;
 
                     let (slice, remaining) = self.bytes.$split(count);
