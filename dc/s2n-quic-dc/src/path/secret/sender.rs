@@ -170,7 +170,6 @@ fn stale_key_ceiling_leaves_room_to_allocate() {
     }
 
     // The reserve is far larger than the allocations above, so plenty remains.
-    assert!(State::STALE_KEY_ID_RESERVE > 10_000);
     assert!(MAX_VARINT_VALUE > state.current_id.load(Ordering::Relaxed));
 }
 

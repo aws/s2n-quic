@@ -2468,8 +2468,8 @@ pub mod api {
         /// False if it was clamped because applying it would leave too few key IDs for the sender to
         /// keep allocating.
         pub applied: bool,
-        /// Whether a background re-handshake was scheduled to recover from a clamped update.
-        pub scheduled_handshake: bool,
+        /// Whether a background re-handshake task was spawned to recover from a clamped update.
+        pub handshake_task_spawned: bool,
         /// How far past the largest acceptable key ID the peer's `min_key_id` was.
         ///
         /// Zero when the update was applied. Use this to tune how much key ID headroom we reserve.
@@ -2482,7 +2482,7 @@ pub mod api {
             fmt.field("peer_address", &self.peer_address);
             fmt.field("credential_id", &"[HIDDEN]");
             fmt.field("applied", &self.applied);
-            fmt.field("scheduled_handshake", &self.scheduled_handshake);
+            fmt.field("handshake_task_spawned", &self.handshake_task_spawned);
             fmt.field("clamped_delta", &self.clamped_delta);
             fmt.finish()
         }
@@ -4570,7 +4570,7 @@ pub mod tracing {
                 peer_address,
                 credential_id,
                 applied,
-                scheduled_handshake,
+                handshake_task_spawned,
                 clamped_delta,
             } = event;
             tracing::event!(
@@ -4578,8 +4578,8 @@ pub mod tracing {
                 tracing::Level::DEBUG, { peer_address =
                 tracing::field::debug(peer_address), credential_id =
                 tracing::field::debug(credential_id), applied =
-                tracing::field::debug(applied), scheduled_handshake =
-                tracing::field::debug(scheduled_handshake), clamped_delta =
+                tracing::field::debug(applied), handshake_task_spawned =
+                tracing::field::debug(handshake_task_spawned), clamped_delta =
                 tracing::field::debug(clamped_delta) }
             );
         }
@@ -7111,8 +7111,8 @@ pub mod builder {
         /// False if it was clamped because applying it would leave too few key IDs for the sender to
         /// keep allocating.
         pub applied: bool,
-        /// Whether a background re-handshake was scheduled to recover from a clamped update.
-        pub scheduled_handshake: bool,
+        /// Whether a background re-handshake task was spawned to recover from a clamped update.
+        pub handshake_task_spawned: bool,
         /// How far past the largest acceptable key ID the peer's `min_key_id` was.
         ///
         /// Zero when the update was applied. Use this to tune how much key ID headroom we reserve.
@@ -7125,14 +7125,14 @@ pub mod builder {
                 peer_address,
                 credential_id,
                 applied,
-                scheduled_handshake,
+                handshake_task_spawned,
                 clamped_delta,
             } = self;
             api::StaleKeyPacketAccepted {
                 peer_address: peer_address.into_event(),
                 credential_id: credential_id.into_event(),
                 applied: applied.into_event(),
-                scheduled_handshake: scheduled_handshake.into_event(),
+                handshake_task_spawned: handshake_task_spawned.into_event(),
                 clamped_delta: clamped_delta.into_event(),
             }
         }

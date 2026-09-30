@@ -307,7 +307,7 @@ mod id {
         STALE_KEY_PACKET_ACCEPTED,
         STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
         STALE_KEY_PACKET_ACCEPTED__APPLIED,
-        STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED,
         STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
         STALE_KEY_PACKET_REJECTED,
         STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL,
@@ -853,8 +853,8 @@ mod id {
         InfoId::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize;
     pub const STALE_KEY_PACKET_ACCEPTED__APPLIED: usize =
         InfoId::STALE_KEY_PACKET_ACCEPTED__APPLIED as usize;
-    pub const STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
-        InfoId::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED as usize;
     pub const STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA: usize =
         InfoId::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA as usize;
     pub const STALE_KEY_PACKET_REJECTED: usize = InfoId::STALE_KEY_PACKET_REJECTED as usize;
@@ -1543,8 +1543,8 @@ mod counter {
                     id::STALE_KEY_PACKET_ACCEPTED__APPLIED => {
                         Self(stale_key_packet_accepted__applied)
                     }
-                    id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => {
-                        Self(stale_key_packet_accepted__scheduled_handshake)
+                    id::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED => {
+                        Self(stale_key_packet_accepted__handshake_task_spawned)
                     }
                     id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => {
                         Self(path_secret_map_address_cache_accessed__hit)
@@ -1636,10 +1636,9 @@ mod counter {
             s2n_quic_dc__event__counter__bool__stale_key_packet_accepted__applied]
                 fn stale_key_packet_accepted__applied(value: bool);
                 #[link_name =
-            s2n_quic_dc__event__counter__bool__stale_key_packet_accepted__scheduled_handshake]
-                fn stale_key_packet_accepted__scheduled_handshake(value: bool);
-                #[link_name
-            =
+            s2n_quic_dc__event__counter__bool__stale_key_packet_accepted__handshake_task_spawned]
+                fn stale_key_packet_accepted__handshake_task_spawned(value: bool);
+                #[link_name =
             s2n_quic_dc__event__counter__bool__path_secret_map_address_cache_accessed__hit]
                 fn path_secret_map_address_cache_accessed__hit(value: bool);
                 #[link_name =

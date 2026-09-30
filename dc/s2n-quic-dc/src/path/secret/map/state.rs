@@ -1171,7 +1171,7 @@ where
         // peer address and caps handshake concurrency.
         let applied = entry.sender().update_for_stale_key(packet.min_key_id);
 
-        let scheduled_handshake = if applied {
+        let handshake_task_spawned = if applied {
             // The peer's minimum was applied, so we are already resynchronized.
             false
         } else {
@@ -1184,7 +1184,7 @@ where
                 credential_id: packet.credential_id.into_event(),
                 peer_address,
                 applied,
-                scheduled_handshake,
+                handshake_task_spawned,
                 // How far past the largest key ID we will advance to the peer asked us to go; zero
                 // when applied. Reported so the reserve can be tuned from real traffic.
                 clamped_delta: (*packet.min_key_id)

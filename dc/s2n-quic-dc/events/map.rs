@@ -334,9 +334,9 @@ struct StaleKeyPacketAccepted<'a> {
     #[bool_counter("applied")]
     applied: bool,
 
-    /// Whether a background re-handshake was scheduled to recover from a clamped update.
-    #[bool_counter("scheduled_handshake")]
-    scheduled_handshake: bool,
+    /// Whether a background re-handshake task was spawned to recover from a clamped update.
+    #[bool_counter("handshake_task_spawned")]
+    handshake_task_spawned: bool,
 
     /// How far past the largest acceptable key ID the peer's `min_key_id` was.
     ///

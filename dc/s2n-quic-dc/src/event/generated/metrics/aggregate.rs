@@ -311,7 +311,7 @@ mod id {
         STALE_KEY_PACKET_ACCEPTED,
         STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
         STALE_KEY_PACKET_ACCEPTED__APPLIED,
-        STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED,
         STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
         STALE_KEY_PACKET_REJECTED,
         STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL,
@@ -857,8 +857,8 @@ mod id {
         InfoId::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize;
     pub const STALE_KEY_PACKET_ACCEPTED__APPLIED: usize =
         InfoId::STALE_KEY_PACKET_ACCEPTED__APPLIED as usize;
-    pub const STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
-        InfoId::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED as usize;
     pub const STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA: usize =
         InfoId::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA as usize;
     pub const STALE_KEY_PACKET_REJECTED: usize = InfoId::STALE_KEY_PACKET_REJECTED as usize;
@@ -1323,7 +1323,7 @@ mod id {
         BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
         BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
         BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED,
-        BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED,
         BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT,
         BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT,
         BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR,
@@ -1375,8 +1375,8 @@ mod id {
             as usize;
     pub const BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED: usize =
         BoolCounters::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED as usize;
-    pub const BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
-        BoolCounters::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
+    pub const BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED: usize =
+        BoolCounters::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED as usize;
     pub const BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT: usize =
         BoolCounters::BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT as usize;
     pub const BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT: usize =
@@ -3793,8 +3793,8 @@ static INFO: &[Info; 346usize] = &[
     }
     .build(),
     info::Builder {
-        id: id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
-        name: Str::new("stale_key_packet_accepted.scheduled_handshake\0"),
+        id: id::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED,
+        name: Str::new("stale_key_packet_accepted.handshake_task_spawned\0"),
         units: Units::None,
     }
     .build(),
@@ -4380,8 +4380,9 @@ impl<R: Registry> Subscriber<R> {
         bool_counters
             .push(registry.register_bool_counter(&INFO[id::STALE_KEY_PACKET_ACCEPTED__APPLIED]));
         bool_counters.push(
-            registry
-                .register_bool_counter(&INFO[id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE]),
+            registry.register_bool_counter(
+                &INFO[id::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED],
+            ),
         );
         bool_counters.push(
             registry.register_bool_counter(&INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT]),
@@ -5648,8 +5649,8 @@ impl<R: Registry> Subscriber<R> {
                 id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED => {
                     (&INFO[id::STALE_KEY_PACKET_ACCEPTED__APPLIED], entry)
                 }
-                id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => (
-                    &INFO[id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE],
+                id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED => (
+                    &INFO[id::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED],
                     entry,
                 ),
                 id::BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => (
@@ -9440,9 +9441,9 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             event.applied,
         );
         self.count_bool(
-            id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
-            id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
-            event.scheduled_handshake,
+            id::STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED,
+            id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__HANDSHAKE_TASK_SPAWNED,
+            event.handshake_task_spawned,
         );
         self.measure(
             id::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
