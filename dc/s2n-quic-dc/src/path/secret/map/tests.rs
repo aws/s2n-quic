@@ -89,7 +89,11 @@ fn key_id_exhaustion_requests_rehandshake() {
 
     let requests = Arc::new(AtomicUsize::new(0));
     let requests_in_cb = requests.clone();
-    map.register_request_handshake(Box::new(move |_peer, _reason| {
+    map.register_request_handshake(Box::new(move |_peer, reason| {
+        assert!(
+            matches!(reason, crate::psk::io::HandshakeReason::KeyIdExhaustion),
+            "expected KeyIdExhaustion, got {reason:?}"
+        );
         requests_in_cb.fetch_add(1, Ordering::Relaxed);
         None
     }));

@@ -540,6 +540,7 @@ impl HandshakeQueue {
                 (HandshakeReason::User, 0),
                 (HandshakeReason::Periodic, 0),
                 (HandshakeReason::Remote, 0),
+                (HandshakeReason::KeyIdExhaustion, 0),
             ];
             for (reason, count) in reason_counts.iter_mut() {
                 *count = entry.by_reason[*reason as usize].load(Ordering::Relaxed) as usize;
@@ -728,9 +729,23 @@ pub enum HandshakeReason {
     Periodic,
     /// Rehandshaking driven by remote packets (e.g., unknown path secret).
     Remote,
+    /// The path secret ran out of key IDs, so it can no longer be used for sending.
+    KeyIdExhaustion,
 }
 
-const REASON_COUNT: usize = 3;
+/// Mirrors [`HandshakeReason`] onto the event definition in `events/map.rs`.
+impl From<HandshakeReason> for crate::event::builder::HandshakeReason {
+    fn from(reason: HandshakeReason) -> Self {
+        match reason {
+            HandshakeReason::User => Self::User,
+            HandshakeReason::Periodic => Self::Periodic,
+            HandshakeReason::Remote => Self::Remote,
+            HandshakeReason::KeyIdExhaustion => Self::KeyIdExhaustion,
+        }
+    }
+}
+
+const REASON_COUNT: usize = 4;
 
 pub struct ConnectionContext {
     pub limiter_latency: Duration,

@@ -23,10 +23,10 @@ impl Peer {
     #[inline]
     pub fn seal_once(&self) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let Some((sealer, credentials)) = self.entry.uni_sealer() else {
-            // Key ID has been exhausted. Therefore, initiate another handshake.
+            // Key ID has been exhausted. Therefore, initiate another handshake to recover.
             self.map
                 .store
-                .request_handshake(*self.entry.peer(), HandshakeReason::Remote);
+                .request_handshake(*self.entry.peer(), HandshakeReason::KeyIdExhaustion);
             return None;
         };
 
@@ -41,10 +41,10 @@ impl Peer {
         features: &TransportFeatures,
     ) -> Option<(Bidirectional, dc::ApplicationParams)> {
         let Some(keys) = self.entry.bidi_local(features) else {
-            // Key ID has been exhausted. Therefore, initiate another handshake.
+            // Key ID has been exhausted. Therefore, initiate another handshake to recover.
             self.map
                 .store
-                .request_handshake(*self.entry.peer(), HandshakeReason::Remote);
+                .request_handshake(*self.entry.peer(), HandshakeReason::KeyIdExhaustion);
             return None;
         };
 

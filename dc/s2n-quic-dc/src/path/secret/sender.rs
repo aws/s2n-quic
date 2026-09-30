@@ -34,7 +34,7 @@ impl State {
         }
     }
 
-    /// Returns the next key ID to send at, or `None` if available key id is exhasuted.
+    /// Returns the next key ID to send at, or `None` if available key id is exhausted.
     pub fn next_key_id(&self) -> Option<VarInt> {
         let id = self
             .current_id

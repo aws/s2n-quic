@@ -729,6 +729,7 @@ where
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
                     peer_address: SocketAddress::from(peer).into_event(),
+                    reason: reason.into(),
                 },
             );
 
