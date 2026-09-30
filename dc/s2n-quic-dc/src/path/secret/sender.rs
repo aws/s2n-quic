@@ -3,7 +3,7 @@
 
 use super::schedule;
 use crate::{crypto::awslc::open, packet::secret_control};
-use s2n_quic_core::varint::VarInt;
+use s2n_quic_core::varint::{VarInt, MAX_VARINT_VALUE};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 type StatelessReset = [u8; secret_control::TAG_LEN];
@@ -27,14 +27,15 @@ impl super::map::SizeOf for State {
 }
 
 impl State {
-    /// The most a single stale key packet may advance `current_id` past its current value.
-    const MAX_STALE_KEY_ADVANCE: u64 = 1 << 16;
+    /// Key IDs held in reserve below `VarInt::MAX` so `next_key_id` always has room to allocate.
+    const STALE_KEY_ID_RESERVE: u64 = 1 << 40;
 
-    /// The highest `current_id` a stale key may advance the counter to. Stale keys are replayable,
-    /// so the per-packet cap alone could be ratcheted arbitrarily high; this bounds the cumulative
-    /// effect and keeps `current_id` far enough below `VarInt::MAX` (2^62 - 1) that `next_key_id`
-    /// never panics.
-    const STALE_KEY_ID_CEILING: u64 = 1 << 61;
+    /// The highest `current_id` a stale key may advance the counter to.
+    ///
+    /// A stale key carries a peer-supplied, authenticated `min_key_id` that we apply with
+    /// `fetch_max`. We let it advance the counter freely and clamp only at the
+    /// point where going further would starve `next_key_id`.
+    pub(super) const STALE_KEY_ID_CEILING: u64 = MAX_VARINT_VALUE - Self::STALE_KEY_ID_RESERVE;
 
     pub fn new(stateless_reset: StatelessReset) -> Self {
         Self {
@@ -82,25 +83,17 @@ impl State {
     /// Note that this packet can be replayed without detection, so we must deal with authenticated
     /// but arbitrarily old IDs here.
     ///
-    /// Returns `true` if the update was applied, or `false` if `min_key_id` was rejected as implausible.
-    /// On rejection the caller should fall back to a re-handshake:
-    /// if the rejection dropped an advance the peer genuinely needed, a fresh handshake resets both sides' key state.
+    /// Returns `true` if the peer's `min_key_id` was applied as-is, or `false` if it exceeded
+    /// [`Self::STALE_KEY_ID_CEILING`] and was clamped. On a clamp the caller should fall back to a
+    /// re-handshake: we could not move the counter to where the peer asked, so a fresh handshake
+    /// resets both sides' key state.
     #[must_use]
     pub(super) fn update_for_stale_key(&self, min_key_id: VarInt) -> bool {
-        // `next_key_id` panics if `current_id` reaches `VarInt::MAX`, and `min_key_id` is
-        // attacker-controllable. A legitimate `min_key_id` only references key IDs we have already sent,
-        // so it is always `<= current_id`. Reject anything implausibly far ahead rather than advancing toward exhaustion.
-        // Bound it both relative to the current value and by the absolute `STALE_KEY_ID_CEILING`, which
-        // holds even if replayed packets try to ratchet the counter up over many steps.
-        let current = self.current_id.load(Ordering::Relaxed);
-        let max_plausible = current
-            .saturating_add(Self::MAX_STALE_KEY_ADVANCE)
-            .min(Self::STALE_KEY_ID_CEILING);
-        if *min_key_id > max_plausible {
-            return false;
-        }
-        self.current_id.fetch_max(*min_key_id, Ordering::Relaxed);
-        true
+        // Let the peer advance the counter freely, but clamp it below `VarInt::MAX` so `next_key_id`
+        // always has headroom and never panics.
+        let applied = (*min_key_id).min(Self::STALE_KEY_ID_CEILING);
+        self.current_id.fetch_max(applied, Ordering::Relaxed);
+        *min_key_id <= Self::STALE_KEY_ID_CEILING
     }
 
     #[cfg(test)]
@@ -136,39 +129,65 @@ fn update_restarts_sequence() {
 }
 
 #[test]
-fn stale_key_rejects_implausible_min_key_id() {
-    // A stale key carrying a `min_key_id` at the top of the VarInt space must not poison the sender counter.
-    // A legitimate value is always `<= current_id`, so such a value is rejected and the counter is left untouched.
-    for min_key_id in [VarInt::MAX, VarInt::MAX - 1, VarInt::new(1 << 61).unwrap()] {
+fn stale_key_allows_fast_forward() {
+    // A large but in-range `min_key_id` is applied as-is -- we do not reject fast advances.
+    let state = State::new([0; secret_control::TAG_LEN]);
+
+    let target = 1u64 << 40;
+    assert!(state.update_for_stale_key(VarInt::new(target).unwrap()));
+
+    assert_eq!(*state.next_key_id(), target);
+}
+
+#[test]
+fn stale_key_clamps_to_ceiling() {
+    // A `min_key_id` above the ceiling must not poison the sender counter.
+    // It is clamped to `STALE_KEY_ID_CEILING` so `next_key_id` keeps working
+    // with ample headroom rather than panicking.
+    for min_key_id in [VarInt::MAX, VarInt::MAX - 1] {
         let state = State::new([0; secret_control::TAG_LEN]);
 
         assert!(!state.update_for_stale_key(min_key_id));
 
-        // Rejected: the counter never moved, so allocation continues from 0.
-        assert_eq!(*state.next_key_id(), 0);
+        // Clamped to the ceiling, not advanced to the requested value.
+        assert_eq!(*state.next_key_id(), State::STALE_KEY_ID_CEILING);
     }
 }
 
 #[test]
-fn stale_key_replay_cannot_ratchet_past_ceiling() {
-    // Stale keys are replayable, so a relative-only bound could in principle be applied repeatedly
-    // to ratchet the counter toward exhaustion. The absolute `STALE_KEY_ID_CEILING` prevents that:
-    // even within the relative margin, a value above the ceiling is rejected.
+fn stale_key_ceiling_leaves_room_to_allocate() {
+    // Guards the choice of `STALE_KEY_ID_RESERVE`: clamping must leave real headroom, not park the
+    // counter next to the panic. Verify a clamped sender can still allocate freely.
     let state = State::new([0; secret_control::TAG_LEN]);
-    let start = State::STALE_KEY_ID_CEILING - 1;
-    state.current_id.store(start, Ordering::Relaxed);
+    assert!(!state.update_for_stale_key(VarInt::MAX));
+    assert_eq!(
+        state.current_id.load(Ordering::Relaxed),
+        State::STALE_KEY_ID_CEILING
+    );
 
-    // Within `MAX_STALE_KEY_ADVANCE` of the current value, but reject it when it goes above the ceiling.
-    assert!(!state.update_for_stale_key(VarInt::new(State::STALE_KEY_ID_CEILING + 1).unwrap()));
+    for i in 0..10_000 {
+        assert_eq!(*state.next_key_id(), State::STALE_KEY_ID_CEILING + i);
+    }
 
-    assert_eq!(state.current_id.load(Ordering::Relaxed), start);
+    // The reserve is far larger than the allocations above, so plenty remains.
+    assert!(State::STALE_KEY_ID_RESERVE > 10_000);
+    assert!(MAX_VARINT_VALUE > state.current_id.load(Ordering::Relaxed));
+}
 
-    // Replaying a max-value stale key. Those updates should be rejected.
+#[test]
+fn stale_key_replay_is_idempotent() {
+    // `min_key_id` is absolute and applied with `fetch_max`,
+    // so replaying the same packet cannot ratchet the counter past where the first packet left it.
+    let state = State::new([0; secret_control::TAG_LEN]);
+
     for _ in 0..1_000 {
         assert!(!state.update_for_stale_key(VarInt::MAX));
     }
 
-    // Every update was rejected, so the counter never moved. The state should remain the same.
-    assert_eq!(state.current_id.load(Ordering::Relaxed), start);
-    assert_eq!(*state.next_key_id(), start);
+    // The counter sits at the ceiling after the first packet and never moves past it.
+    assert_eq!(
+        state.current_id.load(Ordering::Relaxed),
+        State::STALE_KEY_ID_CEILING
+    );
+    assert_eq!(*state.next_key_id(), State::STALE_KEY_ID_CEILING);
 }

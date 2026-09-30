@@ -326,6 +326,23 @@ struct StaleKeyPacketAccepted<'a> {
 
     #[snapshot("[HIDDEN]")]
     credential_id: &'a [u8],
+
+    /// Whether the peer's `min_key_id` was applied to our sender as-is.
+    ///
+    /// False if it was clamped because applying it would leave too few key IDs for the sender to
+    /// keep allocating.
+    #[bool_counter("applied")]
+    applied: bool,
+
+    /// Whether a background re-handshake was scheduled to recover from a clamped update.
+    #[bool_counter("scheduled_handshake")]
+    scheduled_handshake: bool,
+
+    /// How far past the largest acceptable key ID the peer's `min_key_id` was.
+    ///
+    /// Zero when the update was applied. Use this to tune how much key ID headroom we reserve.
+    #[measure("clamped_delta")]
+    clamped_delta: u64,
 }
 
 #[event("path_secret_map:stale_key_packet_rejected")]

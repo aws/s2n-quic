@@ -10,7 +10,7 @@ use crate::{
     crypto,
     event::{self, EndpointPublisher as _, IntoEvent as _},
     packet::{secret_control as control, Packet},
-    path::secret::receiver,
+    path::secret::{receiver, sender},
     psk::io::HandshakeReason,
 };
 use s2n_quic_core::{
@@ -1135,22 +1135,35 @@ where
             return None;
         };
 
+        // Advance our sender to the peer's reported minimum. `update_for_stale_key` clamps values
+        // that would push the counter dangerously close to `VarInt::MAX`; when it reports a clamp
+        // we could not move to where the peer asked, so re-handshake in the background to recover
+        // which resets both sides' key state.
+        //
+        // Replaying a clamped StaleKey to drive this repeatedly does not amplify in practice:
+        // `request_handshake` forwards to the registered handshake callback, which deduplicates per
+        // peer address and caps handshake concurrency.
+        let applied = entry.sender().update_for_stale_key(packet.min_key_id);
+
+        let scheduled_handshake = if applied {
+            // The peer's minimum was applied, so we are already resynchronized.
+            false
+        } else {
+            self.request_handshake(*entry.peer(), HandshakeReason::Remote)
+                .is_some()
+        };
+
         self.subscriber()
             .on_stale_key_packet_accepted(event::builder::StaleKeyPacketAccepted {
                 credential_id: packet.credential_id.into_event(),
                 peer_address,
+                applied,
+                scheduled_handshake,
+                // How far past the largest key ID we will advance to the peer asked us to go; zero
+                // when applied. Reported so the reserve can be tuned from real traffic.
+                clamped_delta: (*packet.min_key_id)
+                    .saturating_sub(sender::State::STALE_KEY_ID_CEILING),
             });
-
-        // Bump our sender to the peer's reported minimum. When `update_for_stale_key` rejects an
-        // implausible `min_key_id`, re-handshake in the background to recover. The fresh handshake resets both
-        // sides' key state.
-        //
-        // Replaying a rejected StaleKey to drive this repeatedly does not amplify in practice:
-        // `request_handshake` forwards to the registered handshake callback, which deduplicates per
-        // peer address and caps handshake concurrency.
-        if !entry.sender().update_for_stale_key(packet.min_key_id) {
-            self.request_handshake(*entry.peer(), HandshakeReason::Remote);
-        }
 
         Some(packet)
     }

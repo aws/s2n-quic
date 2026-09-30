@@ -2383,6 +2383,17 @@ pub mod api {
     pub struct StaleKeyPacketAccepted<'a> {
         pub peer_address: SocketAddress<'a>,
         pub credential_id: &'a [u8],
+        /// Whether the peer's `min_key_id` was applied to our sender as-is.
+        ///
+        /// False if it was clamped because applying it would leave too few key IDs for the sender to
+        /// keep allocating.
+        pub applied: bool,
+        /// Whether a background re-handshake was scheduled to recover from a clamped update.
+        pub scheduled_handshake: bool,
+        /// How far past the largest acceptable key ID the peer's `min_key_id` was.
+        ///
+        /// Zero when the update was applied. Use this to tune how much key ID headroom we reserve.
+        pub clamped_delta: u64,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for StaleKeyPacketAccepted<'a> {
@@ -2390,6 +2401,9 @@ pub mod api {
             let mut fmt = fmt.debug_struct("StaleKeyPacketAccepted");
             fmt.field("peer_address", &self.peer_address);
             fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("applied", &self.applied);
+            fmt.field("scheduled_handshake", &self.scheduled_handshake);
+            fmt.field("clamped_delta", &self.clamped_delta);
             fmt.finish()
         }
     }
@@ -4457,12 +4471,18 @@ pub mod tracing {
             let api::StaleKeyPacketAccepted {
                 peer_address,
                 credential_id,
+                applied,
+                scheduled_handshake,
+                clamped_delta,
             } = event;
             tracing::event!(
                 target : "stale_key_packet_accepted", parent : parent,
                 tracing::Level::DEBUG, { peer_address =
                 tracing::field::debug(peer_address), credential_id =
-                tracing::field::debug(credential_id) }
+                tracing::field::debug(credential_id), applied =
+                tracing::field::debug(applied), scheduled_handshake =
+                tracing::field::debug(scheduled_handshake), clamped_delta =
+                tracing::field::debug(clamped_delta) }
             );
         }
         #[inline]
@@ -6932,6 +6952,17 @@ pub mod builder {
     pub struct StaleKeyPacketAccepted<'a> {
         pub peer_address: SocketAddress<'a>,
         pub credential_id: &'a [u8],
+        /// Whether the peer's `min_key_id` was applied to our sender as-is.
+        ///
+        /// False if it was clamped because applying it would leave too few key IDs for the sender to
+        /// keep allocating.
+        pub applied: bool,
+        /// Whether a background re-handshake was scheduled to recover from a clamped update.
+        pub scheduled_handshake: bool,
+        /// How far past the largest acceptable key ID the peer's `min_key_id` was.
+        ///
+        /// Zero when the update was applied. Use this to tune how much key ID headroom we reserve.
+        pub clamped_delta: u64,
     }
     impl<'a> IntoEvent<api::StaleKeyPacketAccepted<'a>> for StaleKeyPacketAccepted<'a> {
         #[inline]
@@ -6939,10 +6970,16 @@ pub mod builder {
             let StaleKeyPacketAccepted {
                 peer_address,
                 credential_id,
+                applied,
+                scheduled_handshake,
+                clamped_delta,
             } = self;
             api::StaleKeyPacketAccepted {
                 peer_address: peer_address.into_event(),
                 credential_id: credential_id.into_event(),
+                applied: applied.into_event(),
+                scheduled_handshake: scheduled_handshake.into_event(),
+                clamped_delta: clamped_delta.into_event(),
             }
         }
     }

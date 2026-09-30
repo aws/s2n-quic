@@ -304,6 +304,9 @@ mod id {
         STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL,
         STALE_KEY_PACKET_ACCEPTED,
         STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
+        STALE_KEY_PACKET_ACCEPTED__APPLIED,
+        STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
         STALE_KEY_PACKET_REJECTED,
         STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL,
         STALE_KEY_PACKET_DROPPED,
@@ -842,6 +845,12 @@ mod id {
     pub const STALE_KEY_PACKET_ACCEPTED: usize = InfoId::STALE_KEY_PACKET_ACCEPTED as usize;
     pub const STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__APPLIED: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__APPLIED as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA as usize;
     pub const STALE_KEY_PACKET_REJECTED: usize = InfoId::STALE_KEY_PACKET_REJECTED as usize;
     pub const STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL as usize;
@@ -1519,6 +1528,12 @@ mod counter {
                     id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => {
                         Self(unknown_path_secret_packet_accepted__scheduled_handshake)
                     }
+                    id::STALE_KEY_PACKET_ACCEPTED__APPLIED => {
+                        Self(stale_key_packet_accepted__applied)
+                    }
+                    id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => {
+                        Self(stale_key_packet_accepted__scheduled_handshake)
+                    }
                     id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => {
                         Self(path_secret_map_address_cache_accessed__hit)
                     }
@@ -1606,6 +1621,13 @@ mod counter {
             s2n_quic_dc__event__counter__bool__unknown_path_secret_packet_accepted__scheduled_handshake]
                 fn unknown_path_secret_packet_accepted__scheduled_handshake(value: bool);
                 #[link_name =
+            s2n_quic_dc__event__counter__bool__stale_key_packet_accepted__applied]
+                fn stale_key_packet_accepted__applied(value: bool);
+                #[link_name =
+            s2n_quic_dc__event__counter__bool__stale_key_packet_accepted__scheduled_handshake]
+                fn stale_key_packet_accepted__scheduled_handshake(value: bool);
+                #[link_name
+            =
             s2n_quic_dc__event__counter__bool__path_secret_map_address_cache_accessed__hit]
                 fn path_secret_map_address_cache_accessed__hit(value: bool);
                 #[link_name =
@@ -2253,6 +2275,9 @@ mod measure {
                 id::KEY_ACCEPTED__GAP => Self(key_accepted__gap),
                 id::KEY_ACCEPTED__FORWARD_SHIFT => Self(key_accepted__forward_shift),
                 id::REPLAY_POTENTIALLY_DETECTED__GAP => Self(replay_potentially_detected__gap),
+                id::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA => {
+                    Self(stale_key_packet_accepted__clamped_delta)
+                }
                 id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE => {
                     Self(path_secret_map_address_cache_accessed_hit__age)
                 }
@@ -2676,6 +2701,9 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__replay_potentially_detected__gap]
             fn replay_potentially_detected__gap(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__stale_key_packet_accepted__clamped_delta]
+            fn stale_key_packet_accepted__clamped_delta(value: u64);
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_address_cache_accessed_hit__age]
             fn path_secret_map_address_cache_accessed_hit__age(value: u64);

@@ -308,6 +308,9 @@ mod id {
         STALE_KEY_PACKET_RECEIVED__PEER_ADDRESS__PROTOCOL,
         STALE_KEY_PACKET_ACCEPTED,
         STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
+        STALE_KEY_PACKET_ACCEPTED__APPLIED,
+        STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
         STALE_KEY_PACKET_REJECTED,
         STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL,
         STALE_KEY_PACKET_DROPPED,
@@ -846,6 +849,12 @@ mod id {
     pub const STALE_KEY_PACKET_ACCEPTED: usize = InfoId::STALE_KEY_PACKET_ACCEPTED as usize;
     pub const STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__APPLIED: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__APPLIED as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
+    pub const STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA: usize =
+        InfoId::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA as usize;
     pub const STALE_KEY_PACKET_REJECTED: usize = InfoId::STALE_KEY_PACKET_REJECTED as usize;
     pub const STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::STALE_KEY_PACKET_REJECTED__PEER_ADDRESS__PROTOCOL as usize;
@@ -1304,6 +1313,8 @@ mod id {
         BOOL_COUNTERS_ENDPOINT_INITIALIZED__UDP,
         BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__EVICTED,
         BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED,
+        BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
         BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT,
         BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT,
         BOOL_COUNTERS_PATH_SECRET_MAP_SERIALIZED__ERROR,
@@ -1353,6 +1364,10 @@ mod id {
     pub const BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
         BoolCounters::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE
             as usize;
+    pub const BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED: usize =
+        BoolCounters::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED as usize;
+    pub const BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE: usize =
+        BoolCounters::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE as usize;
     pub const BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT: usize =
         BoolCounters::BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT as usize;
     pub const BOOL_COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED__HIT: usize =
@@ -1599,6 +1614,7 @@ mod id {
         MEASURES_KEY_ACCEPTED__GAP,
         MEASURES_KEY_ACCEPTED__FORWARD_SHIFT,
         MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP,
+        MEASURES_STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
         MEASURES_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE,
         MEASURES_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE,
         MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID,
@@ -1844,6 +1860,8 @@ mod id {
         Measures::MEASURES_KEY_ACCEPTED__FORWARD_SHIFT as usize;
     pub const MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP: usize =
         Measures::MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP as usize;
+    pub const MEASURES_STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA: usize =
+        Measures::MEASURES_STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA as usize;
     pub const MEASURES_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE: usize =
         Measures::MEASURES_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE as usize;
     pub const MEASURES_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT__AGE: usize =
@@ -1997,7 +2015,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 341usize] = &[
+static INFO: &[Info; 344usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -3745,6 +3763,24 @@ static INFO: &[Info; 341usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::STALE_KEY_PACKET_ACCEPTED__APPLIED,
+        name: Str::new("stale_key_packet_accepted.applied\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+        name: Str::new("stale_key_packet_accepted.scheduled_handshake\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
+        name: Str::new("stale_key_packet_accepted.clamped_delta\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::STALE_KEY_PACKET_REJECTED,
         name: Str::new("stale_key_packet_rejected\0"),
         units: Units::None,
@@ -4084,13 +4120,13 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     counters: Box<[R::Counter; 114usize]>,
     #[allow(dead_code)]
-    bool_counters: Box<[R::BoolCounter; 25usize]>,
+    bool_counters: Box<[R::BoolCounter; 27usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 37usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 137usize]>,
+    measures: Box<[R::Measure; 138usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -4118,10 +4154,10 @@ impl<R: Registry> Subscriber<R> {
     #[inline]
     pub fn new(registry: R) -> Self {
         let mut counters = Vec::with_capacity(114usize);
-        let mut bool_counters = Vec::with_capacity(25usize);
+        let mut bool_counters = Vec::with_capacity(27usize);
         let mut nominal_counters = Vec::with_capacity(37usize);
         let mut nominal_counter_offsets = Vec::with_capacity(37usize);
-        let mut measures = Vec::with_capacity(137usize);
+        let mut measures = Vec::with_capacity(138usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(28usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -4316,6 +4352,12 @@ impl<R: Registry> Subscriber<R> {
         bool_counters.push(registry.register_bool_counter(
             &INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE],
         ));
+        bool_counters
+            .push(registry.register_bool_counter(&INFO[id::STALE_KEY_PACKET_ACCEPTED__APPLIED]));
+        bool_counters.push(
+            registry
+                .register_bool_counter(&INFO[id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE]),
+        );
         bool_counters.push(
             registry.register_bool_counter(&INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT]),
         );
@@ -5020,6 +5062,8 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::KEY_ACCEPTED__GAP]));
         measures.push(registry.register_measure(&INFO[id::KEY_ACCEPTED__FORWARD_SHIFT]));
         measures.push(registry.register_measure(&INFO[id::REPLAY_POTENTIALLY_DETECTED__GAP]));
+        measures
+            .push(registry.register_measure(&INFO[id::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA]));
         measures.push(
             registry.register_measure(&INFO[id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE]),
         );
@@ -5557,6 +5601,13 @@ impl<R: Registry> Subscriber<R> {
                 ),
                 id::BOOL_COUNTERS_UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => (
                     &INFO[id::UNKNOWN_PATH_SECRET_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE],
+                    entry,
+                ),
+                id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED => {
+                    (&INFO[id::STALE_KEY_PACKET_ACCEPTED__APPLIED], entry)
+                }
+                id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE => (
+                    &INFO[id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE],
                     entry,
                 ),
                 id::BOOL_COUNTERS_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED__HIT => (
@@ -6384,6 +6435,9 @@ impl<R: Registry> Subscriber<R> {
                     }
                     id::MEASURES_REPLAY_POTENTIALLY_DETECTED__GAP => {
                         (&INFO[id::REPLAY_POTENTIALLY_DETECTED__GAP], entry)
+                    }
+                    id::MEASURES_STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA => {
+                        (&INFO[id::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA], entry)
                     }
                     id::MEASURES_PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE => {
                         (
@@ -9305,6 +9359,21 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
             id::NOMINAL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__PEER_ADDRESS__PROTOCOL,
             &event.peer_address,
+        );
+        self.count_bool(
+            id::STALE_KEY_PACKET_ACCEPTED__APPLIED,
+            id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__APPLIED,
+            event.applied,
+        );
+        self.count_bool(
+            id::STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+            id::BOOL_COUNTERS_STALE_KEY_PACKET_ACCEPTED__SCHEDULED_HANDSHAKE,
+            event.scheduled_handshake,
+        );
+        self.measure(
+            id::STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
+            id::MEASURES_STALE_KEY_PACKET_ACCEPTED__CLAMPED_DELTA,
+            event.clamped_delta,
         );
         let _ = event;
         let _ = meta;
