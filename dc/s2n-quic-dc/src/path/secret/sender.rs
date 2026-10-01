@@ -37,7 +37,7 @@ impl State {
     pub fn next_key_id(&self) -> VarInt {
         let id = self
             .current_id
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 VarInt::try_from(current + 1)
                     .ok()
                     // Make sure we can always +1. This is a useful property for StaleKey packets
