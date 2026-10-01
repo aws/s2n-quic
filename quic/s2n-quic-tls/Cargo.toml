@@ -22,9 +22,6 @@ libc = "0.2"
 s2n-codec = { version = "=0.89.0", path = "../../common/s2n-codec", default-features = false }
 s2n-quic-core = { version = "=0.89.0", path = "../s2n-quic-core", default-features = false, features = ["alloc"] }
 s2n-quic-crypto = { version = "=0.89.0", path = "../s2n-quic-crypto", default-features = false }
-# the `on_key_exchange_group` event relies on an API added in 0.3.15
-# s2n-tls v0.3.31 and beyond allows setting multiple application context to a TLS connection
-# s2n-tls v0.3.40 and beyond builds on Windows (via the GNU/MinGW toolchain)
 # the `on_signature_public_key_type` event relies on `Connection::signature_public_key_type`, added in 0.3.44
 s2n-tls = { version = "0.3.44", features = ["quic"] }
 
