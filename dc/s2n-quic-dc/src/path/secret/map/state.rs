@@ -729,6 +729,7 @@ where
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
                     peer_address: SocketAddress::from(peer).into_event(),
+                    reason: reason.into(),
                 },
             );
 
@@ -929,6 +930,14 @@ where
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     ) {
         self.register_request_handshake(cb);
+    }
+
+    fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: HandshakeReason,
+    ) -> Option<JoinHandle<()>> {
+        self.request_handshake(peer, reason)
     }
 
     #[allow(clippy::type_complexity)]

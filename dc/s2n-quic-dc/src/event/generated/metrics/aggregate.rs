@@ -258,6 +258,7 @@ mod id {
         PATH_SECRET_MAP_UNINITIALIZED__LIFETIME,
         PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED,
         PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+        PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
         PATH_SECRET_MAP_ENTRY_INSERTED,
         PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ENTRY_READY,
@@ -758,6 +759,8 @@ mod id {
         InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED as usize;
     pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON as usize;
     pub const PATH_SECRET_MAP_ENTRY_INSERTED: usize =
         InfoId::PATH_SECRET_MAP_ENTRY_INSERTED as usize;
     pub const PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
@@ -1385,6 +1388,7 @@ mod id {
         NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL,
         NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+        NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL,
@@ -1438,6 +1442,9 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL as usize;
     pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL
         as usize;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON
+            as usize;
     pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL
             as usize;
@@ -2009,7 +2016,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 343usize] = &[
+static INFO: &[Info; 344usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -3457,6 +3464,12 @@ static INFO: &[Info; 343usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
+        name: Str::new("path_secret_map_background_handshake_requested.reason\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_ENTRY_INSERTED,
         name: Str::new("path_secret_map_entry_inserted\0"),
         units: Units::None,
@@ -4112,7 +4125,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 38usize]>,
+    nominal_counter_offsets: Box<[usize; 39usize]>,
     #[allow(dead_code)]
     measures: Box<[R::Measure; 137usize]>,
     #[allow(dead_code)]
@@ -4143,8 +4156,8 @@ impl<R: Registry> Subscriber<R> {
     pub fn new(registry: R) -> Self {
         let mut counters = Vec::with_capacity(115usize);
         let mut bool_counters = Vec::with_capacity(25usize);
-        let mut nominal_counters = Vec::with_capacity(38usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(38usize);
+        let mut nominal_counters = Vec::with_capacity(39usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(39usize);
         let mut measures = Vec::with_capacity(137usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(28usize);
@@ -4535,6 +4548,19 @@ impl<R: Registry> Subscriber<R> {
                                     variant,
                                 ),
                         );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <HandshakeReason as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -5763,6 +5789,17 @@ impl<R: Registry> Subscriber<R> {
                             .nominal_counters[offset..offset + variants.len()];
                         (
                             &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON => {
+                        let offset = *entry;
+                        let variants = <HandshakeReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON],
                             entries,
                             variants,
                         )
@@ -8900,6 +8937,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
             id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
             &event.peer_address,
+        );
+        self.count_nominal(
+            id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
+            id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
+            &event.reason,
         );
         let _ = event;
         let _ = meta;

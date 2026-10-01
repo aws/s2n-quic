@@ -34,7 +34,8 @@ impl State {
         }
     }
 
-    pub fn next_key_id(&self) -> VarInt {
+    /// Returns the next key ID to send at, or `None` if available key id is exhausted.
+    pub fn next_key_id(&self) -> Option<VarInt> {
         let id = self
             .current_id
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
@@ -46,17 +47,12 @@ impl State {
                     // that edge to this code.
                     .filter(|id| *id != VarInt::MAX)
                     .map(|id| *id)
-            });
+            })
+            // `fetch_update` reports `Err(current)` when the closure declined to advance such as when
+            // there is no usable ID left in the VarInt range.
+            .ok()?;
 
-        let id = id.expect("2^62 integer incremented per-path will not wrap");
-
-        // The atomic will not be incremented (i.e., would have panic'd above) if we do not fit
-        // into a VarInt.
-        #[expect(
-            clippy::unwrap_used,
-            reason = "id was produced by a successful VarInt::try_from in fetch_update, so it is provably in range"
-        )]
-        VarInt::try_from(id).unwrap()
+        VarInt::try_from(id).ok()
     }
 
     #[inline]
@@ -85,27 +81,50 @@ impl State {
 }
 
 #[test]
-#[should_panic = "2^62 integer incremented"]
 fn sender_does_not_wrap() {
     let state = State::new([0; secret_control::TAG_LEN]);
-    assert_eq!(*state.next_key_id(), 0);
+    assert_eq!(*state.next_key_id().unwrap(), 0);
 
     state.current_id.store((1 << 62) - 3, Ordering::Relaxed);
 
-    assert_eq!(*state.next_key_id(), (1 << 62) - 3);
-    assert_eq!(*state.next_key_id(), (1 << 62) - 2);
-    assert_eq!(*state.next_key_id(), (1 << 62) - 1);
-    // should panic
-    state.next_key_id();
+    // The last usable ID: handing it out leaves the counter at the reserved `VarInt::MAX - 1`,
+    // which can still represent "one past the last ID" for StaleKey packets.
+    assert_eq!(*state.next_key_id().unwrap(), (1 << 62) - 3);
+
+    // Advancing again would have to store `VarInt::MAX`, so we report exhaustion instead of wrapping
+    // or panicking, and keep reporting it while leaving the counter where it is.
+    assert_eq!(state.next_key_id(), None);
+    assert_eq!(state.next_key_id(), None);
+    assert_eq!(state.current_id.load(Ordering::Relaxed), (1 << 62) - 2);
 }
 
 #[test]
 fn update_restarts_sequence() {
     let state = State::new([0; secret_control::TAG_LEN]);
-    assert_eq!(*state.next_key_id(), 0);
+    assert_eq!(*state.next_key_id().unwrap(), 0);
 
     state.update_for_stale_key(VarInt::new(3).unwrap());
 
     // Update should start at the minimum trusted key ID on the other side.
-    assert_eq!(*state.next_key_id(), 3);
+    assert_eq!(*state.next_key_id().unwrap(), 3);
+}
+
+#[test]
+fn update_for_stale_key_to_max_is_not_fatal() {
+    // A StaleKey packet carries an authenticated but otherwise arbitrary minimum key ID, so the peer
+    // can push the counter to the very top of the VarInt range. Sending afterwards must report
+    // exhaustion rather than panicking.
+    let max = *VarInt::MAX;
+    for min_key_id in [max, max - 1] {
+        let state = State::new([0; secret_control::TAG_LEN]);
+        state.update_for_stale_key(VarInt::new(min_key_id).unwrap());
+
+        assert_eq!(state.next_key_id(), None);
+    }
+
+    // Two below the top is still usable, and is the last ID we ever hand out.
+    let state = State::new([0; secret_control::TAG_LEN]);
+    state.update_for_stale_key(VarInt::new(max - 2).unwrap());
+    assert_eq!(*state.next_key_id().unwrap(), max - 2);
+    assert_eq!(state.next_key_id(), None);
 }

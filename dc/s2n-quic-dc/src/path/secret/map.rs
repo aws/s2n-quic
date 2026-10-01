@@ -299,9 +299,16 @@ impl Map {
     ///
     /// Note that unlike by-IP lookup this should typically not be done significantly after the
     /// original secret was used for decryption.
+    ///
+    /// Returns `None` if there is no entry for `id`, or if that entry has exhausted its key IDs. In
+    /// the latter case a re-handshake is requested which replaces the peer's path secret.
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let entry = self.store.get_by_id_tracked(&id)?;
-        let (sealer, credentials) = entry.uni_sealer();
+        let Some((sealer, credentials)) = entry.uni_sealer() else {
+            self.store
+                .request_handshake(*entry.peer(), HandshakeReason::KeyIdExhaustion);
+            return None;
+        };
         Some((sealer, credentials, entry.parameters()))
     }
 

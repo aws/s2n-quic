@@ -2023,12 +2023,15 @@ pub mod api {
     /// Emitted when a background handshake is requested
     pub struct PathSecretMapBackgroundHandshakeRequested<'a> {
         pub peer_address: SocketAddress<'a>,
+        /// Why the handshake was requested
+        pub reason: HandshakeReason,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for PathSecretMapBackgroundHandshakeRequested<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("PathSecretMapBackgroundHandshakeRequested");
             fmt.field("peer_address", &self.peer_address);
+            fmt.field("reason", &self.reason);
             fmt.finish()
         }
     }
@@ -2795,6 +2798,55 @@ pub mod api {
     }
     impl Event for PathSecretMapDatagramDecrypt {
         const NAME: &'static str = "path_secret_map:datagram_decrypt";
+    }
+    #[non_exhaustive]
+    #[derive(Debug, Copy, Clone)]
+    pub enum HandshakeReason {
+        #[non_exhaustive]
+        /// An explicit request by the application owner.
+        User {},
+        #[non_exhaustive]
+        /// Periodic re-handshaking.
+        Periodic {},
+        #[non_exhaustive]
+        /// Driven by remote packets (e.g., unknown path secret or replay detection).
+        Remote {},
+        #[non_exhaustive]
+        /// The path secret ran out of key IDs, so it can no longer be used for sending.
+        KeyIdExhaustion {},
+    }
+    impl aggregate::AsVariant for HandshakeReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("USER\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("PERIODIC\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("REMOTE\0"),
+                id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("KEY_ID_EXHAUSTION\0"),
+                id: 3usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::User { .. } => 0usize,
+                Self::Periodic { .. } => 1usize,
+                Self::Remote { .. } => 2usize,
+                Self::KeyIdExhaustion { .. } => 3usize,
+            }
+        }
     }
     #[non_exhaustive]
     #[derive(Debug, Copy, Clone)]
@@ -4157,11 +4209,15 @@ pub mod tracing {
             event: &api::PathSecretMapBackgroundHandshakeRequested,
         ) {
             let parent = self.parent(meta);
-            let api::PathSecretMapBackgroundHandshakeRequested { peer_address } = event;
+            let api::PathSecretMapBackgroundHandshakeRequested {
+                peer_address,
+                reason,
+            } = event;
             tracing::event!(
                 target : "path_secret_map_background_handshake_requested", parent :
                 parent, tracing::Level::DEBUG, { peer_address =
-                tracing::field::debug(peer_address) }
+                tracing::field::debug(peer_address), reason =
+                tracing::field::debug(reason) }
             );
         }
         #[inline]
@@ -6624,15 +6680,21 @@ pub mod builder {
     /// Emitted when a background handshake is requested
     pub struct PathSecretMapBackgroundHandshakeRequested<'a> {
         pub peer_address: SocketAddress<'a>,
+        /// Why the handshake was requested
+        pub reason: HandshakeReason,
     }
     impl<'a> IntoEvent<api::PathSecretMapBackgroundHandshakeRequested<'a>>
         for PathSecretMapBackgroundHandshakeRequested<'a>
     {
         #[inline]
         fn into_event(self) -> api::PathSecretMapBackgroundHandshakeRequested<'a> {
-            let PathSecretMapBackgroundHandshakeRequested { peer_address } = self;
+            let PathSecretMapBackgroundHandshakeRequested {
+                peer_address,
+                reason,
+            } = self;
             api::PathSecretMapBackgroundHandshakeRequested {
                 peer_address: peer_address.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -7395,6 +7457,29 @@ pub mod builder {
             let PathSecretMapDatagramDecrypt { packet_len } = self;
             api::PathSecretMapDatagramDecrypt {
                 packet_len: packet_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum HandshakeReason {
+        /// An explicit request by the application owner.
+        User,
+        /// Periodic re-handshaking.
+        Periodic,
+        /// Driven by remote packets (e.g., unknown path secret or replay detection).
+        Remote,
+        /// The path secret ran out of key IDs, so it can no longer be used for sending.
+        KeyIdExhaustion,
+    }
+    impl IntoEvent<api::HandshakeReason> for HandshakeReason {
+        #[inline]
+        fn into_event(self) -> api::HandshakeReason {
+            use api::HandshakeReason::*;
+            match self {
+                Self::User => User {},
+                Self::Periodic => Periodic {},
+                Self::Remote => Remote {},
+                Self::KeyIdExhaustion => KeyIdExhaustion {},
             }
         }
     }

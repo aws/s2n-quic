@@ -74,3 +74,52 @@ fn serialize_application_data_returns_err_from_callback() {
         .expect_err("a failing callback yields Err");
     assert_eq!(err.msg, "serialization failed");
 }
+
+/// Key ID exhaustion is terminal for a path secret, so the only way to recover is to replace it.
+/// Every path that derives a *sending* key asks for a background re-handshake when it hits that.
+#[test]
+fn key_id_exhaustion_requests_rehandshake() {
+    use crate::stream::TransportFeatures;
+    use s2n_quic_core::varint::VarInt;
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let peer_addr: SocketAddr = "127.0.0.1:1234".parse().expect("valid address literal");
+    map.test_insert(peer_addr);
+
+    let requests = Arc::new(AtomicUsize::new(0));
+    let requests_in_cb = requests.clone();
+    map.register_request_handshake(Box::new(move |_peer, reason| {
+        assert!(
+            matches!(reason, crate::psk::io::HandshakeReason::KeyIdExhaustion),
+            "expected KeyIdExhaustion, got {reason:?}"
+        );
+        requests_in_cb.fetch_add(1, Ordering::Relaxed);
+        None
+    }));
+
+    let peer = map.get_tracked(peer_addr).expect("just inserted");
+
+    // A healthy entry hands out key IDs without asking for anything.
+    assert!(peer.pair(&TransportFeatures::UDP).is_some());
+    assert!(peer.seal_once().is_some());
+    assert_eq!(requests.load(Ordering::Relaxed), 0);
+
+    // Drive the counter to the top of the range, exactly as an authenticated StaleKey packet from
+    // the peer would.
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer_addr)
+        .expect("just inserted");
+    entry.sender().update_for_stale_key(VarInt::MAX);
+
+    // Each of the three paths that derive a sending key now fails and requests a re-handshake.
+    assert!(peer.pair(&TransportFeatures::UDP).is_none());
+    assert_eq!(requests.load(Ordering::Relaxed), 1);
+
+    assert!(peer.seal_once().is_none());
+    assert_eq!(requests.load(Ordering::Relaxed), 2);
+
+    assert!(map.seal_once_id(*entry.id()).is_none());
+    assert_eq!(requests.load(Ordering::Relaxed), 3);
+}
