@@ -21,6 +21,7 @@ mod id {
         SERVER_NAME_INFORMATION,
         KEY_EXCHANGE_GROUP,
         SIGNATURE_SCHEME,
+        SIGNATURE_PUBLIC_KEY_TYPE,
         PACKET_SKIPPED,
         PACKET_SENT,
         PACKET_SENT__KIND,
@@ -211,6 +212,7 @@ mod id {
     pub const SERVER_NAME_INFORMATION: usize = InfoId::SERVER_NAME_INFORMATION as usize;
     pub const KEY_EXCHANGE_GROUP: usize = InfoId::KEY_EXCHANGE_GROUP as usize;
     pub const SIGNATURE_SCHEME: usize = InfoId::SIGNATURE_SCHEME as usize;
+    pub const SIGNATURE_PUBLIC_KEY_TYPE: usize = InfoId::SIGNATURE_PUBLIC_KEY_TYPE as usize;
     pub const PACKET_SKIPPED: usize = InfoId::PACKET_SKIPPED as usize;
     pub const PACKET_SENT: usize = InfoId::PACKET_SENT as usize;
     pub const PACKET_SENT__KIND: usize = InfoId::PACKET_SENT__KIND as usize;
@@ -457,6 +459,7 @@ mod id {
         COUNTERS_SERVER_NAME_INFORMATION,
         COUNTERS_KEY_EXCHANGE_GROUP,
         COUNTERS_SIGNATURE_SCHEME,
+        COUNTERS_SIGNATURE_PUBLIC_KEY_TYPE,
         COUNTERS_PACKET_SKIPPED,
         COUNTERS_PACKET_SENT,
         COUNTERS_PACKET_SENT__BYTES__TOTAL,
@@ -551,6 +554,8 @@ mod id {
         Counters::COUNTERS_SERVER_NAME_INFORMATION as usize;
     pub const COUNTERS_KEY_EXCHANGE_GROUP: usize = Counters::COUNTERS_KEY_EXCHANGE_GROUP as usize;
     pub const COUNTERS_SIGNATURE_SCHEME: usize = Counters::COUNTERS_SIGNATURE_SCHEME as usize;
+    pub const COUNTERS_SIGNATURE_PUBLIC_KEY_TYPE: usize =
+        Counters::COUNTERS_SIGNATURE_PUBLIC_KEY_TYPE as usize;
     pub const COUNTERS_PACKET_SKIPPED: usize = Counters::COUNTERS_PACKET_SKIPPED as usize;
     pub const COUNTERS_PACKET_SENT: usize = Counters::COUNTERS_PACKET_SENT as usize;
     pub const COUNTERS_PACKET_SENT__BYTES__TOTAL: usize =
@@ -991,7 +996,7 @@ mod id {
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize =
         NominalTimers::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY as usize;
 }
-static INFO: &[Info; 188usize] = &[
+static INFO: &[Info; 189usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -1013,6 +1018,12 @@ static INFO: &[Info; 188usize] = &[
     info::Builder {
         id: id::SIGNATURE_SCHEME,
         name: Str::new("signature_scheme\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::SIGNATURE_PUBLIC_KEY_TYPE,
+        name: Str::new("signature_public_key_type\0"),
         units: Units::None,
     }
     .build(),
@@ -2128,7 +2139,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 91usize]>,
+    counters: Box<[R::Counter; 92usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
@@ -2163,7 +2174,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(91usize);
+        let mut counters = Vec::with_capacity(92usize);
         let mut bool_counters = Vec::with_capacity(3usize);
         let mut nominal_counters = Vec::with_capacity(34usize);
         let mut nominal_counter_offsets = Vec::with_capacity(34usize);
@@ -2176,6 +2187,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::SERVER_NAME_INFORMATION]));
         counters.push(registry.register_counter(&INFO[id::KEY_EXCHANGE_GROUP]));
         counters.push(registry.register_counter(&INFO[id::SIGNATURE_SCHEME]));
+        counters.push(registry.register_counter(&INFO[id::SIGNATURE_PUBLIC_KEY_TYPE]));
         counters.push(registry.register_counter(&INFO[id::PACKET_SKIPPED]));
         counters.push(registry.register_counter(&INFO[id::PACKET_SENT]));
         counters.push(registry.register_counter(&INFO[id::PACKET_SENT__BYTES__TOTAL]));
@@ -2842,6 +2854,9 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_SERVER_NAME_INFORMATION => (&INFO[id::SERVER_NAME_INFORMATION], entry),
                 id::COUNTERS_KEY_EXCHANGE_GROUP => (&INFO[id::KEY_EXCHANGE_GROUP], entry),
                 id::COUNTERS_SIGNATURE_SCHEME => (&INFO[id::SIGNATURE_SCHEME], entry),
+                id::COUNTERS_SIGNATURE_PUBLIC_KEY_TYPE => {
+                    (&INFO[id::SIGNATURE_PUBLIC_KEY_TYPE], entry)
+                }
                 id::COUNTERS_PACKET_SKIPPED => (&INFO[id::PACKET_SKIPPED], entry),
                 id::COUNTERS_PACKET_SENT => (&INFO[id::PACKET_SENT], entry),
                 id::COUNTERS_PACKET_SENT__BYTES__TOTAL => {
@@ -3589,6 +3604,24 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         #[allow(unused_imports)]
         use api::*;
         self.count(id::SIGNATURE_SCHEME, id::COUNTERS_SIGNATURE_SCHEME, 1usize);
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_signature_public_key_type(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::SignaturePublicKeyType,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::SIGNATURE_PUBLIC_KEY_TYPE,
+            id::COUNTERS_SIGNATURE_PUBLIC_KEY_TYPE,
+            1usize,
+        );
         let _ = context;
         let _ = meta;
         let _ = event;

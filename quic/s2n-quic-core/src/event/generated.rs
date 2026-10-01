@@ -2020,6 +2020,31 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// The public key type of the certificates used to authenticate the connection
+    ///
+    /// Each value describes the public key algorithm and parameters of a leaf certificate
+    pub struct SignaturePublicKeyType<'a> {
+        /// The public key type of the server's certificate
+        pub server_public_key_type: Option<&'a str>,
+        /// The public key type of the client's certificate
+        ///
+        /// This is only available when the client authenticated with a certificate
+        pub client_public_key_type: Option<&'a str>,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for SignaturePublicKeyType<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("SignaturePublicKeyType");
+            fmt.field("server_public_key_type", &self.server_public_key_type);
+            fmt.field("client_public_key_type", &self.client_public_key_type);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for SignaturePublicKeyType<'a> {
+        const NAME: &'static str = "transport:signature_public_key_type";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Packet was skipped with a given reason
     pub struct PacketSkipped {
         pub number: u64,
@@ -4084,6 +4109,24 @@ pub mod tracing {
                 target : "signature_scheme", parent : id, tracing::Level::DEBUG, {
                 chosen_signature_scheme = tracing::field::debug(chosen_signature_scheme)
                 }
+            );
+        }
+        #[inline]
+        fn on_signature_public_key_type(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::SignaturePublicKeyType,
+        ) {
+            let id = context.id();
+            let api::SignaturePublicKeyType {
+                server_public_key_type,
+                client_public_key_type,
+            } = event;
+            tracing::event!(
+                target : "signature_public_key_type", parent : id, tracing::Level::DEBUG,
+                { server_public_key_type = tracing::field::debug(server_public_key_type),
+                client_public_key_type = tracing::field::debug(client_public_key_type) }
             );
         }
         #[inline]
@@ -6530,6 +6573,31 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// The public key type of the certificates used to authenticate the connection
+    ///
+    /// Each value describes the public key algorithm and parameters of a leaf certificate
+    pub struct SignaturePublicKeyType<'a> {
+        /// The public key type of the server's certificate
+        pub server_public_key_type: Option<&'a str>,
+        /// The public key type of the client's certificate
+        ///
+        /// This is only available when the client authenticated with a certificate
+        pub client_public_key_type: Option<&'a str>,
+    }
+    impl<'a> IntoEvent<api::SignaturePublicKeyType<'a>> for SignaturePublicKeyType<'a> {
+        #[inline]
+        fn into_event(self) -> api::SignaturePublicKeyType<'a> {
+            let SignaturePublicKeyType {
+                server_public_key_type,
+                client_public_key_type,
+            } = self;
+            api::SignaturePublicKeyType {
+                server_public_key_type: server_public_key_type.into_event(),
+                client_public_key_type: client_public_key_type.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// Packet was skipped with a given reason
     pub struct PacketSkipped {
         pub number: u64,
@@ -8066,6 +8134,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `SignaturePublicKeyType` event is triggered
+        #[inline]
+        fn on_signature_public_key_type(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SignaturePublicKeyType,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `PacketSkipped` event is triggered
         #[inline]
         fn on_packet_skipped(
@@ -8961,6 +9041,16 @@ mod traits {
             (self.1).on_signature_scheme(&mut context.1, meta, event);
         }
         #[inline]
+        fn on_signature_public_key_type(
+            &mut self,
+            context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SignaturePublicKeyType,
+        ) {
+            (self.0).on_signature_public_key_type(&mut context.0, meta, event);
+            (self.1).on_signature_public_key_type(&mut context.1, meta, event);
+        }
+        #[inline]
         fn on_packet_skipped(
             &mut self,
             context: &mut Self::ConnectionContext,
@@ -9842,6 +9932,8 @@ mod traits {
         fn on_key_exchange_group(&mut self, event: builder::KeyExchangeGroup);
         ///Publishes a `SignatureScheme` event to the publisher's subscriber
         fn on_signature_scheme(&mut self, event: builder::SignatureScheme);
+        ///Publishes a `SignaturePublicKeyType` event to the publisher's subscriber
+        fn on_signature_public_key_type(&mut self, event: builder::SignaturePublicKeyType);
         ///Publishes a `PacketSkipped` event to the publisher's subscriber
         fn on_packet_skipped(&mut self, event: builder::PacketSkipped);
         ///Publishes a `PacketSent` event to the publisher's subscriber
@@ -10019,6 +10111,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_signature_scheme(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_signature_public_key_type(&mut self, event: builder::SignaturePublicKeyType) {
+            let event = event.into_event();
+            self.subscriber
+                .on_signature_public_key_type(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -10770,6 +10871,7 @@ pub mod testing {
         pub server_name_information: u64,
         pub key_exchange_group: u64,
         pub signature_scheme: u64,
+        pub signature_public_key_type: u64,
         pub packet_skipped: u64,
         pub packet_sent: u64,
         pub packet_received: u64,
@@ -10872,6 +10974,7 @@ pub mod testing {
                 server_name_information: 0,
                 key_exchange_group: 0,
                 signature_scheme: 0,
+                signature_public_key_type: 0,
                 packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
@@ -10999,6 +11102,20 @@ pub mod testing {
             event: &api::SignatureScheme,
         ) {
             self.signature_scheme += 1;
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_signature_public_key_type(
+            &mut self,
+            _context: &mut Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::SignaturePublicKeyType,
+        ) {
+            self.signature_public_key_type += 1;
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -11887,6 +12004,7 @@ pub mod testing {
         pub server_name_information: u64,
         pub key_exchange_group: u64,
         pub signature_scheme: u64,
+        pub signature_public_key_type: u64,
         pub packet_skipped: u64,
         pub packet_sent: u64,
         pub packet_received: u64,
@@ -11979,6 +12097,7 @@ pub mod testing {
                 server_name_information: 0,
                 key_exchange_group: 0,
                 signature_scheme: 0,
+                signature_public_key_type: 0,
                 packet_skipped: 0,
                 packet_sent: 0,
                 packet_received: 0,
@@ -12212,6 +12331,15 @@ pub mod testing {
         }
         fn on_signature_scheme(&mut self, event: builder::SignatureScheme) {
             self.signature_scheme += 1;
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.push(out);
+            }
+        }
+        fn on_signature_public_key_type(&mut self, event: builder::SignaturePublicKeyType) {
+            self.signature_public_key_type += 1;
             let event = event.into_event();
             if self.location.is_some() {
                 let event = crate::event::snapshot::Fmt::to_snapshot(&event);
