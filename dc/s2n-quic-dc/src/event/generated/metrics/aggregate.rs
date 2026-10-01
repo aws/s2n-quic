@@ -64,6 +64,8 @@ mod id {
         ACCEPTOR_TCP_SOCKET_RECEIVED,
         ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME,
         ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
+        ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+        ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
         ACCEPTOR_UDP_STARTED,
         ACCEPTOR_UDP_DATAGRAM_RECEIVED,
         ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN,
@@ -439,6 +441,10 @@ mod id {
         InfoId::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME as usize;
     pub const ACCEPTOR_TCP_SOCKET_RECEIVED__LEN: usize =
         InfoId::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN as usize;
+    pub const ACCEPTOR_TCP_APPLICATION_DATA_DROPPED: usize =
+        InfoId::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED as usize;
+    pub const ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON: usize =
+        InfoId::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_STARTED: usize = InfoId::ACCEPTOR_UDP_STARTED as usize;
     pub const ACCEPTOR_UDP_DATAGRAM_RECEIVED: usize =
         InfoId::ACCEPTOR_UDP_DATAGRAM_RECEIVED as usize;
@@ -963,6 +969,7 @@ mod id {
         COUNTERS_ACCEPTOR_TCP_SOCKET_SENT,
         COUNTERS_ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST,
         COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED,
+        COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
         COUNTERS_ACCEPTOR_UDP_STARTED,
         COUNTERS_ACCEPTOR_UDP_DATAGRAM_RECEIVED,
         COUNTERS_ACCEPTOR_UDP_PACKET_RECEIVED,
@@ -1095,6 +1102,8 @@ mod id {
         Counters::COUNTERS_ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST as usize;
     pub const COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED: usize =
         Counters::COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED as usize;
+    pub const COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED: usize =
+        Counters::COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED as usize;
     pub const COUNTERS_ACCEPTOR_UDP_STARTED: usize =
         Counters::COUNTERS_ACCEPTOR_UDP_STARTED as usize;
     pub const COUNTERS_ACCEPTOR_UDP_DATAGRAM_RECEIVED: usize =
@@ -1365,6 +1374,7 @@ mod id {
         NOMINAL_COUNTERS_ACCEPTOR_TCP_STREAM_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE,
+        NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON,
         NOMINAL_COUNTERS_STREAM_CONNECT__TCP,
@@ -1406,6 +1416,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE: usize =
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE as usize;
+    pub const NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON: usize =
@@ -1997,7 +2009,7 @@ mod id {
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
 }
-static INFO: &[Info; 341usize] = &[
+static INFO: &[Info; 343usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -2278,6 +2290,18 @@ static INFO: &[Info; 341usize] = &[
         id: id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
         name: Str::new("acceptor_tcp_socket_received.len\0"),
         units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+        name: Str::new("acceptor_tcp_application_data_dropped\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
+        name: Str::new("acceptor_tcp_application_data_dropped.reason\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -4082,13 +4106,13 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 114usize]>,
+    counters: Box<[R::Counter; 115usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 37usize]>,
+    nominal_counter_offsets: Box<[usize; 38usize]>,
     #[allow(dead_code)]
     measures: Box<[R::Measure; 137usize]>,
     #[allow(dead_code)]
@@ -4117,10 +4141,10 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(114usize);
+        let mut counters = Vec::with_capacity(115usize);
         let mut bool_counters = Vec::with_capacity(25usize);
-        let mut nominal_counters = Vec::with_capacity(37usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(37usize);
+        let mut nominal_counters = Vec::with_capacity(38usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(38usize);
         let mut measures = Vec::with_capacity(137usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(28usize);
@@ -4146,6 +4170,7 @@ impl<R: Registry> Subscriber<R> {
             registry.register_counter(&INFO[id::ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST]),
         );
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_STARTED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_DATAGRAM_RECEIVED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_PACKET_RECEIVED]));
@@ -4359,6 +4384,20 @@ impl<R: Registry> Subscriber<R> {
                 for variant in <AcceptorTcpIoErrorSource as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(registry.register_nominal_counter(
                         &INFO[id::ACCEPTOR_TCP_IO_ERROR__SOURCE],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <AcceptorTcpApplicationDataDropReason as AsVariant>::VARIANTS.iter()
+                {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON],
                         variant,
                     ));
                     count += 1;
@@ -5230,6 +5269,9 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED => {
                     (&INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED], entry)
                 }
+                id::COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED => {
+                    (&INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED], entry)
+                }
                 id::COUNTERS_ACCEPTOR_UDP_STARTED => (&INFO[id::ACCEPTOR_UDP_STARTED], entry),
                 id::COUNTERS_ACCEPTOR_UDP_DATAGRAM_RECEIVED => {
                     (&INFO[id::ACCEPTOR_UDP_DATAGRAM_RECEIVED], entry)
@@ -5619,6 +5661,17 @@ impl<R: Registry> Subscriber<R> {
                         let entries = &self
                             .nominal_counters[offset..offset + variants.len()];
                         (&INFO[id::ACCEPTOR_TCP_IO_ERROR__SOURCE], entries, variants)
+                    }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorTcpApplicationDataDropReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON],
+                            entries,
+                            variants,
+                        )
                     }
                     id::NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON => {
                         let offset = *entry;
@@ -7111,6 +7164,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
             id::MEASURES_ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
             event.payload_len,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_tcp_application_data_dropped(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorTcpApplicationDataDropped,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+            id::COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+            1usize,
+        );
+        self.count_nominal(
+            id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
+            id::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
+            &event.reason,
         );
         let _ = event;
         let _ = meta;

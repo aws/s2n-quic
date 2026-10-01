@@ -41,6 +41,7 @@ mod issue_1464;
 mod issue_1717;
 mod issue_954;
 mod mtu;
+mod new_token;
 mod no_tls;
 mod offload;
 mod platform_events;

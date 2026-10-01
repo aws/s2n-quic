@@ -304,6 +304,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -368,6 +369,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [

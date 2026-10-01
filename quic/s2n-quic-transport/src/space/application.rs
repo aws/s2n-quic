@@ -45,7 +45,6 @@ use s2n_quic_core::{
 
 // Ensure there is a gap between skipped packet numbers
 const MIN_SKIP_COUNTER_VALUE: u32 = MAX_BURST_PACKETS * 3;
-
 pub struct ApplicationSpace<Config: endpoint::Config> {
     /// Transmission Packet numbers
     pub tx_packet_numbers: TxPacketNumbers,
@@ -981,14 +980,23 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
 
     fn handle_new_token_frame(&mut self, frame: NewToken) -> Result<(), transport::Error> {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
-        //# A server MUST treat receipt
-        //# of a NEW_TOKEN frame as a connection error of type
-        //# PROTOCOL_VIOLATION.
+        //# A server MUST treat receipt of a NEW_TOKEN frame as a connection
+        //# error of type PROTOCOL_VIOLATION.
         if Config::ENDPOINT_TYPE.is_server() {
             return Err(transport::Error::PROTOCOL_VIOLATION
                 .with_reason(Self::INVALID_FRAME_ERROR)
                 .with_frame_type(frame.tag().into()));
         }
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-19.7
+        //# A client MUST treat receipt of a NEW_TOKEN frame with an empty Token
+        //# field as a connection error of type FRAME_ENCODING_ERROR.
+        if frame.token.is_empty() {
+            return Err(transport::Error::FRAME_ENCODING_ERROR
+                .with_reason("empty Token field")
+                .with_frame_type(frame.tag().into()));
+        }
+
         // TODO add support for the NEW_TOKEN_FRAME on the client
         Ok(())
     }
