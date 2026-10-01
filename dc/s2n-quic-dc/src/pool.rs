@@ -49,14 +49,17 @@ impl<T: 'static + Send> Pool<T> {
         if std::env::var("DC_QUIC_POOL_METRICS").is_ok() {
             let stats = Arc::new(Stats::default());
             pool.stats = Some(stats.clone());
-            std::thread::spawn(move || loop {
-                std::thread::sleep(core::time::Duration::from_secs(1));
-                let hits = stats.hits.load(Ordering::Relaxed);
-                let misses = stats.misses.load(Ordering::Relaxed);
-                let errors = stats.errors.load(Ordering::Relaxed);
-                let hit_ratio = hits as f64 / (hits + misses) as f64 * 100.0;
-                info!(hits, misses, errors, hit_ratio);
-            });
+            std::thread::Builder::new()
+                .name("pool-stats".into())
+                .spawn(move || loop {
+                    std::thread::sleep(core::time::Duration::from_secs(1));
+                    let hits = stats.hits.load(Ordering::Relaxed);
+                    let misses = stats.misses.load(Ordering::Relaxed);
+                    let errors = stats.errors.load(Ordering::Relaxed);
+                    let hit_ratio = hits as f64 / (hits + misses) as f64 * 100.0;
+                    info!(hits, misses, errors, hit_ratio);
+                })
+                .expect("failed to spawn pool stats thread");
         }
 
         pool
