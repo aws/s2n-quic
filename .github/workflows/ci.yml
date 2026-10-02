@@ -347,6 +347,10 @@ jobs:
         run: |
           ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
 
+      - name: Check s2n-quic without a bundled TLS provider
+        if: ${{ matrix.rust == 'stable' && matrix.os == 'ubuntu-latest' && matrix.target == 'native' && matrix.env == 'default' }}
+        run: cargo check --package s2n-quic --no-default-features --features provider-address-token-default
+
   # The previous build runs on MSVC. s2n-quic can use s2n-tls, but only on MinGW, so we need a new job to test that.
   test-windows-gnu:
     runs-on: windows-latest

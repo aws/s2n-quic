@@ -1,6 +1,18 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
+use crate::provider::tls;
+#[cfg(not(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+)))]
+use crate::provider::tls::state as tls;
 use crate::{
     provider::*,
     server::{DefaultProviders, Server, ServerProviders},
@@ -431,7 +443,10 @@ impl<Providers: ServerProviders> Builder<Providers> {
     /// #    Ok(())
     /// # }
     /// ```
-    pub fn start(self) -> Result<Server, StartError> {
+    pub fn start(self) -> Result<Server, StartError>
+    where
+        Providers::Tls: crate::provider::tls::Provider,
+    {
         self.0.build().start()
     }
 }

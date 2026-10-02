@@ -2,6 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
+use crate::provider::tls;
+#[cfg(not(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+)))]
+use crate::provider::tls::state as tls;
 use core::marker::PhantomData;
 use s2n_quic_core::{connection::id::Generator, crypto, path};
 use s2n_quic_transport::{connection, endpoint, stream};
@@ -46,7 +58,7 @@ impl<
         IO: io::Provider,
         PathMigration: path_migration::Provider,
         Sync: sync::Provider,
-        Tls: tls::Provider,
+        Tls: crate::provider::tls::Provider,
         AddressToken: address_token::Provider,
         Datagram: datagram::Provider,
         Dc: dc::Provider,
