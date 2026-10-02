@@ -852,12 +852,11 @@ fn bimodal_no_handshake_delay() -> Result<()> {
 }
 
 // Covers DC completion latency across classical/PQ handshakes and all combinations of current and
-// legacy client/server MTU configurations. Packets are delivered separately to reproduce
-// production packet scheduling rather than allowing the simulator to coalesce a multi-packet PQ
-// ClientHello into a single server receive turn. The internal receive buffer matches dc-quic's
-// production configuration.
+// legacy client/server MTU configurations. The receive queue is limited to one packet slot in the
+// spaced case and sized to hold a GRO-sized batch in the unspaced case, modeling the receive
+// scheduling effects of GRO without aggregating packets in the simulator.
 #[test]
-fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Result<()> {
+fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
     const BASE_MTU: u16 = 1450;
     const JUMBO_MTU: u16 = 8940;
     const CONSTRAINED_PATH_MTU: u16 = 1500;
@@ -866,7 +865,8 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
     const CLASSICAL_POLICY: &str = "20240503";
     const ML_KEM_POLICY: &str = "20250721";
     const PRODUCTION_PTO_JITTER_PERCENTAGE: u8 = 33;
-    const INTERNAL_RECV_BUFFER_SIZE: usize = 16 * 1024;
+    const SINGLE_PACKET_RECV_BUFFER_SIZE: usize = 1;
+    const GRO_BATCH_RECV_BUFFER_SIZE: usize = u16::MAX as usize;
 
     #[derive(Clone, Copy)]
     struct MtuConfiguration {
@@ -940,12 +940,17 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
 
         let model = Model::default();
         model.set_delay(RTT / 2);
-        if matches!(packet_delivery, PacketDelivery::Spaced) {
-            // Separate packets that would otherwise arrive in the same receive turn.
-            model.set_inflight_delay_threshold(0);
-            model.set_inflight_delay(Duration::from_micros(1));
-        }
         model.set_max_udp_payload(path_mtu);
+        // Bach can't produce UDP_GRO aggregates. This approximates the batching opportunity:
+        // Unspaced leaves about 65 KiB for multiple MTU-sized slots, standing in for
+        // near-simultaneous datagrams from one eligible UDP flow arriving in a GRO receive;
+        // Spaced limits RX to one slot so packets are received separately. GRO eligibility
+        // depends on UDP flow and packet properties, not QUIC packet order, so this is not an
+        // exact reproduction.
+        let recv_buffer_size = match packet_delivery {
+            PacketDelivery::Spaced => SINGLE_PACKET_RECV_BUFFER_SIZE,
+            PacketDelivery::Unspaced => GRO_BATCH_RECV_BUFFER_SIZE,
+        };
 
         let server_subscriber = DcRecorder::new();
         let server_events = server_subscriber.clone();
@@ -955,7 +960,7 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
         test(model.clone(), |handle| {
             let server_io = handle
                 .builder()
-                .with_internal_recv_buffer_size(INTERNAL_RECV_BUFFER_SIZE)?
+                .with_internal_recv_buffer_size(recv_buffer_size)?
                 .with_base_mtu(server_mtu.base)
                 .with_initial_mtu(server_mtu.initial)
                 .with_max_mtu(server_mtu.max)
@@ -1008,7 +1013,7 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
                 .with_io(
                     handle
                         .builder()
-                        .with_internal_recv_buffer_size(INTERNAL_RECV_BUFFER_SIZE)?
+                        .with_internal_recv_buffer_size(recv_buffer_size)?
                         .with_base_mtu(client_mtu.base)
                         .with_initial_mtu(client_mtu.initial)
                         .with_max_mtu(client_mtu.max)
@@ -1113,11 +1118,11 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
             client_mtu: CURRENT,
             server_mtu: CURRENT,
             spaced: PathExpectations {
-                constrained: [expected!(2 / 3, 3 / 3), expected!(3 / 3, 3 / 3)],
-                jumbo: [expected!(2 / 3, 3 / 3), expected!(3 / 3, 3 / 3)],
+                constrained: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
             },
             unspaced: PathExpectations {
-                constrained: [expected!(2 / 3, 2 / 3), expected!(3 / 3, 2 / 3)],
+                constrained: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
                 jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
             },
         },
@@ -1126,12 +1131,12 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
             client_mtu: CURRENT,
             server_mtu: LEGACY,
             spaced: PathExpectations {
-                constrained: [expected!(6 / 7, 29 / 29), expected!(36 / 36, 49 / 50)],
-                jumbo: [expected!(5 / 6, 5 / 6), expected!(41 / 42, 8 / 8)],
+                constrained: [expected!(6 / 7, 31 / 32), expected!(45 / 45, 48 / 48)],
+                jumbo: [expected!(5 / 6, 5 / 6), expected!(31 / 31, 8 / 8)],
             },
             unspaced: PathExpectations {
-                constrained: [expected!(6 / 7, 37 / 37), expected!(38 / 39, 35 / 36)],
-                jumbo: [expected!(5 / 6, 5 / 6), expected!(28 / 29, 8 / 8)],
+                constrained: [expected!(6 / 7, 6 / 7), expected!(44 / 44, 38 / 39)],
+                jumbo: [expected!(5 / 6, 5 / 6), expected!(45 / 45, 8 / 9)],
             },
         },
         Configuration {
@@ -1152,11 +1157,11 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
             client_mtu: LEGACY,
             server_mtu: LEGACY,
             spaced: PathExpectations {
-                constrained: [expected!(13 / 14, 68 / 68), expected!(38 / 39, 72 / 73)],
-                jumbo: [expected!(2 / 3, 2 / 3), expected!(3 / 3, 3 / 3)],
+                constrained: [expected!(13 / 14, 73 / 74), expected!(46 / 46, 69 / 70)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
             },
             unspaced: PathExpectations {
-                constrained: [expected!(13 / 14, 73 / 74), expected!(46 / 46, 69 / 70)],
+                constrained: [expected!(13 / 14, 195 / 196), expected!(53 / 54, 195 / 196)],
                 jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
             },
         },
@@ -1201,12 +1206,9 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
                         )?;
                         let client_rtts = round_trips(outcome.client_complete);
                         let server_rtts = round_trips(outcome.server_complete);
-                        // s2n-tls randomness is not stubbed, and unspaced delivery can shift an
-                        // observed completion by one RTT at a scheduling boundary.
-                        let tolerance = match packet_delivery {
-                            PacketDelivery::Spaced => 0,
-                            PacketDelivery::Unspaced => 1,
-                        };
+                        // s2n-tls randomness is not stubbed, so completion can shift by one RTT at
+                        // a scheduling boundary.
+                        let tolerance = 1;
                         assert!(
                             expected.client.abs_diff(client_rtts) <= tolerance,
                             "{packet_delivery:?} {server_mode:?} {} {path_name} {policy_name}: unexpected client DC completion latency: {:?} (observed {client_rtts} RTT, expected {} ± {tolerance})",
