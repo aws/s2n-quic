@@ -18,7 +18,10 @@ pub trait Generator: 'static + Send {
     fn private_random_fill(&mut self, dest: &mut [u8]);
 }
 
-/// Generates a random usize within the given inclusive range
+/// Generates a random usize within the given inclusive range.
+///
+/// A fixed-width `u64` sample is used so seeded generators produce the same sequence on 32-bit and
+/// 64-bit targets.
 ///
 /// NOTE: This will have slight bias towards the lower end of the range. Usages that
 /// require uniform sampling should implement rejection sampling or other methodologies
@@ -31,12 +34,14 @@ pub(crate) fn gen_range_biased<R: Generator + ?Sized>(
         return *range.start();
     }
 
-    let mut dest = [0; core::mem::size_of::<usize>()];
+    // `u64` can represent the full `usize` range on supported targets while ensuring seeded
+    // generators consume the same number of bytes on 32-bit and 64-bit architectures.
+    let mut dest = [0; core::mem::size_of::<u64>()];
     random_generator.public_random_fill(&mut dest);
-    let result = usize::from_le_bytes(dest);
+    let result = u64::from_le_bytes(dest);
 
-    let max_variance = (range.end() - range.start()).saturating_add(1);
-    range.start() + result % max_variance
+    let max_variance = (range.end() - range.start()).saturating_add(1) as u64;
+    range.start() + (result % max_variance) as usize
 }
 
 #[cfg(any(test, feature = "testing"))]
