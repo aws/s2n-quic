@@ -496,7 +496,13 @@ enum AcceptorPacketDropReason {
     UnexpectedEof,
     UnexpectedBytes,
     LengthCapacityExceeded,
-    InvariantViolation { message: &'static str },
+    InvariantViolation {
+        message: &'static str,
+    },
+    /// The packet decoded but did not authenticate under the credentials it named
+    ///
+    /// The acceptor creates no stream state for such a packet.
+    AuthenticationFailed,
 }
 
 impl IntoEvent<builder::AcceptorPacketDropReason> for s2n_codec::DecoderError {

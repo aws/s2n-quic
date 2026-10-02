@@ -5,14 +5,17 @@
 
 use crate::{
     credentials::{self, Credentials},
+    crypto::{open::Application as _, UninitSlice},
     msg::recv,
     packet,
+    path::secret,
     stream::socket,
 };
 use s2n_codec::{DecoderBufferMut, DecoderError};
 use s2n_quic_core::varint::VarInt;
 use std::{io, net::SocketAddr};
 use tracing::trace;
+use zeroize::Zeroize as _;
 
 pub mod accept;
 pub mod application;
@@ -21,6 +24,9 @@ pub mod manager;
 pub mod stats;
 pub mod tokio;
 pub mod udp;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Copy, Debug)]
 pub struct InitialPacket {
@@ -75,6 +81,79 @@ impl InitialPacket {
             is_fin: false,
             is_fin_known: false,
         }
+    }
+}
+
+/// Verifies the first packet of a new stream before the acceptor creates any state for it.
+///
+/// A UDP acceptor picks the new stream's routing slot (the plaintext `(credential_id, key_id)`
+/// pair) and its peer address (the datagram's source address) out of that packet, and neither can
+/// be corrected once the stream exists. Both therefore have to wait on AEAD.
+///
+/// Owned by the acceptor rather than being a free function so the verification buffer is allocated
+/// once instead of per packet.
+#[derive(Debug, Default)]
+pub(crate) struct Authenticator {
+    /// Holds the packet copy and the plaintext sink back to back.
+    scratch: Vec<u8>,
+}
+
+impl Authenticator {
+    /// Returns `true` if `segment` is an authentic stream-opening packet for `crypto`'s
+    /// credentials: it decodes as a stream packet, and its AEAD tag verifies under the keys derived
+    /// for the `(credential_id, key_id)` named in its header.
+    ///
+    /// `false` means the sender does not hold the path secret those credentials belong to, so the
+    /// acceptor must not open a stream for it.
+    #[inline]
+    pub(crate) fn authenticate_first_packet(
+        &mut self,
+        crypto: &secret::map::Bidirectional,
+        segment: &[u8],
+    ) -> bool {
+        let Some(control) = crypto.control.as_ref() else {
+            debug_assert!(
+                false,
+                "unreliable transports always derive stream control keys"
+            );
+            return false;
+        };
+
+        let tag_len = crypto.application.opener.tag_len();
+
+        // The allocation is deliberately kept across calls, so reset the length first: the copy
+        // below appends, and it has to land at offset 0 for the split to line up.
+        //
+        // That leaves one buffer in two halves: `candidate` is the copy `decrypt` may rewrite, and
+        // `plaintext` is where it writes the decrypted payload. The payload is a subslice of the
+        // packet, so the packet's length bounds both.
+        let len = segment.len();
+        self.scratch.clear();
+        self.scratch.extend_from_slice(segment);
+        self.scratch.resize(len * 2, 0);
+        let (candidate, plaintext) = self.scratch.split_at_mut(len);
+
+        let decoder = DecoderBufferMut::new(candidate);
+        let is_authentic = match decoder.decode_parameterized(tag_len) {
+            Ok((packet::Packet::Stream(mut packet), _remaining)) => {
+                let payload_len = packet.payload().len();
+                packet
+                    .decrypt(
+                        &crypto.application.opener,
+                        &control.opener,
+                        UninitSlice::new(&mut plaintext[..payload_len]),
+                    )
+                    .is_ok()
+            }
+            // anything that doesn't decode as a stream packet can't claim a stream
+            _ => false,
+        };
+
+        // Don't leave the peer's plaintext sitting in the buffer. `Vec::zeroize` zeroes the full
+        // capacity and empties the vec, so the allocation survives for the next call.
+        self.scratch.zeroize();
+
+        is_authentic
     }
 }
 
