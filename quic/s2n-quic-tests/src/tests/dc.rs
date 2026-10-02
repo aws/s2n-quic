@@ -854,7 +854,8 @@ fn bimodal_no_handshake_delay() -> Result<()> {
 // Covers DC completion latency across classical/PQ handshakes and all combinations of current and
 // legacy client/server MTU configurations. Packets are delivered separately to reproduce
 // production packet scheduling rather than allowing the simulator to coalesce a multi-packet PQ
-// ClientHello into a single server receive turn.
+// ClientHello into a single server receive turn. The internal receive buffer matches dc-quic's
+// production configuration.
 #[test]
 fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Result<()> {
     const BASE_MTU: u16 = 1450;
@@ -865,6 +866,7 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
     const CLASSICAL_POLICY: &str = "20240503";
     const ML_KEM_POLICY: &str = "20250721";
     const PRODUCTION_PTO_JITTER_PERCENTAGE: u8 = 33;
+    const INTERNAL_RECV_BUFFER_SIZE: usize = 16 * 1024;
 
     #[derive(Clone, Copy)]
     struct MtuConfiguration {
@@ -893,6 +895,12 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
         Offloaded,
     }
 
+    #[derive(Clone, Copy, Debug)]
+    enum PacketDelivery {
+        Spaced,
+        Unspaced,
+    }
+
     #[derive(Debug)]
     struct Outcome {
         client_complete: Duration,
@@ -904,6 +912,7 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
                server_mtu: MtuConfiguration,
                path_mtu: u16,
                server_mode: ServerMode,
+               packet_delivery: PacketDelivery,
                pto_jitter_percentage: u8|
      -> Result<Outcome> {
         let policy = security::Policy::from_version(policy_version).unwrap();
@@ -931,11 +940,11 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
 
         let model = Model::default();
         model.set_delay(RTT / 2);
-        // Production delivered the two PQ Initial packets separately. Without spacing, the
-        // simulator delivers both in one receive turn and the server coalesces its ACK and TLS
-        // response into a single jumbo datagram, which does not reproduce the regression.
-        model.set_inflight_delay_threshold(0);
-        model.set_inflight_delay(Duration::from_micros(1));
+        if matches!(packet_delivery, PacketDelivery::Spaced) {
+            // Separate packets that would otherwise arrive in the same receive turn.
+            model.set_inflight_delay_threshold(0);
+            model.set_inflight_delay(Duration::from_micros(1));
+        }
         model.set_max_udp_payload(path_mtu);
 
         let server_subscriber = DcRecorder::new();
@@ -946,6 +955,7 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
         test(model.clone(), |handle| {
             let server_io = handle
                 .builder()
+                .with_internal_recv_buffer_size(INTERNAL_RECV_BUFFER_SIZE)?
                 .with_base_mtu(server_mtu.base)
                 .with_initial_mtu(server_mtu.initial)
                 .with_max_mtu(server_mtu.max)
@@ -998,6 +1008,7 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
                 .with_io(
                     handle
                         .builder()
+                        .with_internal_recv_buffer_size(INTERNAL_RECV_BUFFER_SIZE)?
                         .with_base_mtu(client_mtu.base)
                         .with_initial_mtu(client_mtu.initial)
                         .with_max_mtu(client_mtu.max)
@@ -1061,13 +1072,19 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
     }
 
     #[derive(Clone, Copy)]
+    struct PathExpectations {
+        // Indexed by ServerMode: inline, then offloaded.
+        constrained: [ExpectedCompletion; 2],
+        jumbo: [ExpectedCompletion; 2],
+    }
+
+    #[derive(Clone, Copy)]
     struct Configuration {
         name: &'static str,
         client_mtu: MtuConfiguration,
         server_mtu: MtuConfiguration,
-        // Indexed by ServerMode: inline, then offloaded.
-        constrained: [ExpectedCompletion; 2],
-        jumbo: [ExpectedCompletion; 2],
+        spaced: PathExpectations,
+        unspaced: PathExpectations,
     }
 
     macro_rules! expected {
@@ -1095,75 +1112,116 @@ fn dc_complete_mtu_configuration_matrix_with_separate_packet_delivery() -> Resul
             name: "current_client_current_server",
             client_mtu: CURRENT,
             server_mtu: CURRENT,
-            constrained: [expected!(2 / 3, 3 / 3), expected!(3 / 3, 3 / 3)],
-            jumbo: [expected!(2 / 3, 3 / 3), expected!(3 / 3, 3 / 3)],
+            spaced: PathExpectations {
+                constrained: [expected!(2 / 3, 3 / 3), expected!(3 / 3, 3 / 3)],
+                jumbo: [expected!(2 / 3, 3 / 3), expected!(3 / 3, 3 / 3)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(2 / 3, 2 / 3), expected!(3 / 3, 2 / 3)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+            },
         },
         Configuration {
             name: "current_client_legacy_server",
             client_mtu: CURRENT,
             server_mtu: LEGACY,
-            constrained: [expected!(6 / 7, 29 / 29), expected!(36 / 36, 49 / 50)],
-            jumbo: [expected!(5 / 6, 5 / 6), expected!(41 / 42, 8 / 8)],
+            spaced: PathExpectations {
+                constrained: [expected!(6 / 7, 29 / 29), expected!(36 / 36, 49 / 50)],
+                jumbo: [expected!(5 / 6, 5 / 6), expected!(41 / 42, 8 / 8)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(6 / 7, 37 / 37), expected!(38 / 39, 35 / 36)],
+                jumbo: [expected!(5 / 6, 5 / 6), expected!(28 / 29, 8 / 8)],
+            },
         },
         Configuration {
             name: "legacy_client_current_server",
             client_mtu: LEGACY,
             server_mtu: CURRENT,
-            constrained: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
-            jumbo: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+            spaced: PathExpectations {
+                constrained: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+                jumbo: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+                jumbo: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+            },
         },
         Configuration {
             name: "legacy_client_legacy_server",
             client_mtu: LEGACY,
             server_mtu: LEGACY,
-            constrained: [expected!(13 / 14, 68 / 68), expected!(38 / 39, 72 / 73)],
-            jumbo: [expected!(2 / 3, 2 / 3), expected!(3 / 3, 3 / 3)],
+            spaced: PathExpectations {
+                constrained: [expected!(13 / 14, 68 / 68), expected!(38 / 39, 72 / 73)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(3 / 3, 3 / 3)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(13 / 14, 73 / 74), expected!(46 / 46, 69 / 70)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+            },
         },
     ];
 
     // The endpoint RNGs are seeded, so the full matrix remains deterministic while exercising the
     // production PTO jitter configuration. The path dimension includes both the
     // production-relevant constrained path and a jumbo-capable control.
-    for (server_mode, server_mode_index) in [(ServerMode::Inline, 0), (ServerMode::Offloaded, 1)] {
-        for configuration in configurations {
-            for (path_name, path_mtu, expected) in [
-                (
-                    "constrained",
-                    CONSTRAINED_PATH_MTU,
-                    configuration.constrained[server_mode_index],
-                ),
-                (
-                    "jumbo",
-                    JUMBO_PATH_MTU,
-                    configuration.jumbo[server_mode_index],
-                ),
-            ] {
-                for (policy_name, policy, expected) in [
-                    ("classical", CLASSICAL_POLICY, expected.classical),
-                    ("ML-KEM", ML_KEM_POLICY, expected.ml_kem),
+    for packet_delivery in [PacketDelivery::Spaced, PacketDelivery::Unspaced] {
+        for (server_mode, server_mode_index) in
+            [(ServerMode::Inline, 0), (ServerMode::Offloaded, 1)]
+        {
+            for configuration in configurations {
+                let path_expectations = match packet_delivery {
+                    PacketDelivery::Spaced => configuration.spaced,
+                    PacketDelivery::Unspaced => configuration.unspaced,
+                };
+                for (path_name, path_mtu, expected) in [
+                    (
+                        "constrained",
+                        CONSTRAINED_PATH_MTU,
+                        path_expectations.constrained[server_mode_index],
+                    ),
+                    (
+                        "jumbo",
+                        JUMBO_PATH_MTU,
+                        path_expectations.jumbo[server_mode_index],
+                    ),
                 ] {
-                    let outcome = run(
-                        policy,
-                        configuration.client_mtu,
-                        configuration.server_mtu,
-                        path_mtu,
-                        server_mode,
-                        PRODUCTION_PTO_JITTER_PERCENTAGE,
-                    )?;
-                    assert_eq!(
-                        expected.client,
-                        round_trips(outcome.client_complete),
-                        "{server_mode:?} {} {path_name} {policy_name}: unexpected client DC completion latency: {:?}",
-                        configuration.name,
-                        outcome.client_complete,
-                    );
-                    assert_eq!(
-                        expected.server,
-                        round_trips(outcome.server_complete),
-                        "{server_mode:?} {} {path_name} {policy_name}: unexpected server DC completion latency: {:?}",
-                        configuration.name,
-                        outcome.server_complete,
-                    );
+                    for (policy_name, policy, expected) in [
+                        ("classical", CLASSICAL_POLICY, expected.classical),
+                        ("ML-KEM", ML_KEM_POLICY, expected.ml_kem),
+                    ] {
+                        let outcome = run(
+                            policy,
+                            configuration.client_mtu,
+                            configuration.server_mtu,
+                            path_mtu,
+                            server_mode,
+                            packet_delivery,
+                            PRODUCTION_PTO_JITTER_PERCENTAGE,
+                        )?;
+                        let client_rtts = round_trips(outcome.client_complete);
+                        let server_rtts = round_trips(outcome.server_complete);
+                        // s2n-tls randomness is not stubbed, and unspaced delivery can shift an
+                        // observed completion by one RTT at a scheduling boundary.
+                        let tolerance = match packet_delivery {
+                            PacketDelivery::Spaced => 0,
+                            PacketDelivery::Unspaced => 1,
+                        };
+                        assert!(
+                            expected.client.abs_diff(client_rtts) <= tolerance,
+                            "{packet_delivery:?} {server_mode:?} {} {path_name} {policy_name}: unexpected client DC completion latency: {:?} (observed {client_rtts} RTT, expected {} ± {tolerance})",
+                            configuration.name,
+                            outcome.client_complete,
+                            expected.client,
+                        );
+                        assert!(
+                            expected.server.abs_diff(server_rtts) <= tolerance,
+                            "{packet_delivery:?} {server_mode:?} {} {path_name} {policy_name}: unexpected server DC completion latency: {:?} (observed {server_rtts} RTT, expected {} ± {tolerance})",
+                            configuration.name,
+                            outcome.server_complete,
+                            expected.server,
+                        );
+                    }
                 }
             }
         }
