@@ -781,9 +781,8 @@ mod tests {
         let span = (span_raw % max_span) + 1; // in [1, max_span]
         let end = start + span;
 
-        let range: Interval<VarInt> = (VarInt::new(start).unwrap()
-            ..=VarInt::new(end - 1).unwrap())
-            .into();
+        let range: Interval<VarInt> =
+            (VarInt::new(start).unwrap()..=VarInt::new(end - 1).unwrap()).into();
         Some((chunks, range, (start as usize)..(end as usize)))
     }
 
@@ -792,8 +791,7 @@ mod tests {
     /// the `&[u8]` and zero-copy `Bytes` paths, and both `EncoderValue` paths.
     #[test]
     fn preservation_property_random_layouts_test() {
-        use bolero::check;
-        use bolero::generator::*;
+        use bolero::{check, generator::*};
 
         // up to 6 chunks, each size byte in [0,7] (0 -> skipped); start/span as u64.
         let generator = (
@@ -832,8 +830,7 @@ mod tests {
     /// tracked stream_offset stays consistent with the located chunk).
     #[test]
     fn preservation_property_monotonic_viewer_test() {
-        use bolero::check;
-        use bolero::generator::*;
+        use bolero::{check, generator::*};
 
         // a buffer layout plus a sorted list of "cut points" that define contiguous,
         // monotonically advancing ranges over the whole buffer.
