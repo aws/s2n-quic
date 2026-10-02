@@ -601,7 +601,8 @@ mod tests {
         let mut out = [0u8; 8];
         let mut encoder = EncoderBuffer::new(&mut out);
         let mut view_copy = *view;
-        (&mut view_copy).encode(&mut encoder);
+        let view_ref = &mut view_copy;
+        view_ref.encode(&mut encoder);
         assert_eq!(encoder.len(), 0, "encode of an empty view writes nothing");
     }
 
@@ -758,18 +759,17 @@ mod tests {
 
         let mut out = vec![0u8; range.len()];
         let mut encoder = EncoderBuffer::new(&mut out);
-        assert!(!EncoderBuffer::SPECIALIZES_BYTES);
-        (&mut view).encode(&mut encoder);
+        let view_ref = &mut view;
+        view_ref.encode(&mut encoder);
         out
     }
 
+    /// Chunks, the locatable range over them, and the expected byte-slice indices.
+    type LocatableCase = (Vec<Vec<u8>>, Interval<VarInt>, core::ops::Range<usize>);
+
     /// A locatable range (`len > 0`, within the buffer) and its expected buffer slice.
     /// Returns `None` when no non-empty range can be formed (empty buffer).
-    fn make_locatable(
-        chunk_sizes: &[u8],
-        start_raw: u64,
-        span_raw: u64,
-    ) -> Option<(Vec<Vec<u8>>, Interval<VarInt>, core::ops::Range<usize>)> {
+    fn make_locatable(chunk_sizes: &[u8], start_raw: u64, span_raw: u64) -> Option<LocatableCase> {
         let chunks = build_chunks(chunk_sizes);
         let total = chunks.iter().map(|c| c.len()).sum::<usize>() as u64;
         if total == 0 {
