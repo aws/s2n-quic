@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{crypto::tls::TlsSession, dc, stateless_reset, transport};
+use crate::{
+    crypto::tls::{TlsObject, TlsSession},
+    dc, stateless_reset, transport,
+};
 use alloc::vec::Vec;
 
 /// The `dc::Endpoint` trait provides a way to support dc functionality
@@ -43,7 +46,7 @@ pub trait Path: 'static + Send {
     /// frame sent to the peer.
     fn on_path_secrets_ready(
         &mut self,
-        session: &impl TlsSession,
+        session: &TlsObject,
     ) -> Result<Vec<stateless_reset::Token>, transport::Error>;
 
     /// Called when a `DC_STATELESS_RESET_TOKENS` frame has been received from the peer
@@ -76,7 +79,7 @@ impl<P: Path> Path for Option<P> {
     #[inline]
     fn on_path_secrets_ready(
         &mut self,
-        session: &impl TlsSession,
+        session: &TlsObject,
     ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
         if let Some(path) = self {
             path.on_path_secrets_ready(session)

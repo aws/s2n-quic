@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     application,
-    crypto::{tls, CryptoSuite},
+    crypto::{
+        tls::{self, TlsObject},
+        CryptoSuite,
+    },
     transport,
 };
 use alloc::{boxed::Box, vec::Vec};
@@ -160,16 +163,13 @@ where
         self.0.on_handshake_complete()
     }
 
-    fn on_tls_exporter_ready(
-        &mut self,
-        session: &impl tls::TlsSession,
-    ) -> Result<(), transport::Error> {
+    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), transport::Error> {
         self.0.on_tls_exporter_ready(session)
     }
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &impl tls::TlsSession,
+        session: TlsObject,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), transport::Error> {
         self.0.on_tls_handshake_failed(session, e)

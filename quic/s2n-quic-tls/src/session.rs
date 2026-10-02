@@ -7,7 +7,7 @@ use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{
-        tls::{self, CipherSuite, ConnectionInfo},
+        tls::{self, CipherSuite, ConnectionInfo, TlsObject},
         CryptoSuite,
     },
     endpoint, ensure, transport,
@@ -195,7 +195,8 @@ impl tls::Session for Session {
                 if !self.handshake_complete {
                     self.state.on_handshake_complete();
                     context.on_handshake_complete()?;
-                    context.on_tls_exporter_ready(self)?;
+                    let tls_object = TlsObject::new(self);
+                    context.on_tls_exporter_ready(tls_object)?;
                     self.handshake_complete = true;
                 }
                 // TODO Add new s2n-tls new api, take and put in quic::connection
@@ -205,7 +206,8 @@ impl tls::Session for Session {
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => {
-                context.on_tls_handshake_failed(self, &e)?;
+                let tls_object = TlsObject::new(self);
+                context.on_tls_handshake_failed(tls_object, &e)?;
 
                 Poll::Ready(Err(e
                     .alert()

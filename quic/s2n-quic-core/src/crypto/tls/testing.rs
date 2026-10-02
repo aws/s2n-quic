@@ -7,18 +7,20 @@ use crate::{
     application::ServerName,
     crypto::{
         header_crypto::{LONG_HEADER_MASK, SHORT_HEADER_MASK},
-        scatter, tls,
+        scatter,
         tls::{
-            ApplicationParameters, CipherSuite, ConnectionInfo, NamedGroup, TlsExportError,
-            TlsSession,
+            self, ApplicationParameters, CipherSuite, ConnectionInfo, NamedGroup, TlsExportError,
+            TlsObject, TlsSession,
         },
         CryptoSuite, HeaderKey, Key,
     },
     endpoint,
     inet::SocketAddressV4,
     path::{LocalAddress, RemoteAddress},
-    transport,
-    transport::parameters::{ClientTransportParameters, ServerTransportParameters},
+    transport::{
+        self,
+        parameters::{ClientTransportParameters, ServerTransportParameters},
+    },
 };
 use alloc::sync::Arc;
 use bytes::Bytes;
@@ -789,16 +791,13 @@ where
         Ok(())
     }
 
-    fn on_tls_exporter_ready(
-        &mut self,
-        _: &impl super::TlsSession,
-    ) -> Result<(), crate::transport::Error> {
+    fn on_tls_exporter_ready(&mut self, _: TlsObject) -> Result<(), crate::transport::Error> {
         Ok(())
     }
 
     fn on_tls_handshake_failed(
         &mut self,
-        _: &impl super::TlsSession,
+        _: TlsObject,
         _: &(dyn std::error::Error + Send + Sync),
     ) -> Result<(), crate::transport::Error> {
         Ok(())

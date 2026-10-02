@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsSession},
+        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsObject, TlsSession},
         CryptoSuite,
     },
     sync::spsc::{channel, Receiver, RecvSlice, SendSlice, Sender},
@@ -21,12 +21,6 @@ pub trait Executor {
 
 /// Allows access to TLS handshake details for user configuration.
 pub trait ExporterHandler {
-    fn on_tls_handshake_failed(
-        &self,
-        session: &impl TlsSession,
-        e: &(dyn core::error::Error + Send + Sync + 'static),
-    ) -> Option<Box<dyn Any + Send>>;
-    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
     fn on_client_application_params(
         &mut self,
         client_params: ApplicationParameters,
@@ -34,20 +28,8 @@ pub trait ExporterHandler {
     ) -> Option<Result<(), crate::transport::Error>>;
 }
 
-// Most people don't need the TlsSession so we ignore these callbacks by default
+// Ignore these callbacks by default
 impl ExporterHandler for () {
-    fn on_tls_handshake_failed(
-        &self,
-        _session: &impl TlsSession,
-        _e: &(dyn core::error::Error + Send + Sync + 'static),
-    ) -> Option<Box<dyn std::any::Any + Send>> {
-        None
-    }
-
-    fn on_tls_exporter_ready(&self, _session: &impl TlsSession) -> Option<Box<dyn Any + Send>> {
-        None
-    }
-
     fn on_client_application_params(
         &mut self,
         _client_params: ApplicationParameters,
@@ -279,8 +261,8 @@ where
                     },
                 )?;
             }
-            Request::TlsContext(ctx) => {
-                context.on_tls_context(ctx);
+            Request::TlsObject(ctx) => {
+                context.on_tls_exporter_ready(ctx)?;
             }
             Request::SendApplication(transmission) => {
                 context.send_application(transmission);
@@ -525,15 +507,10 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         unimplemented!("TLS Context is not supported in Offload implementation");
     }
 
-    fn on_tls_exporter_ready(
-        &mut self,
-        session: &impl TlsSession,
-    ) -> Result<(), crate::transport::Error> {
-        if let Some(result) = self.exporter_handler.on_tls_exporter_ready(session) {
-            match self.send_to_quic.push(Request::TlsContext(result)) {
-                Ok(_) => (),
-                Err(_) => self.error = Some(SLICE_ERROR),
-            }
+    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), crate::transport::Error> {
+        match self.send_to_quic.push(Request::TlsObject(session)) {
+            Ok(_) => (),
+            Err(_) => self.error = Some(SLICE_ERROR),
         }
 
         Ok(())
@@ -599,15 +576,16 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &impl tls::TlsSession,
+        session: TlsObject,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error> {
-        if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session, e) {
-            match self.send_to_quic.push(Request::TlsContext(context)) {
-                Ok(_) => (),
-                Err(_) => self.error = Some(SLICE_ERROR),
-            }
-        }
+        // TODO FIX MEEEE!!!!
+        // if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session, e) {
+        //     match self.send_to_quic.push(Request::TlsContext(context)) {
+        //         Ok(_) => (),
+        //         Err(_) => self.error = Some(SLICE_ERROR),
+        //     }
+        // }
         Ok(())
     }
 }
@@ -648,7 +626,7 @@ enum Request<S: CryptoSuite> {
     ),
     HandshakeComplete,
     TlsDone,
-    TlsContext(Box<dyn Any + Send>),
+    TlsObject(TlsObject),
     SendApplication(bytes::Bytes),
     TlsError(transport::Error),
 }
@@ -673,7 +651,7 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
             Request::HandshakeComplete => write!(f, "HandshakeComplete"),
             Request::TlsDone => write!(f, "TlsDone"),
             Request::ZeroRtt(_, _, _) => write!(f, "ZeroRtt"),
-            Request::TlsContext(_) => write!(f, "TlsContext"),
+            Request::TlsObject(_) => write!(f, "TlsObject"),
             Request::SendApplication(_) => write!(f, "SendApplication"),
             Request::TlsError(_) => write!(f, "TlsError"),
         }

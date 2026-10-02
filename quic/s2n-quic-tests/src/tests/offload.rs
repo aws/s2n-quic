@@ -15,21 +15,6 @@ impl Executor for BachExecutor {
 #[derive(Clone)]
 struct Exporter;
 impl ExporterHandler for Exporter {
-    fn on_tls_handshake_failed(
-        &self,
-        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
-        _e: &(dyn core::error::Error + Send + Sync + 'static),
-    ) -> Option<Box<dyn std::any::Any + Send>> {
-        None
-    }
-
-    fn on_tls_exporter_ready(
-        &self,
-        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
-    ) -> Option<Box<dyn std::any::Any + Send>> {
-        None
-    }
-
     fn on_client_application_params(
         &mut self,
         _client_params: s2n_quic_core::crypto::tls::ApplicationParameters,

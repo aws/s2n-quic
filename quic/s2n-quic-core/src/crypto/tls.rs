@@ -8,6 +8,8 @@ use alloc::{string::String, vec::Vec};
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
+#[cfg(feature = "alloc")]
+use zeroize::Zeroizing;
 
 mod error;
 pub use error::Error;
@@ -82,7 +84,7 @@ impl TlsExportError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ChainError {
     #[non_exhaustive]
@@ -94,6 +96,11 @@ impl ChainError {
         ChainError::Failure
     }
 }
+
+// TODO MOVE THESE TO A DC PATH?
+const DC_EXPORTER_LABEL: &str = "EXPERIMENTAL EXPORTER s2n-quic-dc";
+const DC_EXPORTER_CONTEXT: &str = "";
+pub const EXPORT_SECRET_LEN: usize = 32;
 
 pub trait TlsSession: Send {
     /// See <https://datatracker.ietf.org/doc/html/rfc5705> and <https://www.rfc-editor.org/rfc/rfc8446>.
@@ -141,6 +148,74 @@ pub trait TlsSession: Send {
     // https://docs.rs/s2n-tls/latest/s2n_tls/connection/struct.Connection.html#method.selected_cert
     #[cfg(feature = "alloc")]
     fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError>;
+}
+
+#[derive(Clone)]
+#[cfg(feature = "alloc")]
+pub struct TlsObject {
+    /// The negotiated TLS 1.3 cipher suite.
+    cipher_suite: CipherSuite,
+
+    signature_scheme: Option<&'static str>,
+    exporter_secret: Option<Zeroizing<[u8; EXPORT_SECRET_LEN]>>,
+
+    /// The peer's verified certificate chain (DER). Empty if unavailable.
+    peer_cert_chain: Result<Vec<Vec<u8>>, ChainError>,
+
+    /// The unverified client certificate chain (DER). `None` when the backend
+    /// does not expose it (rustls) or none was presented.
+    client_cert_chain: Result<Option<Vec<u8>>, ChainError>,
+
+    /// The local endpoint's own presented certificate chain (DER). `None`
+    /// when the backend does not expose it (rustls) or none was selected.
+    selected_cert: Result<Option<Vec<Vec<u8>>>, ChainError>,
+}
+
+impl TlsObject {
+    /// Materialize a snapshot from a live TLS backend at handshake completion.
+    pub fn new(backend: &dyn TlsSession) -> Self {
+        let mut material = Zeroizing::new([0u8; EXPORT_SECRET_LEN]);
+        let exporter_secret = backend
+            .tls_exporter(
+                DC_EXPORTER_LABEL.as_bytes(),
+                DC_EXPORTER_CONTEXT.as_bytes(),
+                &mut *material,
+            )
+            .ok()
+            .map(|()| material);
+
+        Self {
+            cipher_suite: backend.cipher_suite(),
+            signature_scheme: backend.signature_scheme(),
+            exporter_secret,
+            peer_cert_chain: backend.peer_cert_chain_der(),
+            client_cert_chain: backend.client_cert_chain_der(),
+            selected_cert: backend.selected_cert_der(),
+        }
+    }
+
+    pub fn cipher_suite(&self) -> CipherSuite {
+        self.cipher_suite
+    }
+
+    pub fn signature_scheme(&self) -> Option<&'static str> {
+        self.signature_scheme
+    }
+
+    /// The pre-exported s2n-quic-dc keying material.
+    pub fn exporter_secret(&self) -> Option<&[u8; EXPORT_SECRET_LEN]> {
+        self.exporter_secret.as_deref()
+    }
+
+    pub fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
+        self.peer_cert_chain.clone()
+    }
+    pub fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError> {
+        self.client_cert_chain.clone()
+    }
+    pub fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError> {
+        self.selected_cert.clone()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -211,14 +286,11 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     #[cfg(feature = "alloc")]
     fn on_tls_context(&mut self, _context: alloc::boxed::Box<dyn Any + Send>);
 
-    fn on_tls_exporter_ready(
-        &mut self,
-        session: &impl TlsSession,
-    ) -> Result<(), crate::transport::Error>;
+    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), crate::transport::Error>;
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &impl TlsSession,
+        session: TlsObject,
         error: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error>;
 

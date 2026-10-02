@@ -10,8 +10,8 @@ use rustls::quic::{self, Connection};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{
-        self, tls,
-        tls::{CipherSuite, NamedGroup},
+        self,
+        tls::{self, CipherSuite, NamedGroup, TlsObject},
     },
     transport,
 };
@@ -226,7 +226,9 @@ impl Session {
             if !self.emitted_handshake_complete {
                 self.rx_phase.transition();
                 context.on_handshake_complete()?;
-                context.on_tls_exporter_ready(self)?;
+                let tls_object = TlsObject::new(self);
+
+                context.on_tls_exporter_ready(tls_object)?;
             }
 
             self.emitted_handshake_complete = true;
@@ -392,7 +394,9 @@ impl tls::Session for Session {
     ) -> Poll<Result<(), transport::Error>> {
         let result = self.poll_impl(context);
         if let Poll::Ready(Err(e)) = &result {
-            context.on_tls_handshake_failed(self, e)?;
+            let tls_object = TlsObject::new(self);
+
+            context.on_tls_handshake_failed(tls_object, e)?;
         }
         // attempt to emit server_name and application_protocol events prior to possibly
         // returning with an error

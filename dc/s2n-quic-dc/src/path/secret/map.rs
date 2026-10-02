@@ -623,7 +623,7 @@ impl Map {
         &self,
         cb: Box<
             dyn Fn(
-                    &dyn s2n_quic_core::crypto::tls::TlsSession,
+                    &s2n_quic_core::crypto::tls::TlsObject,
                 ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,

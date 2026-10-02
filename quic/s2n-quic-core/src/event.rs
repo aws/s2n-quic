@@ -172,24 +172,20 @@ impl IntoEvent<Timestamp> for Timestamp {
 
 #[derive(Clone)]
 pub struct TlsSession<'a> {
-    session: &'a dyn crate::crypto::tls::TlsSession,
+    session: &'a crate::crypto::tls::TlsObject,
 }
 
 impl<'a> TlsSession<'a> {
     #[doc(hidden)]
-    pub fn new(session: &'a dyn crate::crypto::tls::TlsSession) -> TlsSession<'a> {
+    pub fn new(session: &'a crate::crypto::tls::TlsObject) -> TlsSession<'a> {
         TlsSession { session }
     }
 
-    pub fn tls_exporter(
-        &self,
-        label: &[u8],
-        context: &[u8],
-        output: &mut [u8],
-    ) -> Result<(), crate::crypto::tls::TlsExportError> {
-        self.session.tls_exporter(label, context, output)
+    pub fn exporter_secret(&self) -> Option<&[u8; 32]> {
+        self.session.exporter_secret()
     }
 
+    // TODO MIGHT BE BETTER TO CHANGE THIS OUTPUT TO TAKE REFERENCE RATHER THAN COPY?
     // Currently intended only for unstable usage
     #[doc(hidden)]
     #[cfg(feature = "alloc")]
