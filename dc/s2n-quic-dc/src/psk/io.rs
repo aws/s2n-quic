@@ -12,10 +12,9 @@ use s2n_quic::{
     },
     server::Name,
 };
-use s2n_quic_core::{endpoint::Type, inet::SocketAddress};
+use s2n_quic_core::inet::SocketAddress;
 use s2n_quic_dc_metrics::TaskMonitor;
 use std::{
-    any::Any,
     hash::BuildHasher,
     io,
     net::SocketAddr,
@@ -41,7 +40,7 @@ pub const DEFAULT_MTU: u16 = DEFAULT_BASE_MTU;
 /// Jitter PTO probes by 33% to prevent synchronized timeouts across multiple connections
 pub const DEFAULT_PTO_JITTER_PERCENTAGE: u8 = 33;
 const DEFAULT_INITIAL_RTT: Duration = Duration::from_millis(1);
-const DC_QUIC_VERSION: u32 = 0;
+
 /// Application error codes the client uses to close a connection whose dcQUIC handshake did not
 /// complete. Both must be non-zero so the close is emitted as an application `CONNECTION_CLOSE`
 /// rather than the clean, no-error close produced by dropping the connection handle.
@@ -75,11 +74,7 @@ impl s2n_quic::provider::tls::offload::Executor for TokioExecutor {
     }
 }
 #[derive(Clone)]
-struct DCExporter {
-    map: secret::Map,
-    dc_version: u32,
-    endpoint_type: s2n_quic_core::endpoint::Type,
-}
+struct DCExporter;
 impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
     fn on_client_application_params(
         &mut self,
@@ -175,11 +170,7 @@ impl Server {
 
             let tls = s2n_quic::provider::tls::offload::OffloadBuilder::new()
                 .with_endpoint(tls_materials_provider)
-                .with_exporter(DCExporter {
-                    dc_version: DC_QUIC_VERSION,
-                    endpoint_type: Type::Server,
-                    map: map.clone(),
-                })
+                .with_exporter(DCExporter)
                 .with_executor(TokioExecutor { runtime, monitor })
                 .build();
 

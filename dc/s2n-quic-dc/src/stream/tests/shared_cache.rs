@@ -14,7 +14,7 @@ use crate::{
 };
 use s2n_quic_core::time::StdClock;
 use std::{
-    num::{NonZero, NonZeroUsize},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::Duration,
 };

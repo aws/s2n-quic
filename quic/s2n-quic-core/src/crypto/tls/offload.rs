@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsObject, TlsSession},
+        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsObject},
         CryptoSuite,
     },
     sync::spsc::{channel, Receiver, RecvSlice, SendSlice, Sender},

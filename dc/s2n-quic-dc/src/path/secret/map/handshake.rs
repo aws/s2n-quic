@@ -12,7 +12,6 @@ use s2n_quic_core::{
     endpoint, ensure, event,
 };
 use std::{error::Error, net::SocketAddr, sync::Arc};
-use zeroize::Zeroizing;
 
 #[derive(Clone)]
 pub struct HandshakingPath {
@@ -118,13 +117,6 @@ impl dc::Path for HandshakingPath {
     fn on_mtu_updated(&mut self, mtu: u16) {
         self.inner.lock().on_mtu_updated(mtu);
     }
-
-    fn on_secret(
-        &mut self,
-        secret: Box<dyn std::any::Any + Send + 'static>,
-    ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
-        self.inner.lock().on_secret(secret)
-    }
 }
 
 pub struct PathSecret {
@@ -156,7 +148,8 @@ pub fn on_path_secrets_ready(
         }
     };
 
-    let mut material = session.exporter_secret().unwrap();
+    let material = session.exporter_secret().unwrap();
+    println!("{:?}", material);
 
     let cipher_suite = match session.cipher_suite() {
         s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256 => {
@@ -249,27 +242,6 @@ impl HandshakingPathInner {
     fn on_mtu_updated(&mut self, mtu: u16) {
         if let Some(entry) = self.entry.as_ref() {
             entry.update_max_datagram_size(mtu);
-        }
-    }
-
-    fn on_secret(
-        &mut self,
-        secret: Box<dyn std::any::Any + Send + 'static>,
-    ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
-        if let Ok(path_secret_res) = secret.downcast::<PathSecretRes>() {
-            match *path_secret_res {
-                Ok(path_secret) => {
-                    self.application_data = path_secret.application_data;
-                    self.secret = Some(path_secret.secret);
-                    Ok(vec![path_secret.token])
-                }
-                Err(e) => {
-                    self.error = e.application_err;
-                    Err(e.error)
-                }
-            }
-        } else {
-            Err(s2n_quic_core::transport::Error::INTERNAL_ERROR)
         }
     }
 }

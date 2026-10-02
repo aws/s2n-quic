@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::any::Any;
-
 use crate::{
     contexts::WriteContext,
     endpoint,
@@ -10,7 +8,7 @@ use crate::{
 };
 use s2n_quic_core::{
     ack,
-    crypto::tls::{self, TlsObject},
+    crypto::tls::TlsObject,
     dc::{self, Endpoint, Path},
     ensure,
     event::{
@@ -128,23 +126,6 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// not initialize a path for the connection
     pub fn version(&self) -> Option<dc::Version> {
         self.version
-    }
-
-    pub fn on_token<Pub: event::ConnectionPublisher>(
-        &mut self,
-        context: Box<dyn Any + Send>,
-        publisher: &mut Pub,
-    ) -> Result<(), transport::Error> {
-        let token = self.path.on_secret(context)?;
-        ensure!(
-            self.state.on_path_secrets_ready().is_ok(),
-            Err(transport::Error::INTERNAL_ERROR)
-        );
-        self.stateless_reset_token_sync = Flag::new(DcStatelessResetTokenWriter { tokens: token });
-        publisher.on_dc_state_changed(DcStateChanged {
-            state: DcState::PathSecretsReady,
-        });
-        Ok(())
     }
 
     /// Called when the TLS session has indicated path secrets are ready

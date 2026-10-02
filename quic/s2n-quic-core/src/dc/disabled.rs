@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::tls::{TlsObject, TlsSession},
+    crypto::tls::TlsObject,
     dc::{ConnectionInfo, DatagramInfo, Endpoint, Path},
     stateless_reset, transport,
 };
@@ -54,13 +54,6 @@ impl Path for () {
     }
 
     fn on_mtu_updated(&mut self, _mtu: u16) {
-        unimplemented!()
-    }
-
-    fn on_secret(
-        &mut self,
-        _secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>,
-    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
         unimplemented!()
     }
 }

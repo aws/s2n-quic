@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    crypto::tls::{TlsObject, TlsSession},
+    crypto::tls::TlsObject,
     dc::{self, ApplicationParams, ConnectionInfo, DatagramInfo},
     stateless_reset,
     transport::{self, parameters::MtuProbingCompleteSupport},
@@ -121,15 +121,6 @@ impl dc::Path for MockDcPath {
 
     fn on_mtu_updated(&mut self, mtu: u16) {
         self.mtu = mtu
-    }
-
-    fn on_secret(
-        &mut self,
-        _secret: Box<dyn std::any::Any + Send + 'static>,
-    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
-        debug_assert_eq!(0, self.on_path_secrets_ready_count);
-        self.on_path_secrets_ready_count += 1;
-        Ok(self.stateless_reset_tokens.clone())
     }
 }
 
