@@ -2388,6 +2388,7 @@ pub mod api {
     /// An ACK was sent after being pending for the given duration.
     pub struct AckDelay {
         pub packet_header: PacketHeader,
+        pub path_id: u64,
         /// Time from when the first packet acknowledged by this ACK made an ACK pending until the ACK
         /// was sent.
         pub delay: core::time::Duration,
@@ -2397,6 +2398,7 @@ pub mod api {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("AckDelay");
             fmt.field("packet_header", &self.packet_header);
+            fmt.field("path_id", &self.path_id);
             fmt.field("delay", &self.delay);
             fmt.finish()
         }
@@ -4450,12 +4452,13 @@ pub mod tracing {
             let id = context.id();
             let api::AckDelay {
                 packet_header,
+                path_id,
                 delay,
             } = event;
             tracing::event!(
                 target : "ack_delay", parent : id, tracing::Level::DEBUG, { packet_header
-                = tracing::field::debug(packet_header), delay =
-                tracing::field::debug(delay) }
+                = tracing::field::debug(packet_header), path_id =
+                tracing::field::debug(path_id), delay = tracing::field::debug(delay) }
             );
         }
         #[inline]
@@ -6984,6 +6987,7 @@ pub mod builder {
     /// An ACK was sent after being pending for the given duration.
     pub struct AckDelay {
         pub packet_header: PacketHeader,
+        pub path_id: u64,
         /// Time from when the first packet acknowledged by this ACK made an ACK pending until the ACK
         /// was sent.
         pub delay: core::time::Duration,
@@ -6993,10 +6997,12 @@ pub mod builder {
         fn into_event(self) -> api::AckDelay {
             let AckDelay {
                 packet_header,
+                path_id,
                 delay,
             } = self;
             api::AckDelay {
                 packet_header: packet_header.into_event(),
+                path_id: path_id.into_event(),
                 delay: delay.into_event(),
             }
         }

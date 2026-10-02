@@ -281,7 +281,6 @@ impl AckManager {
 
         // Notify the state that the ack_ranges have changed
         self.transmission_state.on_update(&self.ack_ranges);
-        self.ack_pending_since.get_or_insert(now);
         self.processed_packets_since_transmission += 1;
 
         //= https://www.rfc-editor.org/rfc/rfc9000#section-13.2.5
@@ -297,6 +296,8 @@ impl AckManager {
         }
 
         if processed_packet.is_ack_eliciting() {
+            self.ack_pending_since.get_or_insert(now);
+
             let mut should_activate = false;
 
             //= https://www.rfc-editor.org/rfc/rfc9000#section-13.2.1
@@ -347,6 +348,11 @@ impl AckManager {
                 //# acknowledged when an ACK frame is sent for other reasons.
                 self.ack_delay_timer
                     .set(now + self.ack_settings.max_ack_delay)
+            } else {
+                debug_assert!(
+                    self.ack_pending_since.is_some(),
+                    "an armed ACK delay timer should have a pending ACK timestamp"
+                );
             }
         }
 
@@ -681,6 +687,48 @@ mod tests {
         manager.on_transmit_complete(&mut write_context);
 
         assert_eq!(write_context.ack_delays, [Duration::from_millis(25)]);
+    }
+
+    #[test]
+    fn non_ack_eliciting_packets_do_not_start_ack_delay() {
+        let mut manager =
+            AckManager::new(PacketNumberSpace::ApplicationData, ack::Settings::default());
+        let start = time::now();
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
+        let mut publisher = Publisher::no_snapshot();
+
+        let datagram = DatagramInfo {
+            timestamp: start,
+            ..helper_datagram_info(ExplicitCongestionNotification::NotEct)
+        };
+        let packet_number =
+            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
+        let processed_packet = ProcessedPacket::new(packet_number, &datagram);
+        manager.on_processed_packet(
+            &processed_packet,
+            path_event!(path, path_id),
+            &mut publisher,
+        );
+
+        assert_eq!(manager.ack_pending_since, None);
+
+        let ack_eliciting_at = start + Duration::from_millis(5);
+        let datagram = DatagramInfo {
+            timestamp: ack_eliciting_at,
+            ..helper_datagram_info(ExplicitCongestionNotification::NotEct)
+        };
+        let packet_number =
+            PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
+        let mut processed_packet = ProcessedPacket::new(packet_number, &datagram);
+        processed_packet.ack_elicitation = AckElicitation::Eliciting;
+        manager.on_processed_packet(
+            &processed_packet,
+            path_event!(path, path_id),
+            &mut publisher,
+        );
+
+        assert_eq!(manager.ack_pending_since, Some(ack_eliciting_at));
     }
 
     #[test]

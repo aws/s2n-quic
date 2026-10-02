@@ -110,6 +110,7 @@ impl<Config: endpoint::Config> WriteContext for Context<'_, '_, '_, Config> {
                 self.packet_number,
                 self.publisher.quic_version(),
             ),
+            path_id: self.path_id.into_event(),
             delay,
         });
     }

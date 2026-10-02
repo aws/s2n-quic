@@ -231,6 +231,7 @@ struct AckRangeSent {
 struct AckDelay {
     #[nominal_counter("packet")]
     packet_header: PacketHeader,
+    path_id: u64,
     /// Time from when the first packet acknowledged by this ACK made an ACK pending until the ACK
     /// was sent.
     #[timer("delay")]
