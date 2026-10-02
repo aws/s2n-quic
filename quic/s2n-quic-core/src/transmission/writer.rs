@@ -9,6 +9,7 @@ use crate::{
     time::Timestamp,
     transmission,
 };
+use core::time::Duration;
 use s2n_codec::encoder::EncoderValue;
 
 #[cfg(any(test, feature = "testing"))]
@@ -39,6 +40,10 @@ pub trait Writer {
     ) -> Option<PacketNumber> {
         self.write_frame(ack_frame)
     }
+
+    /// Records how long an ACK was pending before it was written.
+    #[inline]
+    fn on_ack_delay(&mut self, _delay: Duration) {}
 
     /// Attempt to write a frame.
     ///

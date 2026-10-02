@@ -62,6 +62,10 @@ mod id {
         ACK_RANGE_RECEIVED__PACKET,
         ACK_RANGE_SENT,
         ACK_RANGE_SENT__PACKET,
+        ACK_DELAY,
+        ACK_DELAY__PACKET,
+        ACK_DELAY__DELAY,
+        ACK_DELAY__DELAY__CONN,
         PACKET_DROPPED,
         PACKET_DROPPED__REASON,
         PACKET_BUFFERED,
@@ -262,6 +266,10 @@ mod id {
     pub const ACK_RANGE_RECEIVED__PACKET: usize = InfoId::ACK_RANGE_RECEIVED__PACKET as usize;
     pub const ACK_RANGE_SENT: usize = InfoId::ACK_RANGE_SENT as usize;
     pub const ACK_RANGE_SENT__PACKET: usize = InfoId::ACK_RANGE_SENT__PACKET as usize;
+    pub const ACK_DELAY: usize = InfoId::ACK_DELAY as usize;
+    pub const ACK_DELAY__PACKET: usize = InfoId::ACK_DELAY__PACKET as usize;
+    pub const ACK_DELAY__DELAY: usize = InfoId::ACK_DELAY__DELAY as usize;
+    pub const ACK_DELAY__DELAY__CONN: usize = InfoId::ACK_DELAY__DELAY__CONN as usize;
     pub const PACKET_DROPPED: usize = InfoId::PACKET_DROPPED as usize;
     pub const PACKET_DROPPED__REASON: usize = InfoId::PACKET_DROPPED__REASON as usize;
     pub const PACKET_BUFFERED: usize = InfoId::PACKET_BUFFERED as usize;
@@ -481,6 +489,7 @@ mod counter {
                 id::RX_ACK_RANGE_DROPPED => Self(rx_ack_range_dropped),
                 id::ACK_RANGE_RECEIVED => Self(ack_range_received),
                 id::ACK_RANGE_SENT => Self(ack_range_sent),
+                id::ACK_DELAY => Self(ack_delay),
                 id::PACKET_DROPPED => Self(packet_dropped),
                 id::PACKET_BUFFERED => Self(packet_buffered),
                 id::PACKET_BUFFERED__BYTES__TOTAL => Self(packet_buffered__bytes__total),
@@ -634,6 +643,8 @@ mod counter {
             fn ack_range_received(value: u64);
             #[link_name = s2n_quic__event__counter__ack_range_sent]
             fn ack_range_sent(value: u64);
+            #[link_name = s2n_quic__event__counter__ack_delay]
+            fn ack_delay(value: u64);
             #[link_name = s2n_quic__event__counter__packet_dropped]
             fn packet_dropped(value: u64);
             #[link_name =
@@ -880,6 +891,7 @@ mod counter {
                     id::CONGESTION__SOURCE => Self(congestion__source),
                     id::ACK_RANGE_RECEIVED__PACKET => Self(ack_range_received__packet),
                     id::ACK_RANGE_SENT__PACKET => Self(ack_range_sent__packet),
+                    id::ACK_DELAY__PACKET => Self(ack_delay__packet),
                     id::PACKET_DROPPED__REASON => Self(packet_dropped__reason),
                     id::PACKET_BUFFERED__PACKET_TYPE => Self(packet_buffered__packet_type),
                     id::PACKET_BUFFER_DRAINED__PACKET_TYPE => {
@@ -969,7 +981,9 @@ mod counter {
             s2n_quic__event__counter__nominal__ack_range_sent__packet]
                 fn ack_range_sent__packet(value: u64, variant: u64, variant_name: &info::Str);
                 #[link_name =
-            s2n_quic__event__counter__nominal__packet_dropped__reason]
+            s2n_quic__event__counter__nominal__ack_delay__packet]
+                fn ack_delay__packet(value: u64, variant: u64, variant_name: &info::Str);
+                #[link_name = s2n_quic__event__counter__nominal__packet_dropped__reason]
                 fn packet_dropped__reason(value: u64, variant: u64, variant_name: &info::Str);
                 #[link_name =
             s2n_quic__event__counter__nominal__packet_buffered__packet_type]
@@ -1086,6 +1100,7 @@ mod measure {
                     Self(recovery_metrics__congestion_window)
                 }
                 id::RECOVERY_METRICS__BYTES_IN_FLIGHT => Self(recovery_metrics__bytes_in_flight),
+                id::ACK_DELAY__DELAY__CONN => Self(ack_delay__delay__conn),
                 id::PACKET_BUFFERED__BYTES => Self(packet_buffered__bytes),
                 id::PACKET_BUFFERED__BUFFER_LEN => Self(packet_buffered__buffer_len),
                 id::PACKET_BUFFER_DRAINED__BYTES => Self(packet_buffer_drained__bytes),
@@ -1171,9 +1186,12 @@ mod measure {
         s2n_quic__event__measure__recovery_metrics__bytes_in_flight]
             fn recovery_metrics__bytes_in_flight(value: u64);
             #[link_name =
-        s2n_quic__event__measure__packet_buffered__bytes]
+        s2n_quic__event__measure__ack_delay__delay__conn]
+            fn ack_delay__delay__conn(value: u64);
+            #[link_name = s2n_quic__event__measure__packet_buffered__bytes]
             fn packet_buffered__bytes(value: u64);
-            #[link_name = s2n_quic__event__measure__packet_buffered__buffer_len]
+            #[link_name =
+        s2n_quic__event__measure__packet_buffered__buffer_len]
             fn packet_buffered__buffer_len(value: u64);
             #[link_name =
         s2n_quic__event__measure__packet_buffer_drained__bytes]
@@ -1286,6 +1304,7 @@ mod timer {
     impl Recorder {
         pub(crate) fn new(info: &'static Info) -> Self {
             match info.id {
+                id::ACK_DELAY__DELAY => Self(ack_delay__delay),
                 id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION => {
                     Self(packet_buffer_drained__oldest_buffered_duration)
                 }
@@ -1339,6 +1358,8 @@ mod timer {
     }
     define!(
         extern "probe" {
+            #[link_name = s2n_quic__event__timer__ack_delay__delay]
+            fn ack_delay__delay(value: core::time::Duration);
             #[link_name =
         s2n_quic__event__timer__packet_buffer_drained__oldest_buffered_duration]
             fn packet_buffer_drained__oldest_buffered_duration(value: core::time::Duration);

@@ -14,7 +14,7 @@ use crate::{
     transmission::{Constraint, Mode},
     varint::VarInt,
 };
-use alloc::collections::VecDeque;
+use alloc::{collections::VecDeque, vec::Vec};
 use s2n_codec::{
     encoder::{EncoderBuffer, EncoderValue},
     DecoderBufferMut,
@@ -222,6 +222,7 @@ pub struct Writer<'a> {
     pub transmission_constraint: Constraint,
     pub transmission_mode: Mode,
     pub endpoint: endpoint::Type,
+    pub ack_delays: Vec<core::time::Duration>,
 }
 
 impl<'a> Writer<'a> {
@@ -238,6 +239,7 @@ impl<'a> Writer<'a> {
             transmission_constraint,
             transmission_mode,
             endpoint,
+            ack_delays: Vec::new(),
         }
     }
 }
@@ -257,6 +259,10 @@ impl super::Writer for Writer<'_> {
 
     fn remaining_capacity(&self) -> usize {
         self.frame_buffer.remaining_capacity()
+    }
+
+    fn on_ack_delay(&mut self, delay: core::time::Duration) {
+        self.ack_delays.push(delay);
     }
 
     fn write_frame<Frame>(&mut self, frame: &Frame) -> Option<PacketNumber>
