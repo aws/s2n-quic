@@ -226,9 +226,7 @@ impl Session {
             if !self.emitted_handshake_complete {
                 self.rx_phase.transition();
                 context.on_handshake_complete()?;
-                let tls_object = TlsObject::new(self);
-
-                context.on_tls_exporter_ready(tls_object)?;
+                context.on_tls_exporter_ready_2(self)?;
             }
 
             self.emitted_handshake_complete = true;

@@ -12,6 +12,11 @@ use s2n_quic_core::{
     endpoint, ensure, event,
 };
 use std::{error::Error, net::SocketAddr, sync::Arc};
+use zeroize::Zeroizing;
+
+const TLS_EXPORTER_LABEL: &str = "EXPERIMENTAL EXPORTER s2n-quic-dc";
+const TLS_EXPORTER_CONTEXT: &str = "";
+const TLS_EXPORTER_LENGTH: usize = schedule::EXPORT_SECRET_LEN;
 
 #[derive(Clone)]
 pub struct HandshakingPath {
@@ -96,7 +101,7 @@ impl dc::Endpoint for Map {
 impl dc::Path for HandshakingPath {
     fn on_path_secrets_ready(
         &mut self,
-        session: &s2n_quic_core::crypto::tls::TlsObject,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
         self.inner.lock().on_path_secrets_ready(session)
     }
@@ -136,7 +141,7 @@ pub fn on_path_secrets_ready(
     dc_version: u32,
     endpoint_type: endpoint::Type,
     map: &Map,
-    session: &s2n_quic_core::crypto::tls::TlsObject,
+    session: &dyn s2n_quic_core::crypto::tls::TlsSession,
 ) -> PathSecretRes {
     let application_data = match map.store.application_data(session) {
         Ok(application_data) => application_data,
@@ -148,9 +153,21 @@ pub fn on_path_secrets_ready(
         }
     };
 
-    let material = session.exporter_secret().unwrap();
-    println!("{:?}", material);
+    let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
 
+    session
+        .tls_exporter(
+            TLS_EXPORTER_LABEL.as_bytes(),
+            TLS_EXPORTER_CONTEXT.as_bytes(),
+            &mut *material,
+        )
+        .map_err(|_| PathSecretErr {
+            error: s2n_quic_core::transport::Error::INTERNAL_ERROR
+                .with_reason("tls exporter failed"),
+            application_err: None,
+        })?;
+
+    println!("{:?}", material);
     let cipher_suite = match session.cipher_suite() {
         s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256 => {
             schedule::Ciphersuite::AES_GCM_128_SHA256
@@ -181,7 +198,7 @@ pub fn on_path_secrets_ready(
 impl HandshakingPathInner {
     fn on_path_secrets_ready(
         &mut self,
-        session: &s2n_quic_core::crypto::tls::TlsObject,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
         match on_path_secrets_ready(self.dc_version, self.endpoint_type, &self.map, session) {
             Ok(path_secret) => {

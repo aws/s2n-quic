@@ -791,7 +791,10 @@ where
         Ok(())
     }
 
-    fn on_tls_exporter_ready(&mut self, _: TlsObject) -> Result<(), crate::transport::Error> {
+    fn on_tls_exporter_ready_2(
+        &mut self,
+        _: &dyn TlsSession,
+    ) -> Result<(), crate::transport::Error> {
         Ok(())
     }
 

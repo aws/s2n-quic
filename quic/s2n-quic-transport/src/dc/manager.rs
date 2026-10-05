@@ -8,7 +8,7 @@ use crate::{
 };
 use s2n_quic_core::{
     ack,
-    crypto::tls::TlsObject,
+    crypto::tls::TlsSession,
     dc::{self, Endpoint, Path},
     ensure,
     event::{
@@ -134,7 +134,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Initiates sending of the `DC_STATELESS_RESET_TOKENS` frame on the client
     pub fn on_path_secrets_ready<Pub: event::ConnectionPublisher>(
         &mut self,
-        session: &TlsObject,
+        session: &dyn TlsSession,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         ensure!(self.path.is_some(), Ok(()));
@@ -143,7 +143,7 @@ impl<Config: endpoint::Config> Manager<Config> {
             Err(transport::Error::INTERNAL_ERROR)
         );
 
-        let tokens = self.path.on_path_secrets_ready(&session)?;
+        let tokens = self.path.on_path_secrets_ready(session)?;
         let flag = Flag::new(DcStatelessResetTokenWriter::new(tokens));
         self.stateless_reset_token_sync = flag;
 

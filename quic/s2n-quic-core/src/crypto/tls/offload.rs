@@ -262,7 +262,7 @@ where
                 )?;
             }
             Request::TlsObject(ctx) => {
-                context.on_tls_exporter_ready(ctx)?;
+                context.on_tls_exporter_ready_2(&ctx)?;
             }
             Request::SendApplication(transmission) => {
                 context.send_application(transmission);
@@ -507,8 +507,12 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         unimplemented!("TLS Context is not supported in Offload implementation");
     }
 
-    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), crate::transport::Error> {
-        match self.send_to_quic.push(Request::TlsObject(session)) {
+    fn on_tls_exporter_ready_2(
+        &mut self,
+        session: &dyn crate::crypto::tls::TlsSession,
+    ) -> Result<(), crate::transport::Error> {
+        let doh = TlsObject::new(session);
+        match self.send_to_quic.push(Request::TlsObject(doh)) {
             Ok(_) => (),
             Err(_) => self.error = Some(SLICE_ERROR),
         }

@@ -35,7 +35,12 @@ impl Subscriber for Exporter {
         _meta: &ConnectionMeta,
         event: &events::TlsExporterReady,
     ) {
-        context.key = event.session.exporter_secret().copied();
+        let mut key = [0; 32];
+        event
+            .session
+            .tls_exporter(b"EXPERIMENTAL EXPORTER s2n-quic", b"some context", &mut key)
+            .unwrap();
+        context.key = Some(key);
         context.cipher_suite = Some(event.session.cipher_suite());
     }
 }

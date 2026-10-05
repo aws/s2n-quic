@@ -97,7 +97,6 @@ impl ChainError {
     }
 }
 
-// TODO MOVE THESE TO A DC PATH?
 const DC_EXPORTER_LABEL: &str = "EXPERIMENTAL EXPORTER s2n-quic-dc";
 const DC_EXPORTER_CONTEXT: &str = "";
 pub const EXPORT_SECRET_LEN: usize = 32;
@@ -218,6 +217,36 @@ impl TlsObject {
     }
 }
 
+impl TlsSession for TlsObject {
+    fn tls_exporter(
+        &self,
+        _label: &[u8],
+        _context: &[u8],
+        output: &mut [u8],
+    ) -> Result<(), TlsExportError> {
+        if let Some(ref secret) = self.exporter_secret {
+            output.copy_from_slice(secret.as_bytes());
+        }
+        Ok(())
+    }
+
+    fn cipher_suite(&self) -> CipherSuite {
+        self.cipher_suite()
+    }
+
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
+        self.peer_cert_chain_der()
+    }
+
+    fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError> {
+        self.client_cert_chain_der()
+    }
+
+    fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError> {
+        self.selected_cert_der()
+    }
+}
+
 #[cfg(feature = "alloc")]
 pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     /// Called when the client's application parameters are available, prior
@@ -286,7 +315,10 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     #[cfg(feature = "alloc")]
     fn on_tls_context(&mut self, _context: alloc::boxed::Box<dyn Any + Send>);
 
-    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), crate::transport::Error>;
+    fn on_tls_exporter_ready_2(
+        &mut self,
+        session: &dyn TlsSession,
+    ) -> Result<(), crate::transport::Error>;
 
     fn on_tls_handshake_failed(
         &mut self,

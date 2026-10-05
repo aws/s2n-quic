@@ -195,8 +195,7 @@ impl tls::Session for Session {
                 if !self.handshake_complete {
                     self.state.on_handshake_complete();
                     context.on_handshake_complete()?;
-                    let tls_object = TlsObject::new(self);
-                    context.on_tls_exporter_ready(tls_object)?;
+                    context.on_tls_exporter_ready_2(self)?;
                     self.handshake_complete = true;
                 }
                 // TODO Add new s2n-tls new api, take and put in quic::connection

@@ -58,9 +58,8 @@ fn disabled() {
 
     // verify calling all the methods doesn't panic
     manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
-    let session = TlsObject::new(&Session);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     manager.on_packet_ack(ack_set, &mut publisher);
     manager.on_packet_loss(ack_set);
@@ -75,10 +74,9 @@ fn on_path_secrets_ready() {
     let mut publisher = Publisher::snapshot();
     let path = MockDcPath::default();
     let mut manager: Manager<Server> = Manager::new(Some(path), 1, &mut publisher);
-    let session = TlsObject::new(&Session);
 
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
 
     assert_eq!(1, manager.path().on_path_secrets_ready_count);
@@ -90,7 +88,7 @@ fn on_path_secrets_ready() {
     let mut manager: Manager<Client> = Manager::new(Some(path), 1, &mut publisher);
 
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
 
     assert_eq!(1, manager.path().on_path_secrets_ready_count);
@@ -100,7 +98,7 @@ fn on_path_secrets_ready() {
 
     // Calling on_path_secrets_ready again results in an internal error
     assert_eq!(
-        manager.on_path_secrets_ready(&session, &mut publisher),
+        manager.on_path_secrets_ready(&Session, &mut publisher),
         Err(transport::Error::INTERNAL_ERROR)
     );
 }
@@ -131,7 +129,6 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
     Endpoint: dc::Endpoint<Path = MockDcPath>,
 {
     let tokens = [TEST_TOKEN_1, TEST_TOKEN_2, TEST_TOKEN_3];
-    let session = TlsObject::new(&Session);
     manager.on_peer_dc_stateless_reset_tokens(tokens.iter(), publisher);
 
     // peer tokens were delivered too early
@@ -139,7 +136,7 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
     assert!(manager.path().peer_stateless_reset_tokens.is_empty());
 
     // Now path secrets are ready, so the peer tokens are received
-    assert!(manager.on_path_secrets_ready(&session, publisher).is_ok());
+    assert!(manager.on_path_secrets_ready(&Session, publisher).is_ok());
 
     manager.on_peer_dc_stateless_reset_tokens(tokens.iter(), publisher);
 
@@ -210,8 +207,7 @@ fn on_packet_ack<Config, Endpoint>(
         endpoint::Type::Client,
     );
     let pn = context.packet_number();
-    let session = TlsObject::new(&Session);
-    assert!(manager.on_path_secrets_ready(&session, publisher).is_ok());
+    assert!(manager.on_path_secrets_ready(&Session, publisher).is_ok());
 
     if Config::ENDPOINT_TYPE.is_server() {
         // Receive tokens on the server to trigger sending
@@ -258,9 +254,8 @@ fn on_packet_loss() {
         endpoint::Type::Client,
     );
     let pn = context.packet_number();
-    let session = TlsObject::new(&Session);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     assert!(manager.has_transmission_interest());
 
@@ -336,10 +331,9 @@ fn on_close_server_local_close_incomplete_no_error() {
         &mut recorder,
         &mut context,
     );
-    let session = TlsObject::new(&Session);
     let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
     assert!(manager.state.is_server_tokens_sent());
@@ -368,10 +362,9 @@ fn on_close_server_peer_close_completes() {
         &mut recorder,
         &mut context,
     );
-    let session = TlsObject::new(&Session);
     let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
     assert!(manager.state.is_server_tokens_sent());
@@ -396,10 +389,9 @@ fn on_close_client_incomplete_no_error() {
         &mut recorder,
         &mut context,
     );
-    let session = TlsObject::new(&Session);
     let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     assert!(manager.state.is_path_secrets_ready());
 
@@ -424,10 +416,9 @@ fn on_close_error_does_not_emit() {
         &mut recorder,
         &mut context,
     );
-    let session = TlsObject::new(&Session);
     let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);
     assert!(manager.state.is_server_tokens_sent());
@@ -451,10 +442,9 @@ fn on_close_complete_does_not_emit() {
         &mut recorder,
         &mut context,
     );
-    let session = TlsObject::new(&Session);
     let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
-        .on_path_secrets_ready(&session, &mut publisher)
+        .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
     // the client completes as soon as it receives the peer's tokens
     manager.on_peer_dc_stateless_reset_tokens([TEST_TOKEN_1].iter(), &mut publisher);

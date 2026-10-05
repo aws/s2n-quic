@@ -169,7 +169,7 @@ pub trait Store: 'static + Send + Sync {
         &self,
         cb: Box<
             dyn Fn(
-                    &s2n_quic_core::crypto::tls::TlsObject,
+                    &dyn s2n_quic_core::crypto::tls::TlsSession,
                 ) -> Result<Option<ApplicationData>, ApplicationDataError>
                 + Send
                 + Sync,
@@ -178,7 +178,7 @@ pub trait Store: 'static + Send + Sync {
 
     fn application_data(
         &self,
-        session: &s2n_quic_core::crypto::tls::TlsObject,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Option<ApplicationData>, ApplicationDataError>;
 
     #[allow(clippy::type_complexity)]

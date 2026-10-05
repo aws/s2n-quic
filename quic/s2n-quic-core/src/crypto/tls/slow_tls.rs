@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, TlsObject},
+        tls::{self, TlsObject, TlsSession},
         CryptoSuite,
     },
     transport,
@@ -163,8 +163,11 @@ where
         self.0.on_handshake_complete()
     }
 
-    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), transport::Error> {
-        self.0.on_tls_exporter_ready(session)
+    fn on_tls_exporter_ready_2(
+        &mut self,
+        session: &dyn TlsSession,
+    ) -> Result<(), transport::Error> {
+        self.0.on_tls_exporter_ready_2(session)
     }
 
     fn on_tls_handshake_failed(

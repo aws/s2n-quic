@@ -562,7 +562,10 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
-    fn on_tls_exporter_ready(&mut self, session: TlsObject) -> Result<(), transport::Error> {
+    fn on_tls_exporter_ready_2(
+        &mut self,
+        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Result<(), transport::Error> {
         // The signature scheme is only available once the handshake is complete, since
         // it depends on the peer's CertificateVerify message having been processed.
         if let Some(signature_scheme) = session.signature_scheme() {
@@ -587,11 +590,11 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             .as_mut()
             .expect("application keys should be ready before the tls exporter")
             .dc_manager
-            .on_path_secrets_ready(&session, self.publisher)?;
+            .on_path_secrets_ready(session, self.publisher)?;
 
         self.publisher
             .on_tls_exporter_ready(event::builder::TlsExporterReady {
-                session: s2n_quic_core::event::TlsSession::new(&session),
+                session: s2n_quic_core::event::TlsSession::new(session),
             });
         Ok(())
     }
