@@ -4,6 +4,9 @@
 use s2n_codec::{decoder_invariant, decoder_value};
 use zerocopy::{FromBytes, Unaligned};
 
+/// Reserved for stateless handshake probes, which are consumed before dcQUIC packet decoding.
+pub(crate) const HANDSHAKE_PROBE_TAG: u8 = 0b0110_1000;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromBytes, Unaligned)]
 #[repr(C)]
 pub(super) struct Common(pub(super) u8);
@@ -81,8 +84,12 @@ decoder_value!(
                     let (tag, buffer) = buffer.decode()?;
                     Ok((Self::UnknownPathSecret(tag), buffer))
                 }
-                // reserve this range for other packet types
-                0b0110_0011 | 0b0110_0111 | 0b0110_1000..=0b0111_1111 => Err(
+                // Probes are consumed by psk::probe before packet decoding.
+                HANDSHAKE_PROBE_TAG => Err(s2n_codec::DecoderError::InvariantViolation(
+                    "unexpected packet tag",
+                )),
+                // Reserve these values for other packet types.
+                0b0110_0011 | 0b0110_0111 | 0b0110_1001..=0b0111_1111 => Err(
                     s2n_codec::DecoderError::InvariantViolation("unexpected packet tag"),
                 ),
                 0b1000_0000..=0b1111_1111 => Err(s2n_codec::DecoderError::InvariantViolation(

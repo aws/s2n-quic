@@ -1981,6 +1981,64 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted after a pre-handshake liveness probe completes
+    pub struct DcHandshakeProbe<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub latency: core::time::Duration,
+        pub outcome: HandshakeProbeOutcome,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for DcHandshakeProbe<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcHandshakeProbe");
+            fmt.field("peer_address", &self.peer_address);
+            fmt.field("latency", &self.latency);
+            fmt.field("outcome", &self.outcome);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for DcHandshakeProbe<'a> {
+        const NAME: &'static str = "dc:handshake_probe";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum HandshakeProbeOutcome {
+        #[non_exhaustive]
+        Responsive {},
+        #[non_exhaustive]
+        Unresponsive {},
+        #[non_exhaustive]
+        Error {},
+    }
+    impl aggregate::AsVariant for HandshakeProbeOutcome {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("RESPONSIVE\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("UNRESPONSIVE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ERROR\0"),
+                id: 2usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Responsive { .. } => 0usize,
+                Self::Unresponsive { .. } => 1usize,
+                Self::Error { .. } => 2usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct PathSecretMapInitialized {
         /// The capacity of the path secret map
         pub capacity: usize,
@@ -4163,6 +4221,21 @@ pub mod tracing {
             tracing::event!(
                 target : "dc_connection_timeout", parent : parent, tracing::Level::DEBUG,
                 { peer_address = tracing::field::debug(peer_address) }
+            );
+        }
+        #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            let parent = self.parent(meta);
+            let api::DcHandshakeProbe {
+                peer_address,
+                latency,
+                outcome,
+            } = event;
+            tracing::event!(
+                target : "dc_handshake_probe", parent : parent, tracing::Level::DEBUG, {
+                peer_address = tracing::field::debug(peer_address), latency =
+                tracing::field::debug(latency), outcome = tracing::field::debug(outcome)
+                }
             );
         }
         #[inline]
@@ -6635,6 +6708,45 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Emitted after a pre-handshake liveness probe completes
+    pub struct DcHandshakeProbe<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub latency: core::time::Duration,
+        pub outcome: HandshakeProbeOutcome,
+    }
+    impl<'a> IntoEvent<api::DcHandshakeProbe<'a>> for DcHandshakeProbe<'a> {
+        #[inline]
+        fn into_event(self) -> api::DcHandshakeProbe<'a> {
+            let DcHandshakeProbe {
+                peer_address,
+                latency,
+                outcome,
+            } = self;
+            api::DcHandshakeProbe {
+                peer_address: peer_address.into_event(),
+                latency: latency.into_event(),
+                outcome: outcome.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum HandshakeProbeOutcome {
+        Responsive,
+        Unresponsive,
+        Error,
+    }
+    impl IntoEvent<api::HandshakeProbeOutcome> for HandshakeProbeOutcome {
+        #[inline]
+        fn into_event(self) -> api::HandshakeProbeOutcome {
+            use api::HandshakeProbeOutcome::*;
+            match self {
+                Self::Responsive => Responsive {},
+                Self::Unresponsive => Unresponsive {},
+                Self::Error => Error {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct PathSecretMapInitialized {
         /// The capacity of the path secret map
         pub capacity: usize,
@@ -8261,6 +8373,12 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `DcHandshakeProbe` event is triggered
+        #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `PathSecretMapInitialized` event is triggered
         #[inline]
         fn on_path_secret_map_initialized(
@@ -9222,6 +9340,10 @@ mod traits {
             self.as_ref().on_dc_connection_timeout(meta, event);
         }
         #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            self.as_ref().on_dc_handshake_probe(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -10163,6 +10285,11 @@ mod traits {
             (self.1).on_dc_connection_timeout(meta, event);
         }
         #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            (self.0).on_dc_handshake_probe(meta, event);
+            (self.1).on_dc_handshake_probe(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -10585,6 +10712,8 @@ mod traits {
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
         ///Publishes a `DcConnectionTimeout` event to the publisher's subscriber
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout);
+        ///Publishes a `DcHandshakeProbe` event to the publisher's subscriber
+        fn on_dc_handshake_probe(&self, event: builder::DcHandshakeProbe);
         ///Publishes a `PathSecretMapInitialized` event to the publisher's subscriber
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized);
         ///Publishes a `PathSecretMapUninitialized` event to the publisher's subscriber
@@ -10951,6 +11080,12 @@ mod traits {
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
             let event = event.into_event();
             self.subscriber.on_dc_connection_timeout(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_dc_handshake_probe(&self, event: builder::DcHandshakeProbe) {
+            let event = event.into_event();
+            self.subscriber.on_dc_handshake_probe(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11721,6 +11856,7 @@ pub mod testing {
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
             pub dc_connection_timeout: AtomicU64,
+            pub dc_handshake_probe: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
             pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -11820,6 +11956,7 @@ pub mod testing {
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
                     dc_connection_timeout: AtomicU64::new(0),
+                    dc_handshake_probe: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
                     path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -12231,6 +12368,17 @@ pub mod testing {
                 event: &api::DcConnectionTimeout,
             ) {
                 self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_dc_handshake_probe(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::DcHandshakeProbe,
+            ) {
+                self.dc_handshake_probe.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -12733,6 +12881,7 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
+        pub dc_handshake_probe: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -12865,6 +13014,7 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
+                dc_handshake_probe: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -13750,6 +13900,13 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            self.dc_handshake_probe.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -14246,6 +14403,7 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
+        pub dc_handshake_probe: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -14368,6 +14526,7 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
+                dc_handshake_probe: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -14666,6 +14825,13 @@ pub mod testing {
         }
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
             self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_dc_handshake_probe(&self, event: builder::DcHandshakeProbe) {
+            self.dc_handshake_probe.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");

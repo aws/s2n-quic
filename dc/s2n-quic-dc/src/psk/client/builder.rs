@@ -136,6 +136,44 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
+    /// Enables a liveness probe when a handshake cannot start immediately.
+    ///
+    /// The probe sends a stateless dcQUIC `ProbeRequest` and waits for its correlated
+    /// `ProbeResponse`. This lets responsive peers enter a contended handshake queue before silent
+    /// peers. Handshakes with immediately available capacity skip the probe, while nonresponsive
+    /// peers proceed after the probe timeout.
+    ///
+    /// Deploy server support before enabling this on clients. A server that does not implement
+    /// `ProbeResponse` is treated as nonresponsive for prioritization, but its normal handshake
+    /// still proceeds after the probe timeout.
+    ///
+    /// This is disabled unless a positive probe limit is also configured with
+    /// [`Self::with_handshake_probe_limit`].
+    ///
+    /// # Stability
+    ///
+    /// This API is unstable and may change behavior or be removed in future releases.
+    #[doc(hidden)]
+    pub fn with_handshake_probe_timeout(mut self, timeout: Duration) -> Self {
+        self.handshake_queue.probe_timeout = Some(timeout);
+        self
+    }
+
+    /// Sets the maximum number of concurrent pre-handshake liveness probes.
+    ///
+    /// The default value is zero, which disables probing.
+    /// Prioritization is best-effort: a low limit can serialize probes and reduce the opportunity
+    /// for responsive peers to overtake silent peers.
+    ///
+    /// # Stability
+    ///
+    /// This API is unstable and may change behavior or be removed in future releases.
+    #[doc(hidden)]
+    pub fn with_handshake_probe_limit(mut self, limit: usize) -> Self {
+        self.handshake_queue.probe_limit = limit;
+        self
+    }
+
     /// Sets the period we wait before allowing new handshakes with the same peer (by IP:port),
     /// after a failed handshake.
     ///
