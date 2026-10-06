@@ -201,7 +201,7 @@ impl std::fmt::Display for S2nError {
 
 impl TlsObject {
     /// Materialize a snapshot from a live TLS backend at handshake completion.
-    pub fn new(backend: &dyn TlsSession) -> Self {
+    pub fn new(backend: &impl TlsSession) -> Self {
         let mut material = Zeroizing::new([0u8; EXPORT_SECRET_LEN]);
         let exporter_secret = backend
             .tls_exporter(
@@ -224,7 +224,7 @@ impl TlsObject {
     }
 
     pub fn handshake_failure(
-        backend: &dyn TlsSession,
+        backend: &impl TlsSession,
         error: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Self {
         let mut e = None;
@@ -378,12 +378,12 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
 
     fn on_tls_exporter_ready(
         &mut self,
-        session: &dyn TlsSession,
+        session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error>;
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &dyn TlsSession,
+        session: &impl TlsSession,
         error: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error>;
 

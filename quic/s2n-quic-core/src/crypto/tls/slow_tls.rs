@@ -163,13 +163,16 @@ where
         self.0.on_handshake_complete()
     }
 
-    fn on_tls_exporter_ready(&mut self, session: &dyn TlsSession) -> Result<(), transport::Error> {
+    fn on_tls_exporter_ready(
+        &mut self,
+        session: &impl tls::TlsSession,
+    ) -> Result<(), transport::Error> {
         self.0.on_tls_exporter_ready(session)
     }
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &dyn TlsSession,
+        session: &impl tls::TlsSession,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), transport::Error> {
         self.0.on_tls_handshake_failed(session, e)

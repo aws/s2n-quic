@@ -8,7 +8,7 @@ use crate::{
 };
 use s2n_quic_core::{
     ack,
-    crypto::tls::TlsSession,
+    crypto::tls,
     dc::{self, Endpoint, Path},
     ensure,
     event::{
@@ -134,7 +134,7 @@ impl<Config: endpoint::Config> Manager<Config> {
     /// Initiates sending of the `DC_STATELESS_RESET_TOKENS` frame on the client
     pub fn on_path_secrets_ready<Pub: event::ConnectionPublisher>(
         &mut self,
-        session: &dyn TlsSession,
+        session: &impl tls::TlsSession,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         ensure!(self.path.is_some(), Ok(()));

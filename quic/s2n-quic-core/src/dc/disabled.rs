@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    crypto::tls::TlsSession,
     dc::{ConnectionInfo, DatagramInfo, Endpoint, Path},
     stateless_reset, transport,
 };
@@ -36,7 +37,7 @@ impl Endpoint for Disabled {
 impl Path for () {
     fn on_path_secrets_ready(
         &mut self,
-        _session: &dyn crate::crypto::tls::TlsSession,
+        _session: &impl TlsSession,
     ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
         unimplemented!()
     }

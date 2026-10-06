@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    crypto::tls::TlsSession,
     dc::{self, ApplicationParams, ConnectionInfo, DatagramInfo},
     stateless_reset,
     transport::{self, parameters::MtuProbingCompleteSupport},
@@ -93,7 +94,7 @@ impl dc::Endpoint for MockDcEndpoint {
 impl dc::Path for MockDcPath {
     fn on_path_secrets_ready(
         &mut self,
-        _session: &dyn crate::crypto::tls::TlsSession,
+        _session: &impl TlsSession,
     ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
         debug_assert_eq!(0, self.on_path_secrets_ready_count);
         if self.fail_path_secrets {

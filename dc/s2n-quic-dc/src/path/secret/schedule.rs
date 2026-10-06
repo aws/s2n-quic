@@ -118,6 +118,7 @@ impl Direction {
         }
     }
 }
+
 pub const EXPORT_SECRET_LEN: usize = 32;
 pub type ExportSecret = [u8; 32];
 

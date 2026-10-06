@@ -8065,8 +8065,7 @@ pub mod supervisor {
 pub use traits::*;
 mod traits {
     use super::*;
-    use crate::event::Meta;
-    use crate::query;
+    use crate::{event::Meta, query};
     use core::fmt;
     /// Allows for events to be subscribed to
     pub trait Subscriber: 'static + Send {

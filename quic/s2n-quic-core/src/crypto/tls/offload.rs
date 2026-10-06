@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsObject},
+        tls::{self, ApplicationParameters, ConnectionInfo, NamedGroup, TlsObject, TlsSession},
         CryptoSuite,
     },
     sync::spsc::{channel, Receiver, RecvSlice, SendSlice, Sender},
@@ -514,7 +514,7 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
 
     fn on_tls_exporter_ready(
         &mut self,
-        session: &dyn crate::crypto::tls::TlsSession,
+        session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
         let dc_object = TlsObject::new(session);
         match self.send_to_quic.push(Request::TlsObject(dc_object)) {
@@ -585,7 +585,7 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &dyn crate::crypto::tls::TlsSession,
+        session: &impl TlsSession,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error> {
         let dc_object = TlsObject::handshake_failure(session, e);
@@ -596,7 +596,6 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
             Ok(_) => (),
             Err(_) => self.error = Some(SLICE_ERROR),
         }
-
         Ok(())
     }
 }

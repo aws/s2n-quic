@@ -129,6 +129,7 @@ fn on_peer_dc_stateless_reset_tokens<Config, Endpoint>(
     Endpoint: dc::Endpoint<Path = MockDcPath>,
 {
     let tokens = [TEST_TOKEN_1, TEST_TOKEN_2, TEST_TOKEN_3];
+
     manager.on_peer_dc_stateless_reset_tokens(tokens.iter(), publisher);
 
     // peer tokens were delivered too early
@@ -207,6 +208,7 @@ fn on_packet_ack<Config, Endpoint>(
         endpoint::Type::Client,
     );
     let pn = context.packet_number();
+
     assert!(manager.on_path_secrets_ready(&Session, publisher).is_ok());
 
     if Config::ENDPOINT_TYPE.is_server() {
@@ -254,6 +256,7 @@ fn on_packet_loss() {
         endpoint::Type::Client,
     );
     let pn = context.packet_number();
+
     assert!(manager
         .on_path_secrets_ready(&Session, &mut publisher)
         .is_ok());
@@ -331,6 +334,7 @@ fn on_close_server_local_close_incomplete_no_error() {
         &mut recorder,
         &mut context,
     );
+
     let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
         .on_path_secrets_ready(&Session, &mut publisher)
@@ -362,6 +366,7 @@ fn on_close_server_peer_close_completes() {
         &mut recorder,
         &mut context,
     );
+
     let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
         .on_path_secrets_ready(&Session, &mut publisher)
@@ -389,6 +394,7 @@ fn on_close_client_incomplete_no_error() {
         &mut recorder,
         &mut context,
     );
+
     let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
         .on_path_secrets_ready(&Session, &mut publisher)
@@ -416,6 +422,7 @@ fn on_close_error_does_not_emit() {
         &mut recorder,
         &mut context,
     );
+
     let mut manager: Manager<Server> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
         .on_path_secrets_ready(&Session, &mut publisher)
@@ -442,6 +449,7 @@ fn on_close_complete_does_not_emit() {
         &mut recorder,
         &mut context,
     );
+
     let mut manager: Manager<Client> = Manager::new(Some(MockDcPath::default()), 1, &mut publisher);
     assert!(manager
         .on_path_secrets_ready(&Session, &mut publisher)

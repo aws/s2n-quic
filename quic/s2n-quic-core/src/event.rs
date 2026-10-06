@@ -190,7 +190,6 @@ impl<'a> TlsSession<'a> {
         self.session.tls_exporter(label, context, output)
     }
 
-    // TODO MIGHT BE BETTER TO CHANGE THIS OUTPUT TO TAKE REFERENCE RATHER THAN COPY?
     // Currently intended only for unstable usage
     #[doc(hidden)]
     #[cfg(feature = "alloc")]

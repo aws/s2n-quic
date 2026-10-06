@@ -23,7 +23,7 @@ use s2n_quic_core::{
     },
     crypto::{
         self,
-        tls::{self, ApplicationParameters, NamedGroup, TlsSession},
+        tls::{self, ApplicationParameters, NamedGroup},
         CryptoSuite, Key,
     },
     ct::ConstantTimeEq,
@@ -564,7 +564,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn on_tls_exporter_ready(
         &mut self,
-        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+        session: &impl tls::TlsSession,
     ) -> Result<(), transport::Error> {
         // The signature scheme is only available once the handshake is complete, since
         // it depends on the peer's CertificateVerify message having been processed.
@@ -601,7 +601,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: &dyn TlsSession,
+        session: &impl tls::TlsSession,
         e: &(dyn std::error::Error + Send + Sync + 'static),
     ) -> Result<(), transport::Error> {
         self.publisher

@@ -101,7 +101,7 @@ impl dc::Endpoint for Map {
 impl dc::Path for HandshakingPath {
     fn on_path_secrets_ready(
         &mut self,
-        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+        session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
         self.inner.lock().on_path_secrets_ready(session)
     }
@@ -141,7 +141,7 @@ pub fn on_path_secrets_ready(
     dc_version: u32,
     endpoint_type: endpoint::Type,
     map: &Map,
-    session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+    session: &impl s2n_quic_core::crypto::tls::TlsSession,
 ) -> PathSecretRes {
     let application_data = match map.store.application_data(session) {
         Ok(application_data) => application_data,
@@ -154,7 +154,6 @@ pub fn on_path_secrets_ready(
     };
 
     let mut material = Zeroizing::new([0; TLS_EXPORTER_LENGTH]);
-
     session
         .tls_exporter(
             TLS_EXPORTER_LABEL.as_bytes(),
@@ -197,7 +196,7 @@ pub fn on_path_secrets_ready(
 impl HandshakingPathInner {
     fn on_path_secrets_ready(
         &mut self,
-        session: &dyn s2n_quic_core::crypto::tls::TlsSession,
+        session: &impl s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Vec<s2n_quic_core::stateless_reset::Token>, s2n_quic_core::transport::Error> {
         match on_path_secrets_ready(self.dc_version, self.endpoint_type, &self.map, session) {
             Ok(path_secret) => {
