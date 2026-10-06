@@ -23,7 +23,7 @@ use s2n_quic_core::{
     },
     crypto::{
         self,
-        tls::{self, ApplicationParameters, NamedGroup, TlsObject},
+        tls::{self, ApplicationParameters, NamedGroup, TlsSession},
         CryptoSuite, Key,
     },
     ct::ConstantTimeEq,
@@ -562,7 +562,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         Ok(())
     }
 
-    fn on_tls_exporter_ready_2(
+    fn on_tls_exporter_ready(
         &mut self,
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<(), transport::Error> {
@@ -601,12 +601,12 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: TlsObject,
+        session: &dyn TlsSession,
         e: &(dyn std::error::Error + Send + Sync + 'static),
     ) -> Result<(), transport::Error> {
         self.publisher
             .on_tls_handshake_failed(event::builder::TlsHandshakeFailed {
-                session: s2n_quic_core::event::TlsSession::new(&session),
+                session: s2n_quic_core::event::TlsSession::new(session),
                 error: e,
             });
         Ok(())

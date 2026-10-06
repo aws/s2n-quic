@@ -791,16 +791,13 @@ where
         Ok(())
     }
 
-    fn on_tls_exporter_ready_2(
-        &mut self,
-        _: &dyn TlsSession,
-    ) -> Result<(), crate::transport::Error> {
+    fn on_tls_exporter_ready(&mut self, _: &dyn TlsSession) -> Result<(), crate::transport::Error> {
         Ok(())
     }
 
     fn on_tls_handshake_failed(
         &mut self,
-        _: TlsObject,
+        _: &dyn TlsSession,
         _: &(dyn std::error::Error + Send + Sync),
     ) -> Result<(), crate::transport::Error> {
         Ok(())

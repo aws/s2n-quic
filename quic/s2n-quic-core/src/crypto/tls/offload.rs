@@ -262,7 +262,12 @@ where
                 )?;
             }
             Request::TlsObject(ctx) => {
-                context.on_tls_exporter_ready_2(&ctx)?;
+                context.on_tls_exporter_ready(&ctx)?;
+            }
+            Request::TlsHandshakeFailed(mut ctx) => {
+                if let Some(error) = ctx.error.take() {
+                    context.on_tls_handshake_failed(&ctx, &error)?
+                }
             }
             Request::SendApplication(transmission) => {
                 context.send_application(transmission);
@@ -507,12 +512,12 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         unimplemented!("TLS Context is not supported in Offload implementation");
     }
 
-    fn on_tls_exporter_ready_2(
+    fn on_tls_exporter_ready(
         &mut self,
         session: &dyn crate::crypto::tls::TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        let doh = TlsObject::new(session);
-        match self.send_to_quic.push(Request::TlsObject(doh)) {
+        let dc_object = TlsObject::new(session);
+        match self.send_to_quic.push(Request::TlsObject(dc_object)) {
             Ok(_) => (),
             Err(_) => self.error = Some(SLICE_ERROR),
         }
@@ -580,16 +585,18 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: TlsObject,
+        session: &dyn crate::crypto::tls::TlsSession,
         e: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error> {
-        // TODO FIX MEEEE!!!!
-        // if let Some(context) = self.exporter_handler.on_tls_handshake_failed(session, e) {
-        //     match self.send_to_quic.push(Request::TlsContext(context)) {
-        //         Ok(_) => (),
-        //         Err(_) => self.error = Some(SLICE_ERROR),
-        //     }
-        // }
+        let dc_object = TlsObject::handshake_failure(session, e);
+        match self
+            .send_to_quic
+            .push(Request::TlsHandshakeFailed(dc_object))
+        {
+            Ok(_) => (),
+            Err(_) => self.error = Some(SLICE_ERROR),
+        }
+
         Ok(())
     }
 }
@@ -631,6 +638,7 @@ enum Request<S: CryptoSuite> {
     HandshakeComplete,
     TlsDone,
     TlsObject(TlsObject),
+    TlsHandshakeFailed(TlsObject),
     SendApplication(bytes::Bytes),
     TlsError(transport::Error),
 }
@@ -658,6 +666,7 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
             Request::TlsObject(_) => write!(f, "TlsObject"),
             Request::SendApplication(_) => write!(f, "SendApplication"),
             Request::TlsError(_) => write!(f, "TlsError"),
+            Request::TlsHandshakeFailed(tls_object) => write!(f, "TlsHandshakeFailed"),
         }
     }
 }

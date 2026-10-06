@@ -226,7 +226,7 @@ impl Session {
             if !self.emitted_handshake_complete {
                 self.rx_phase.transition();
                 context.on_handshake_complete()?;
-                context.on_tls_exporter_ready_2(self)?;
+                context.on_tls_exporter_ready(self)?;
             }
 
             self.emitted_handshake_complete = true;
@@ -392,9 +392,7 @@ impl tls::Session for Session {
     ) -> Poll<Result<(), transport::Error>> {
         let result = self.poll_impl(context);
         if let Poll::Ready(Err(e)) = &result {
-            let tls_object = TlsObject::new(self);
-
-            context.on_tls_handshake_failed(tls_object, e)?;
+            context.on_tls_handshake_failed(self, e)?;
         }
         // attempt to emit server_name and application_protocol events prior to possibly
         // returning with an error

@@ -998,7 +998,7 @@ mod tests {
         endpoint_limits::{ConnectionAttempt, Limiter, Outcome},
         tls::Provider,
     };
-    use s2n_quic_core::time::StdClock;
+    use s2n_quic_core::{event::api::CipherSuite, time::StdClock};
     use std::time::Instant;
     use tokio_util::sync::DropGuard;
 

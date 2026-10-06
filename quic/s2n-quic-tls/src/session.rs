@@ -195,7 +195,7 @@ impl tls::Session for Session {
                 if !self.handshake_complete {
                     self.state.on_handshake_complete();
                     context.on_handshake_complete()?;
-                    context.on_tls_exporter_ready_2(self)?;
+                    context.on_tls_exporter_ready(self)?;
                     self.handshake_complete = true;
                 }
                 // TODO Add new s2n-tls new api, take and put in quic::connection
@@ -205,8 +205,7 @@ impl tls::Session for Session {
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => {
-                let tls_object = TlsObject::new(self);
-                context.on_tls_handshake_failed(tls_object, &e)?;
+                context.on_tls_handshake_failed(self, &e)?;
 
                 Poll::Ready(Err(e
                     .alert()

@@ -167,7 +167,6 @@ pub fn on_path_secrets_ready(
             application_err: None,
         })?;
 
-    println!("{:?}", material);
     let cipher_suite = match session.cipher_suite() {
         s2n_quic_core::crypto::tls::CipherSuite::TLS_AES_128_GCM_SHA256 => {
             schedule::Ciphersuite::AES_GCM_128_SHA256

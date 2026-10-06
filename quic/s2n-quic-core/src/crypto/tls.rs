@@ -7,6 +7,7 @@ use alloc::{string::String, vec::Vec};
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
+use s2n_tls::error::ErrorSource;
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 #[cfg(feature = "alloc")]
 use zeroize::Zeroizing;
@@ -149,7 +150,6 @@ pub trait TlsSession: Send {
     fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError>;
 }
 
-#[derive(Clone)]
 #[cfg(feature = "alloc")]
 pub struct TlsObject {
     /// The negotiated TLS 1.3 cipher suite.
@@ -168,6 +168,35 @@ pub struct TlsObject {
     /// The local endpoint's own presented certificate chain (DER). `None`
     /// when the backend does not expose it (rustls) or none was selected.
     selected_cert: Result<Option<Vec<Vec<u8>>>, ChainError>,
+
+    /// Store the error if something went wrong in the TLS handshake
+    error: Option<S2nError>,
+}
+
+#[derive(Debug)]
+struct S2nError {
+    source: ErrorSource,
+    name: String,
+    msg: String,
+    location: Option<String>,
+}
+
+impl std::error::Error for S2nError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        None
+    }
+}
+
+impl std::fmt::Display for S2nError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut s = f.debug_struct("Error");
+
+        s.field("name", &self.name);
+        s.field("message", &self.msg);
+        s.field("source", &self.source);
+        s.field("location", &self.location);
+        s.finish()
+    }
 }
 
 impl TlsObject {
@@ -190,6 +219,36 @@ impl TlsObject {
             peer_cert_chain: backend.peer_cert_chain_der(),
             client_cert_chain: backend.client_cert_chain_der(),
             selected_cert: backend.selected_cert_der(),
+            error: None,
+        }
+    }
+
+    pub fn handshake_failure(
+        backend: &dyn TlsSession,
+        error: &(dyn core::error::Error + Send + Sync + 'static),
+    ) -> Self {
+        let mut e = None;
+        if let Some(err) = error.downcast_ref::<s2n_tls::error::Error>() {
+            let source = err.source();
+            let name = err.name().to_string();
+            let msg = err.message().to_string();
+            let location = err.debug().map(|s| s.to_string());
+            e = Some(S2nError {
+                source,
+                name,
+                msg,
+                location,
+            });
+        }
+
+        Self {
+            cipher_suite: backend.cipher_suite(),
+            signature_scheme: backend.signature_scheme(),
+            exporter_secret: None,
+            peer_cert_chain: backend.peer_cert_chain_der(),
+            client_cert_chain: backend.client_cert_chain_der(),
+            selected_cert: backend.selected_cert_der(),
+            error: e,
         }
     }
 
@@ -226,6 +285,8 @@ impl TlsSession for TlsObject {
     ) -> Result<(), TlsExportError> {
         if let Some(ref secret) = self.exporter_secret {
             output.copy_from_slice(secret.as_bytes());
+        } else {
+            return Err(TlsExportError::Failure);
         }
         Ok(())
     }
@@ -315,14 +376,14 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     #[cfg(feature = "alloc")]
     fn on_tls_context(&mut self, _context: alloc::boxed::Box<dyn Any + Send>);
 
-    fn on_tls_exporter_ready_2(
+    fn on_tls_exporter_ready(
         &mut self,
         session: &dyn TlsSession,
     ) -> Result<(), crate::transport::Error>;
 
     fn on_tls_handshake_failed(
         &mut self,
-        session: TlsObject,
+        session: &dyn TlsSession,
         error: &(dyn core::error::Error + Send + Sync + 'static),
     ) -> Result<(), crate::transport::Error>;
 
