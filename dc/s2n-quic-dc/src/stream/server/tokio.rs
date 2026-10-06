@@ -20,7 +20,13 @@ use crate::{
 };
 use core::num::{NonZeroU16, NonZeroUsize};
 use s2n_quic_core::ensure;
-use std::{io, net::SocketAddr, os::fd::OwnedFd, sync::Arc, time::Duration};
+use std::{
+    io,
+    net::SocketAddr,
+    os::fd::{AsRawFd, OwnedFd},
+    sync::Arc,
+    time::Duration,
+};
 use tokio::io::unix::AsyncFd;
 use tracing::Instrument as _;
 

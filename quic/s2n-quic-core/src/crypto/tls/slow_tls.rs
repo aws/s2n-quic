@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 use crate::{
     application,
-    crypto::{
-        tls::{self, TlsSession},
-        CryptoSuite,
-    },
+    crypto::{tls, CryptoSuite},
     transport,
 };
 use alloc::{boxed::Box, vec::Vec};

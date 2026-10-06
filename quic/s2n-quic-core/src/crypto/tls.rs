@@ -295,6 +295,10 @@ impl TlsSession for TlsObject {
         self.cipher_suite()
     }
 
+    fn signature_scheme(&self) -> Option<&'static str> {
+        self.signature_scheme
+    }
+
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
         self.peer_cert_chain_der()
     }
