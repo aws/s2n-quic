@@ -873,6 +873,7 @@ count#handshake_status_updated.status|CONFIRMED=1
 count#dc_state_changed=1
 timer#dc_state_changed.path_secrets.latency=100ms
 count#dc_state_changed.state|PATH_SECRETS_READY=1
+count#tls_exporter_ready=1
 count#packet_buffer_drained=1
 count#packet_buffer_drained.packet_type|ONE_RTT=1
 count#packet_buffer_drained.bytes.total=[REDACTED]b

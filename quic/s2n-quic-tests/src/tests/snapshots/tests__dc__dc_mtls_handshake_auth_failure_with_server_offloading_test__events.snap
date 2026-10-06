@@ -592,6 +592,7 @@ measure#recovery_metrics.bytes_in_flight=[REDACTED]
 count#recovery_metrics.congestion_limited=false
 count#platform_event_loop_sleep=1
 timer#platform_event_loop_sleep.processing_duration=1µs
+count#tls_handshake_failed=1
 count#connection_closed=1
 timer#connection_closed.latency=100ms
 count#connection_closed.error|TLS_CERTIFICATE_UNKNOWN=1

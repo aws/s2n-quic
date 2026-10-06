@@ -666,7 +666,7 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
             Request::TlsObject(_) => write!(f, "TlsObject"),
             Request::SendApplication(_) => write!(f, "SendApplication"),
             Request::TlsError(_) => write!(f, "TlsError"),
-            Request::TlsHandshakeFailed(tls_object) => write!(f, "TlsHandshakeFailed"),
+            Request::TlsHandshakeFailed(_) => write!(f, "TlsHandshakeFailed"),
         }
     }
 }

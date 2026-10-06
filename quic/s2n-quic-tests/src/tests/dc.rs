@@ -1297,9 +1297,7 @@ fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
     let server_endpoint = OffloadBuilder::new()
         .with_endpoint(server_tls)
         .with_executor(BachExecutor)
-        .with_exporter(Exporter {
-            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
-        })
+        .with_exporter(Exporter)
         .build();
     let server = Server::builder()
         .with_limits(limits)?
@@ -1324,9 +1322,7 @@ fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
     let server_endpoint = OffloadBuilder::new()
         .with_endpoint(server_tls)
         .with_executor(BachExecutor)
-        .with_exporter(Exporter {
-            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
-        })
+        .with_exporter(Exporter)
         .build();
     let server = Server::builder()
         .with_limits(limits)?
@@ -2067,9 +2063,7 @@ impl Executor for BachExecutor {
     }
 }
 #[derive(Clone)]
-struct Exporter {
-    stateless_reset_tokens: Vec<stateless_reset::Token>,
-}
+struct Exporter;
 impl ExporterHandler for Exporter {
     fn on_client_application_params(
         &mut self,
