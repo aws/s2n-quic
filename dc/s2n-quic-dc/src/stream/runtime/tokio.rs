@@ -104,9 +104,12 @@ impl<Sub> Drop for SharedInner<Sub> {
     fn drop(&mut self) {
         // drop the runtimes in a separate thread to avoid tokio complaining
         let rt = unsafe { self.runtime.assume_init_read() };
-        std::thread::spawn(move || {
-            // give enough time for all of the streams to shut down
-            rt.shutdown_timeout(core::time::Duration::from_secs(10));
-        });
+        std::thread::Builder::new()
+            .name("rt-shutdown".into())
+            .spawn(move || {
+                // give enough time for all of the streams to shut down
+                rt.shutdown_timeout(core::time::Duration::from_secs(10));
+            })
+            .expect("failed to spawn runtime shutdown thread");
     }
 }
