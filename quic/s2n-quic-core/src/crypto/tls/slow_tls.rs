@@ -3,7 +3,7 @@
 use crate::{
     application,
     crypto::{
-        tls::{self, TlsObject, TlsSession},
+        tls::{self, TlsSession},
         CryptoSuite,
     },
     transport,

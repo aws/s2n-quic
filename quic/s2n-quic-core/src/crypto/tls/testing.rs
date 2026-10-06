@@ -10,7 +10,7 @@ use crate::{
         scatter,
         tls::{
             self, ApplicationParameters, CipherSuite, ConnectionInfo, NamedGroup, TlsExportError,
-            TlsObject, TlsSession,
+            TlsSession,
         },
         CryptoSuite, HeaderKey, Key,
     },

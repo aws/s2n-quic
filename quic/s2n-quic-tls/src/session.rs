@@ -7,7 +7,7 @@ use core::{marker::PhantomData, task::Poll};
 use s2n_quic_core::{
     application::ServerName,
     crypto::{
-        tls::{self, CipherSuite, ConnectionInfo, TlsObject},
+        tls::{self, CipherSuite, ConnectionInfo},
         CryptoSuite,
     },
     endpoint, ensure, transport,

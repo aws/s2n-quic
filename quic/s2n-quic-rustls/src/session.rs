@@ -11,7 +11,7 @@ use s2n_quic_core::{
     application::ServerName,
     crypto::{
         self,
-        tls::{self, CipherSuite, NamedGroup, TlsObject},
+        tls::{self, CipherSuite, NamedGroup},
     },
     transport,
 };
