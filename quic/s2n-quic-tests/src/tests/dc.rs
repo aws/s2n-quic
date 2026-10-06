@@ -992,9 +992,7 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
                     let server_tls = OffloadBuilder::new()
                         .with_endpoint(server_tls)
                         .with_executor(BachExecutor)
-                        .with_exporter(Exporter {
-                            stateless_reset_tokens: SERVER_TOKENS.to_vec(),
-                        })
+                        .with_exporter(Exporter)
                         .build();
                     let server_limits = server_limits.with_packet_buffer_size(JUMBO_MTU as u32)?;
                     start_server!(server_tls, server_limits)

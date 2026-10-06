@@ -9,7 +9,6 @@ pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
 use s2n_tls::error::ErrorSource;
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
-#[cfg(feature = "alloc")]
 use zeroize::Zeroizing;
 
 mod error;
