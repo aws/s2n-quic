@@ -180,13 +180,13 @@ struct S2nError {
     location: Option<String>,
 }
 
-impl std::error::Error for S2nError {
+impl core::error::Error for S2nError {
     fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         None
     }
 }
 
-impl std::fmt::Display for S2nError {
+impl core::fmt::Display for S2nError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut s = f.debug_struct("Error");
 
