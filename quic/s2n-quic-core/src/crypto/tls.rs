@@ -150,20 +150,19 @@ pub trait TlsSession: Send {
 
 #[cfg(feature = "alloc")]
 pub struct TlsObject {
-    /// The negotiated TLS 1.3 cipher suite.
     cipher_suite: CipherSuite,
 
     signature_scheme: Option<&'static str>,
     exporter_secret: Option<Zeroizing<[u8; EXPORT_SECRET_LEN]>>,
 
-    /// The peer's verified certificate chain (DER). Empty if unavailable.
+    /// The peer's verified certificate chain. Empty if unavailable.
     peer_cert_chain: Result<Vec<Vec<u8>>, ChainError>,
 
-    /// The unverified client certificate chain (DER). `None` when the backend
+    /// The unverified client certificate chain. `None` when the backend
     /// does not expose it (rustls) or none was presented.
     client_cert_chain: Result<Option<Vec<u8>>, ChainError>,
 
-    /// The local endpoint's own presented certificate chain (DER). `None`
+    /// The local endpoint's own presented certificate chain. `None`
     /// when the backend does not expose it (rustls) or none was selected.
     selected_cert: Result<Option<Vec<Vec<u8>>>, ChainError>,
 
@@ -219,7 +218,6 @@ impl TlsObject {
         self.signature_scheme
     }
 
-    /// The pre-exported s2n-quic-dc keying material.
     pub fn exporter_secret(&self) -> Option<&[u8; EXPORT_SECRET_LEN]> {
         self.exporter_secret.as_deref()
     }
@@ -244,6 +242,7 @@ impl TlsSession for TlsObject {
         output: &mut [u8],
     ) -> Result<(), TlsExportError> {
         if let Some(ref secret) = self.exporter_secret {
+            assert_eq!(output.len(), secret.len());
             output.copy_from_slice(secret.as_bytes());
         } else {
             return Err(TlsExportError::Failure);
