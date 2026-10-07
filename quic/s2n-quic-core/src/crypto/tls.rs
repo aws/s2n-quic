@@ -3,7 +3,7 @@
 
 use crate::path::{LocalAddress, RemoteAddress};
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
