@@ -24,10 +24,9 @@ struct PathSecretMapUninitialized {
     lifetime: core::time::Duration,
 }
 
+/// The reason for a background handshake was requested.
 #[derive(Debug, Copy, Clone)]
 enum HandshakeReason {
-    /// An explicit request by the application owner.
-    User,
     /// Periodic re-handshaking.
     Periodic,
     /// Driven by remote packets (e.g., unknown path secret or replay detection).

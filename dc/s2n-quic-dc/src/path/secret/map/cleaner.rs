@@ -300,7 +300,7 @@ impl Cleaner {
         let handshake_requests_skipped =
             rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
                 handshake_requests += 1;
-                state.request_handshake(peer, crate::psk::io::HandshakeReason::Periodic)
+                state.request_handshake(peer, event::builder::HandshakeReason::Periodic)
             });
 
         drop(rehandshake);

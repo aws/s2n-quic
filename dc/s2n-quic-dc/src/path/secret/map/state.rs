@@ -723,13 +723,13 @@ where
     pub fn request_handshake(
         &self,
         peer: SocketAddr,
-        reason: HandshakeReason,
+        reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>> {
         self.subscriber()
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
                     peer_address: SocketAddress::from(peer).into_event(),
-                    reason: reason.into(),
+                    reason: reason.clone(),
                 },
             );
 
@@ -744,7 +744,9 @@ where
             .unwrap_or_else(|e| e.into_inner())
             .as_deref()
         {
-            return (callback)(peer, reason);
+            // The callback feeds the handshake queue, which also counts user-initiated
+            // handshakes, so widen to the full set here.
+            return (callback)(peer, HandshakeReason::from(reason));
         }
         None
     }
@@ -935,9 +937,10 @@ where
     fn request_handshake(
         &self,
         peer: SocketAddr,
-        reason: HandshakeReason,
+        reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>> {
-        self.request_handshake(peer, reason)
+        // Resolves to the inherent method on `State`, which the cleaner also uses.
+        State::request_handshake(self, peer, reason)
     }
 
     #[allow(clippy::type_complexity)]
@@ -1114,7 +1117,7 @@ where
             // FIXME: Adjust our tests to backdate/forward date entries instead?
             && (cfg!(test) || entry.age() > Duration::from_secs(10));
         let scheduled_handshake = self
-            .request_handshake(*entry.peer(), HandshakeReason::Remote)
+            .request_handshake(*entry.peer(), event::builder::HandshakeReason::Remote)
             .is_some();
 
         self.subscriber().on_unknown_path_secret_packet_accepted(
@@ -1238,7 +1241,7 @@ where
         //
         // Handshaking will be rate limited per destination peer (and at least
         // de-duplicated).
-        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
+        self.request_handshake(*entry.peer(), event::builder::HandshakeReason::Remote);
 
         Some(packet)
     }

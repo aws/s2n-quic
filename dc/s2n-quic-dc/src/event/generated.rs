@@ -2801,10 +2801,11 @@ pub mod api {
     }
     #[non_exhaustive]
     #[derive(Debug, Copy, Clone)]
+    /// Why a background re-handshake was requested.
+    ///
+    /// Note that this deliberately has no user-initiated variant: those handshakes are driven
+    /// directly and never routed through the path secret map, so they cannot be reported here.
     pub enum HandshakeReason {
-        #[non_exhaustive]
-        /// An explicit request by the application owner.
-        User {},
         #[non_exhaustive]
         /// Periodic re-handshaking.
         Periodic {},
@@ -2818,33 +2819,27 @@ pub mod api {
     impl aggregate::AsVariant for HandshakeReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("USER\0"),
+                name: aggregate::info::Str::new("PERIODIC\0"),
                 id: 0usize,
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("PERIODIC\0"),
+                name: aggregate::info::Str::new("REMOTE\0"),
                 id: 1usize,
             }
             .build(),
             aggregate::info::variant::Builder {
-                name: aggregate::info::Str::new("REMOTE\0"),
-                id: 2usize,
-            }
-            .build(),
-            aggregate::info::variant::Builder {
                 name: aggregate::info::Str::new("KEY_ID_EXHAUSTION\0"),
-                id: 3usize,
+                id: 2usize,
             }
             .build(),
         ];
         #[inline]
         fn variant_idx(&self) -> usize {
             match self {
-                Self::User { .. } => 0usize,
-                Self::Periodic { .. } => 1usize,
-                Self::Remote { .. } => 2usize,
-                Self::KeyIdExhaustion { .. } => 3usize,
+                Self::Periodic { .. } => 0usize,
+                Self::Remote { .. } => 1usize,
+                Self::KeyIdExhaustion { .. } => 2usize,
             }
         }
     }
@@ -7461,9 +7456,11 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Why a background re-handshake was requested.
+    ///
+    /// Note that this deliberately has no user-initiated variant: those handshakes are driven
+    /// directly and never routed through the path secret map, so they cannot be reported here.
     pub enum HandshakeReason {
-        /// An explicit request by the application owner.
-        User,
         /// Periodic re-handshaking.
         Periodic,
         /// Driven by remote packets (e.g., unknown path secret or replay detection).
@@ -7476,7 +7473,6 @@ pub mod builder {
         fn into_event(self) -> api::HandshakeReason {
             use api::HandshakeReason::*;
             match self {
-                Self::User => User {},
                 Self::Periodic => Periodic {},
                 Self::Remote => Remote {},
                 Self::KeyIdExhaustion => KeyIdExhaustion {},

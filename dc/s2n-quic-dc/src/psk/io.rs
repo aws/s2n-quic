@@ -733,14 +733,21 @@ pub enum HandshakeReason {
     KeyIdExhaustion,
 }
 
-/// Mirrors [`HandshakeReason`] onto the event definition in `events/map.rs`.
-impl From<HandshakeReason> for crate::event::builder::HandshakeReason {
-    fn from(reason: HandshakeReason) -> Self {
+/// Widens a background re-handshake reason, as reported on the
+/// `path_secret_map:background_handshake_requested` event, into the full set tracked by the
+/// handshake queue.
+///
+/// Only this direction is total. The event-side enum has no user-initiated variant, because
+/// user-initiated handshakes call [`Client::connect`] directly and never route through
+/// `Map::request_handshake`, so the event's `reason` counter has no bucket that is impossible to
+/// increment.
+impl From<crate::event::builder::HandshakeReason> for HandshakeReason {
+    fn from(reason: crate::event::builder::HandshakeReason) -> Self {
+        use crate::event::builder::HandshakeReason as Background;
         match reason {
-            HandshakeReason::User => Self::User,
-            HandshakeReason::Periodic => Self::Periodic,
-            HandshakeReason::Remote => Self::Remote,
-            HandshakeReason::KeyIdExhaustion => Self::KeyIdExhaustion,
+            Background::Periodic => Self::Periodic,
+            Background::Remote => Self::Remote,
+            Background::KeyIdExhaustion => Self::KeyIdExhaustion,
         }
     }
 }

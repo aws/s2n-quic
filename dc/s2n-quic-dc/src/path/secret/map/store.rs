@@ -4,6 +4,7 @@
 use super::{ApplicationData, ApplicationDataError, DiskEntry, Entry, SendStats};
 use crate::{
     credentials::{Credentials, Id},
+    event,
     packet::{secret_control as control, Packet},
     path::secret::{receiver, stateless_reset},
     psk::io::HandshakeReason,
@@ -89,7 +90,7 @@ pub trait Store: 'static + Send + Sync {
     fn request_handshake(
         &self,
         peer: SocketAddr,
-        reason: HandshakeReason,
+        reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>>;
 
     fn check_dedup(

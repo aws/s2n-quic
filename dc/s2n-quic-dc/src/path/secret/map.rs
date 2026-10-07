@@ -305,8 +305,10 @@ impl Map {
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let entry = self.store.get_by_id_tracked(&id)?;
         let Some((sealer, credentials)) = entry.uni_sealer() else {
-            self.store
-                .request_handshake(*entry.peer(), HandshakeReason::KeyIdExhaustion);
+            self.store.request_handshake(
+                *entry.peer(),
+                event::builder::HandshakeReason::KeyIdExhaustion,
+            );
             return None;
         };
         Some((sealer, credentials, entry.parameters()))

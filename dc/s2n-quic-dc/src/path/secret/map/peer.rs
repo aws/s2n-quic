@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{dc, seal, Bidirectional, Credentials, Entry, Id, Map, TransportFeatures};
-use crate::psk::io::HandshakeReason;
+use crate::event;
 use std::sync::Arc;
 
 pub struct Peer {
@@ -24,9 +24,10 @@ impl Peer {
     pub fn seal_once(&self) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let Some((sealer, credentials)) = self.entry.uni_sealer() else {
             // Key ID has been exhausted. Therefore, initiate another handshake to recover.
-            self.map
-                .store
-                .request_handshake(*self.entry.peer(), HandshakeReason::KeyIdExhaustion);
+            self.map.store.request_handshake(
+                *self.entry.peer(),
+                event::builder::HandshakeReason::KeyIdExhaustion,
+            );
             return None;
         };
 
@@ -42,9 +43,10 @@ impl Peer {
     ) -> Option<(Bidirectional, dc::ApplicationParams)> {
         let Some(keys) = self.entry.bidi_local(features) else {
             // Key ID has been exhausted. Therefore, initiate another handshake to recover.
-            self.map
-                .store
-                .request_handshake(*self.entry.peer(), HandshakeReason::KeyIdExhaustion);
+            self.map.store.request_handshake(
+                *self.entry.peer(),
+                event::builder::HandshakeReason::KeyIdExhaustion,
+            );
             return None;
         };
 
