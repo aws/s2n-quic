@@ -8,7 +8,6 @@ use alloc::{boxed::Box, string::String, vec::Vec};
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
-use zeroize::Zeroizing;
 
 mod error;
 pub use error::Error;
@@ -96,10 +95,6 @@ impl ChainError {
     }
 }
 
-const DC_EXPORTER_LABEL: &str = "EXPERIMENTAL EXPORTER s2n-quic-dc";
-const DC_EXPORTER_CONTEXT: &str = "";
-pub const EXPORT_SECRET_LEN: usize = 32;
-
 pub trait TlsSession: Send {
     /// See <https://datatracker.ietf.org/doc/html/rfc5705> and <https://www.rfc-editor.org/rfc/rfc8446>.
     fn tls_exporter(
@@ -153,7 +148,6 @@ pub struct TlsObject {
     cipher_suite: CipherSuite,
 
     signature_scheme: Option<&'static str>,
-    exporter_secret: Option<Zeroizing<[u8; EXPORT_SECRET_LEN]>>,
 
     /// The peer's verified certificate chain. Empty if unavailable.
     peer_cert_chain: Result<Vec<Vec<u8>>, ChainError>,
@@ -174,20 +168,9 @@ pub struct TlsObject {
 impl TlsObject {
     /// Materialize a snapshot from a live TLS backend at handshake completion.
     pub fn new(backend: &impl TlsSession) -> Self {
-        let mut material = Zeroizing::new([0u8; EXPORT_SECRET_LEN]);
-        let exporter_secret = backend
-            .tls_exporter(
-                DC_EXPORTER_LABEL.as_bytes(),
-                DC_EXPORTER_CONTEXT.as_bytes(),
-                &mut *material,
-            )
-            .ok()
-            .map(|()| material);
-
         Self {
             cipher_suite: backend.cipher_suite(),
             signature_scheme: backend.signature_scheme(),
-            exporter_secret,
             peer_cert_chain: backend.peer_cert_chain_der(),
             client_cert_chain: backend.client_cert_chain_der(),
             selected_cert: backend.selected_cert_der(),
@@ -202,7 +185,6 @@ impl TlsObject {
         Self {
             cipher_suite: backend.cipher_suite(),
             signature_scheme: backend.signature_scheme(),
-            exporter_secret: None,
             peer_cert_chain: backend.peer_cert_chain_der(),
             client_cert_chain: backend.client_cert_chain_der(),
             selected_cert: backend.selected_cert_der(),
@@ -216,10 +198,6 @@ impl TlsObject {
 
     pub fn signature_scheme(&self) -> Option<&'static str> {
         self.signature_scheme
-    }
-
-    pub fn exporter_secret(&self) -> Option<&[u8; EXPORT_SECRET_LEN]> {
-        self.exporter_secret.as_deref()
     }
 
     pub fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
@@ -239,15 +217,9 @@ impl TlsSession for TlsObject {
         &self,
         _label: &[u8],
         _context: &[u8],
-        output: &mut [u8],
+        _output: &mut [u8],
     ) -> Result<(), TlsExportError> {
-        if let Some(ref secret) = self.exporter_secret {
-            assert_eq!(output.len(), secret.len());
-            output.copy_from_slice(secret.as_bytes());
-        } else {
-            return Err(TlsExportError::Failure);
-        }
-        Ok(())
+        return Err(TlsExportError::Failure);
     }
 
     fn cipher_suite(&self) -> CipherSuite {

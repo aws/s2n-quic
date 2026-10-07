@@ -992,7 +992,9 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
                     let server_tls = OffloadBuilder::new()
                         .with_endpoint(server_tls)
                         .with_executor(BachExecutor)
-                        .with_exporter(Exporter)
+                        .with_exporter(Exporter {
+                            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+                        })
                         .build();
                     let server_limits = server_limits.with_packet_buffer_size(JUMBO_MTU as u32)?;
                     start_server!(server_tls, server_limits)
@@ -1295,7 +1297,9 @@ fn dc_mtls_handshake_with_server_offloading_test() -> Result<()> {
     let server_endpoint = OffloadBuilder::new()
         .with_endpoint(server_tls)
         .with_executor(BachExecutor)
-        .with_exporter(Exporter)
+        .with_exporter(Exporter {
+            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+        })
         .build();
     let server = Server::builder()
         .with_limits(limits)?
@@ -1320,7 +1324,9 @@ fn dc_mtls_handshake_auth_failure_with_server_offloading_test() -> Result<()> {
     let server_endpoint = OffloadBuilder::new()
         .with_endpoint(server_tls)
         .with_executor(BachExecutor)
-        .with_exporter(Exporter)
+        .with_exporter(Exporter {
+            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+        })
         .build();
     let server = Server::builder()
         .with_limits(limits)?
@@ -2061,8 +2067,17 @@ impl Executor for BachExecutor {
     }
 }
 #[derive(Clone)]
-struct Exporter;
+struct Exporter {
+    stateless_reset_tokens: Vec<stateless_reset::Token>,
+}
 impl ExporterHandler for Exporter {
+    fn on_tls_exporter_ready(
+        &self,
+        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
+    ) -> Option<Box<dyn std::any::Any + Send>> {
+        Some(Box::new((self.stateless_reset_tokens.clone()[0],)))
+    }
+
     fn on_client_application_params(
         &mut self,
         client_params: tls::ApplicationParameters,

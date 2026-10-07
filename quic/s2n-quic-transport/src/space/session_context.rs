@@ -586,11 +586,21 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 });
         }
 
-        self.application
-            .as_mut()
-            .expect("application keys should be ready before the tls exporter")
-            .dc_manager
-            .on_path_secrets_ready(session, self.publisher)?;
+        if Config::DcEndpoint::ENABLED {
+            if let Some(context) = self.tls_context.take() {
+                self.application
+                    .as_mut()
+                    .unwrap()
+                    .dc_manager
+                    .on_token(context, self.publisher)?;
+            } else {
+                self.application
+                    .as_mut()
+                    .expect("application keys should be ready before the tls exporter")
+                    .dc_manager
+                    .on_path_secrets_ready(session, self.publisher)?;
+            }
+        }
 
         self.publisher
             .on_tls_exporter_ready(event::builder::TlsExporterReady {

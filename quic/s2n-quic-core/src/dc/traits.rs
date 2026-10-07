@@ -59,6 +59,17 @@ pub trait Path: 'static + Send {
 
     /// Called when the MTU has been updated for the path
     fn on_mtu_updated(&mut self, mtu: u16);
+
+    /// Called when TLS handshake is complete and either an error occurred
+    /// or the TLS handshake was successful and the dc-quic secret
+    /// can be stored in the map.
+    ///
+    /// The boxed type is PathSecretsRes. This callback is only triggered
+    /// if offloading is enabled for this endpoint.
+    fn on_secret(
+        &mut self,
+        secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>,
+    ) -> Result<Vec<stateless_reset::Token>, transport::Error>;
 }
 
 impl<P: Path> Path for Option<P> {
@@ -95,6 +106,17 @@ impl<P: Path> Path for Option<P> {
     fn on_mtu_updated(&mut self, max_datagram_size: u16) {
         if let Some(path) = self {
             path.on_mtu_updated(max_datagram_size)
+        }
+    }
+
+    fn on_secret(
+        &mut self,
+        secret: alloc::boxed::Box<dyn core::any::Any + Send + 'static>,
+    ) -> Result<Vec<stateless_reset::Token>, transport::Error> {
+        if let Some(path) = self {
+            path.on_secret(secret)
+        } else {
+            Ok(Vec::default())
         }
     }
 }

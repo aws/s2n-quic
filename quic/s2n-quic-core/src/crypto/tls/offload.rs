@@ -26,15 +26,19 @@ pub trait ExporterHandler {
         client_params: ApplicationParameters,
         server_params: &mut alloc::vec::Vec<u8>,
     ) -> Option<Result<(), crate::transport::Error>>;
+    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
 }
 
-// Ignore these callbacks by default
+// Most people don't need the TlsSession so we ignore these callbacks by default
 impl ExporterHandler for () {
     fn on_client_application_params(
         &mut self,
         _client_params: ApplicationParameters,
         _server_params: &mut alloc::vec::Vec<u8>,
     ) -> Option<Result<(), crate::transport::Error>> {
+        None
+    }
+    fn on_tls_exporter_ready(&self, _session: &impl TlsSession) -> Option<Box<dyn Any + Send>> {
         None
     }
 }
@@ -261,7 +265,8 @@ where
                     },
                 )?;
             }
-            Request::TlsObject(ctx) => {
+            Request::TlsContext(ctx, result) => {
+                context.on_tls_context(result);
                 context.on_tls_exporter_ready(&ctx)?;
             }
             Request::TlsHandshakeFailed(mut ctx) => {
@@ -516,12 +521,17 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         &mut self,
         session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        let dc_object = TlsObject::new(session);
-        match self.send_to_quic.push(Request::TlsObject(dc_object)) {
-            Ok(_) => (),
-            Err(_) => self.error = Some(SLICE_ERROR),
-        }
+        if let Some(result) = self.exporter_handler.on_tls_exporter_ready(session) {
+            let tls_object = TlsObject::new(session);
 
+            match self
+                .send_to_quic
+                .push(Request::TlsContext(tls_object, result))
+            {
+                Ok(_) => (),
+                Err(_) => self.error = Some(SLICE_ERROR),
+            }
+        }
         Ok(())
     }
 
@@ -588,10 +598,10 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         session: &impl TlsSession,
         e: Box<dyn core::error::Error + Send + Sync + 'static>,
     ) -> Result<(), crate::transport::Error> {
-        let dc_object = TlsObject::handshake_failure(session, e);
+        let tls_object = TlsObject::handshake_failure(session, e);
         match self
             .send_to_quic
-            .push(Request::TlsHandshakeFailed(dc_object))
+            .push(Request::TlsHandshakeFailed(tls_object))
         {
             Ok(_) => (),
             Err(_) => self.error = Some(SLICE_ERROR),
@@ -636,7 +646,7 @@ enum Request<S: CryptoSuite> {
     ),
     HandshakeComplete,
     TlsDone,
-    TlsObject(TlsObject),
+    TlsContext(TlsObject, Box<dyn Any + Send>),
     TlsHandshakeFailed(TlsObject),
     SendApplication(bytes::Bytes),
     TlsError(transport::Error),
@@ -662,7 +672,7 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
             Request::HandshakeComplete => write!(f, "HandshakeComplete"),
             Request::TlsDone => write!(f, "TlsDone"),
             Request::ZeroRtt(_, _, _) => write!(f, "ZeroRtt"),
-            Request::TlsObject(_) => write!(f, "TlsObject"),
+            Request::TlsContext(_, _) => write!(f, "TlsContext"),
             Request::SendApplication(_) => write!(f, "SendApplication"),
             Request::TlsError(_) => write!(f, "TlsError"),
             Request::TlsHandshakeFailed(_) => write!(f, "TlsHandshakeFailed"),
