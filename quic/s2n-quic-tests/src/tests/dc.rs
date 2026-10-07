@@ -978,7 +978,7 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
                     Server::builder()
                         .with_io(server_io)?
                         .with_tls($tls)?
-                        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?
+                        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
                         .with_event(server_event)?
                         .with_random(Random::with_seed(456))?
                         .with_limits($limits)?
@@ -993,7 +993,7 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
                         .with_endpoint(server_tls)
                         .with_executor(BachExecutor)
                         .with_exporter(Exporter {
-                            stateless_reset_tokens: CLIENT_TOKENS.to_vec(),
+                            stateless_reset_tokens: SERVER_TOKENS.to_vec(),
                         })
                         .build();
                     let server_limits = server_limits.with_packet_buffer_size(JUMBO_MTU as u32)?;

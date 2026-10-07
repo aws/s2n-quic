@@ -142,6 +142,15 @@ impl<Config: endpoint::Config> Manager<Config> {
 
         let token = self.path.on_secret(context)?;
         self.stateless_reset_token_sync = Flag::new(DcStatelessResetTokenWriter { tokens: token });
+
+        if Config::ENDPOINT_TYPE.is_client() {
+            // Start sending the `DC_STATELESS_RESET_TOKENS` frame on the client
+            // The server will wait until it has received tokens from the client
+            // before sending its own, though typically this will happen immediately
+            // after path secrets are ready
+            self.stateless_reset_token_sync.send();
+        }
+
         publisher.on_dc_state_changed(DcStateChanged {
             state: DcState::PathSecretsReady,
         });

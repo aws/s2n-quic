@@ -191,24 +191,6 @@ impl TlsObject {
             error: Some(error),
         }
     }
-
-    pub fn cipher_suite(&self) -> CipherSuite {
-        self.cipher_suite
-    }
-
-    pub fn signature_scheme(&self) -> Option<&'static str> {
-        self.signature_scheme
-    }
-
-    pub fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
-        self.peer_cert_chain.clone()
-    }
-    pub fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError> {
-        self.client_cert_chain.clone()
-    }
-    pub fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError> {
-        self.selected_cert.clone()
-    }
 }
 
 #[cfg(feature = "alloc")]
@@ -223,7 +205,7 @@ impl TlsSession for TlsObject {
     }
 
     fn cipher_suite(&self) -> CipherSuite {
-        self.cipher_suite()
+        self.cipher_suite
     }
 
     fn signature_scheme(&self) -> Option<&'static str> {
@@ -231,15 +213,15 @@ impl TlsSession for TlsObject {
     }
 
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
-        self.peer_cert_chain_der()
+        self.peer_cert_chain.clone()
     }
 
     fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError> {
-        self.client_cert_chain_der()
+        self.client_cert_chain.clone()
     }
 
     fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError> {
-        self.selected_cert_der()
+        self.selected_cert.clone()
     }
 }
 
