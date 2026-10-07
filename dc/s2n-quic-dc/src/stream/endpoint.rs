@@ -50,10 +50,15 @@ where
 {
     // Key ID exhaustion means we can't derive keys for another stream without reusing one, so fail
     // the open rather than reuse. `pair` has already requested a re-handshake, so a later attempt
-    // can succeed on a fresh path secret.
+    // resolves a fresh path secret for this peer and succeeds.
     let Some((crypto, mut parameters)) = entry.pair(&peer.features()) else {
-        return Err(io::Error::other(
-            "path secret has exhausted its key ID space",
+        return Err(io::Error::new(
+            io::ErrorKind::QuotaExceeded,
+            format!(
+                "path secret {} exhausted its key ID space; \
+                 a re-handshake was requested, retry once it completes",
+                entry.id()
+            ),
         ));
     };
 
