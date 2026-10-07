@@ -171,6 +171,7 @@ pub struct TlsObject {
     error: Option<Box<dyn core::error::Error + Send + Sync>>,
 }
 
+#[cfg(feature = "alloc")]
 impl TlsObject {
     /// Materialize a snapshot from a live TLS backend at handshake completion.
     pub fn new(backend: &impl TlsSession) -> Self {
@@ -234,6 +235,7 @@ impl TlsObject {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl TlsSession for TlsObject {
     fn tls_exporter(
         &self,
