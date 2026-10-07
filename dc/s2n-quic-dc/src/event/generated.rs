@@ -876,6 +876,11 @@ pub mod api {
         LengthCapacityExceeded {},
         #[non_exhaustive]
         InvariantViolation { message: &'static str },
+        #[non_exhaustive]
+        /// The packet decoded but did not authenticate under the credentials it named
+        ///
+        /// The acceptor creates no stream state for such a packet.
+        AuthenticationFailed {},
     }
     impl aggregate::AsVariant for AcceptorPacketDropReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -899,6 +904,11 @@ pub mod api {
                 id: 3usize,
             }
             .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("AUTHENTICATION_FAILED\0"),
+                id: 4usize,
+            }
+            .build(),
         ];
         #[inline]
         fn variant_idx(&self) -> usize {
@@ -907,6 +917,7 @@ pub mod api {
                 Self::UnexpectedBytes { .. } => 1usize,
                 Self::LengthCapacityExceeded { .. } => 2usize,
                 Self::InvariantViolation { .. } => 3usize,
+                Self::AuthenticationFailed { .. } => 4usize,
             }
         }
     }
@@ -5572,7 +5583,13 @@ pub mod builder {
         UnexpectedEof,
         UnexpectedBytes,
         LengthCapacityExceeded,
-        InvariantViolation { message: &'static str },
+        InvariantViolation {
+            message: &'static str,
+        },
+        /// The packet decoded but did not authenticate under the credentials it named
+        ///
+        /// The acceptor creates no stream state for such a packet.
+        AuthenticationFailed,
     }
     impl IntoEvent<api::AcceptorPacketDropReason> for AcceptorPacketDropReason {
         #[inline]
@@ -5585,6 +5602,7 @@ pub mod builder {
                 Self::InvariantViolation { message } => InvariantViolation {
                     message: message.into_event(),
                 },
+                Self::AuthenticationFailed => AuthenticationFailed {},
             }
         }
     }

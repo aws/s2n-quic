@@ -6,7 +6,7 @@
 //! This is typically not used directly but rather wrapped in a Server from one of the other
 //! modules ([`super::tokio`] for most production applications).
 
-use super::{accept, InitialPacket};
+use super::{accept, Authenticator, InitialPacket};
 use crate::{
     credentials::Credentials,
     event::{self, EndpointPublisher as _, Subscriber},
@@ -43,6 +43,7 @@ where
     queues: Allocator,
     is_open: bool,
     packet: InitialPacket,
+    authenticator: Authenticator,
     application_socket: Arc<S>,
     worker_socket: Arc<W>,
 }
@@ -73,6 +74,7 @@ where
             queues,
             is_open: true,
             packet,
+            authenticator: Default::default(),
             application_socket,
             worker_socket,
         }
@@ -118,32 +120,10 @@ where
 
         let peer_addr = segment.remote_address().get();
 
-        let (control, stream) = self.queues.alloc_or_grow(Some(&credentials));
-        // inject the packet into the stream queue
-        let _ = stream.push(segment);
-
         let now = self.env.clock().get_time();
-        let meta = event::api::ConnectionMeta {
-            id: 0, // TODO use an actual connection ID
-            timestamp: now.into_event(),
-        };
-        let info = event::api::ConnectionInfo {};
-        let subscriber_ctx = self
-            .env
-            .subscriber()
-            .create_connection_context(&meta, &info);
 
-        let application_socket = self.application_socket.clone();
-        let worker_socket = self.worker_socket.clone();
-
-        let peer = udp::Pooled {
-            peer_addr,
-            control,
-            stream,
-            application_socket,
-            worker_socket,
-        };
-
+        // Derive the stream's keys first. Note that this only establishes that we hold a path
+        // secret for the credential id. It does not authenticate the packet.
         let mut secret_control = vec![];
         let (crypto, parameters, application_data) = match endpoint::derive_stream_credentials(
             &self.packet,
@@ -161,6 +141,49 @@ where
                 }
                 return;
             }
+        };
+
+        // Authenticate before binding the routing slot for these credentials or pinning the
+        // stream's peer address.
+        //
+        // Nothing is sent back on failure, since the sender has not proven it holds the key.
+        if !self
+            .authenticator
+            .authenticate_first_packet(&crypto, segment.payload())
+        {
+            debug!(?credentials, ?peer_addr, "dropping unauthenticated packet");
+            self.env
+                .endpoint_publisher_with_time(now)
+                .on_acceptor_udp_packet_dropped(event::builder::AcceptorUdpPacketDropped {
+                    remote_address: &peer_addr,
+                    reason: event::builder::AcceptorPacketDropReason::AuthenticationFailed,
+                });
+            return;
+        }
+
+        let meta = event::api::ConnectionMeta {
+            id: 0, // TODO use an actual connection ID
+            timestamp: now.into_event(),
+        };
+        let info = event::api::ConnectionInfo {};
+        let subscriber_ctx = self
+            .env
+            .subscriber()
+            .create_connection_context(&meta, &info);
+
+        let (control, stream) = self.queues.alloc_or_grow(Some(&credentials));
+        // inject the packet into the stream queue
+        let _ = stream.push(segment);
+
+        let application_socket = self.application_socket.clone();
+        let worker_socket = self.worker_socket.clone();
+
+        let peer = udp::Pooled {
+            peer_addr,
+            control,
+            stream,
+            application_socket,
+            worker_socket,
         };
 
         // TODO is it better to accept this inline or send it off to another queue?
