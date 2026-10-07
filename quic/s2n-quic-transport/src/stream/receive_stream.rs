@@ -147,7 +147,7 @@ impl ValueToFrameWriter<VarInt> for MaxStreamDataToFrameWriter {
     }
 }
 
-/// Writes `STOP_SENDING` frames basd on `ApplicationErrorCode`s
+/// Writes `STOP_SENDING` frames based on `ApplicationErrorCode`s
 #[derive(Debug, Default)]
 pub(super) struct StopSendingToFrameWriter {}
 
