@@ -7,7 +7,6 @@ use alloc::{string::String, vec::Vec};
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
-use s2n_tls::error::ErrorSource;
 use zerocopy::{FromBytes, IntoBytes, Unaligned};
 use zeroize::Zeroizing;
 
@@ -169,33 +168,7 @@ pub struct TlsObject {
     selected_cert: Result<Option<Vec<Vec<u8>>>, ChainError>,
 
     /// Store the error if something went wrong in the TLS handshake
-    error: Option<S2nError>,
-}
-
-#[derive(Debug)]
-struct S2nError {
-    source: ErrorSource,
-    name: String,
-    msg: String,
-    location: Option<String>,
-}
-
-impl core::error::Error for S2nError {
-    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
-        None
-    }
-}
-
-impl core::fmt::Display for S2nError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut s = f.debug_struct("Error");
-
-        s.field("name", &self.name);
-        s.field("message", &self.msg);
-        s.field("source", &self.source);
-        s.field("location", &self.location);
-        s.finish()
-    }
+    error: Option<Box<dyn core::error::Error + Send + Sync>>,
 }
 
 impl TlsObject {
@@ -224,22 +197,8 @@ impl TlsObject {
 
     pub fn handshake_failure(
         backend: &impl TlsSession,
-        error: &(dyn core::error::Error + Send + Sync + 'static),
+        error: Box<dyn core::error::Error + Send + Sync + 'static>,
     ) -> Self {
-        let mut e = None;
-        if let Some(err) = error.downcast_ref::<s2n_tls::error::Error>() {
-            let source = err.source();
-            let name = err.name().to_string();
-            let msg = err.message().to_string();
-            let location = err.debug().map(|s| s.to_string());
-            e = Some(S2nError {
-                source,
-                name,
-                msg,
-                location,
-            });
-        }
-
         Self {
             cipher_suite: backend.cipher_suite(),
             signature_scheme: backend.signature_scheme(),
@@ -247,7 +206,7 @@ impl TlsObject {
             peer_cert_chain: backend.peer_cert_chain_der(),
             client_cert_chain: backend.client_cert_chain_der(),
             selected_cert: backend.selected_cert_der(),
-            error: e,
+            error: Some(error),
         }
     }
 
@@ -387,7 +346,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl TlsSession,
-        error: &(dyn core::error::Error + Send + Sync + 'static),
+        error: Box<dyn core::error::Error + Send + Sync + 'static>,
     ) -> Result<(), crate::transport::Error>;
 
     /// Receives data from the initial packet space

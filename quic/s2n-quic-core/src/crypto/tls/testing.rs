@@ -801,7 +801,7 @@ where
     fn on_tls_handshake_failed(
         &mut self,
         _: &impl super::TlsSession,
-        _: &(dyn std::error::Error + Send + Sync),
+        _: Box<dyn std::error::Error + Send + Sync>,
     ) -> Result<(), crate::transport::Error> {
         Ok(())
     }

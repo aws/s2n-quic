@@ -266,7 +266,7 @@ where
             }
             Request::TlsHandshakeFailed(mut ctx) => {
                 if let Some(error) = ctx.error.take() {
-                    context.on_tls_handshake_failed(&ctx, &error)?
+                    context.on_tls_handshake_failed(&ctx, error)?
                 }
             }
             Request::SendApplication(transmission) => {
@@ -586,7 +586,7 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl TlsSession,
-        e: &(dyn core::error::Error + Send + Sync + 'static),
+        e: Box<dyn core::error::Error + Send + Sync + 'static>,
     ) -> Result<(), crate::transport::Error> {
         let dc_object = TlsObject::handshake_failure(session, e);
         match self
