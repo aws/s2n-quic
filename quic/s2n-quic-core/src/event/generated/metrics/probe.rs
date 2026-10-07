@@ -19,6 +19,7 @@ mod id {
         SERVER_NAME_INFORMATION,
         KEY_EXCHANGE_GROUP,
         SIGNATURE_SCHEME,
+        SIGNATURE_PUBLIC_KEY_TYPE,
         PACKET_SKIPPED,
         PACKET_SENT,
         PACKET_SENT__KIND,
@@ -209,6 +210,7 @@ mod id {
     pub const SERVER_NAME_INFORMATION: usize = InfoId::SERVER_NAME_INFORMATION as usize;
     pub const KEY_EXCHANGE_GROUP: usize = InfoId::KEY_EXCHANGE_GROUP as usize;
     pub const SIGNATURE_SCHEME: usize = InfoId::SIGNATURE_SCHEME as usize;
+    pub const SIGNATURE_PUBLIC_KEY_TYPE: usize = InfoId::SIGNATURE_PUBLIC_KEY_TYPE as usize;
     pub const PACKET_SKIPPED: usize = InfoId::PACKET_SKIPPED as usize;
     pub const PACKET_SENT: usize = InfoId::PACKET_SENT as usize;
     pub const PACKET_SENT__KIND: usize = InfoId::PACKET_SENT__KIND as usize;
@@ -461,6 +463,7 @@ mod counter {
                 id::SERVER_NAME_INFORMATION => Self(server_name_information),
                 id::KEY_EXCHANGE_GROUP => Self(key_exchange_group),
                 id::SIGNATURE_SCHEME => Self(signature_scheme),
+                id::SIGNATURE_PUBLIC_KEY_TYPE => Self(signature_public_key_type),
                 id::PACKET_SKIPPED => Self(packet_skipped),
                 id::PACKET_SENT => Self(packet_sent),
                 id::PACKET_SENT__BYTES__TOTAL => Self(packet_sent__bytes__total),
@@ -586,6 +589,9 @@ mod counter {
             fn key_exchange_group(value: u64);
             #[link_name = s2n_quic__event__counter__signature_scheme]
             fn signature_scheme(value: u64);
+            #[link_name =
+        s2n_quic__event__counter__signature_public_key_type]
+            fn signature_public_key_type(value: u64);
             #[link_name =
         s2n_quic__event__counter__packet_skipped]
             fn packet_skipped(value: u64);

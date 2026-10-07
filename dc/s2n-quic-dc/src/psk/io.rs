@@ -480,7 +480,7 @@ impl HandshakeQueue {
                 .clone(),
         };
         entry.by_reason[reason as usize]
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
                 Some(v.saturating_add(1))
             })
             .expect("Some means always OK");

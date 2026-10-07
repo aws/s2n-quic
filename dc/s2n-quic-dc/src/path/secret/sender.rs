@@ -38,7 +38,7 @@ impl State {
     pub fn next_key_id(&self) -> Option<VarInt> {
         let id = self
             .current_id
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 VarInt::try_from(current + 1)
                     .ok()
                     // Make sure we can always +1. This is a useful property for StaleKey packets
@@ -48,7 +48,7 @@ impl State {
                     .filter(|id| *id != VarInt::MAX)
                     .map(|id| *id)
             })
-            // `fetch_update` reports `Err(current)` when the closure declined to advance such as when
+            // `try_update` reports `Err(current)` when the closure declined to advance such as when
             // there is no usable ID left in the VarInt range.
             .ok()?;
 
