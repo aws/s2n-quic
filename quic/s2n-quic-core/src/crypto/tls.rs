@@ -219,7 +219,7 @@ impl TlsSession for TlsObject {
         _context: &[u8],
         _output: &mut [u8],
     ) -> Result<(), TlsExportError> {
-        return Err(TlsExportError::Failure);
+        Err(TlsExportError::Failure)
     }
 
     fn cipher_suite(&self) -> CipherSuite {

@@ -978,7 +978,7 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
                     Server::builder()
                         .with_io(server_io)?
                         .with_tls($tls)?
-                        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
+                        .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?
                         .with_event(server_event)?
                         .with_random(Random::with_seed(456))?
                         .with_limits($limits)?

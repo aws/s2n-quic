@@ -21,24 +21,25 @@ pub trait Executor {
 
 /// Allows access to TLS handshake details for user configuration.
 pub trait ExporterHandler {
+    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
     fn on_client_application_params(
         &mut self,
         client_params: ApplicationParameters,
         server_params: &mut alloc::vec::Vec<u8>,
     ) -> Option<Result<(), crate::transport::Error>>;
-    fn on_tls_exporter_ready(&self, session: &impl TlsSession) -> Option<Box<dyn Any + Send>>;
 }
 
 // Most people don't need the TlsSession so we ignore these callbacks by default
 impl ExporterHandler for () {
+    fn on_tls_exporter_ready(&self, _session: &impl TlsSession) -> Option<Box<dyn Any + Send>> {
+        None
+    }
+
     fn on_client_application_params(
         &mut self,
         _client_params: ApplicationParameters,
         _server_params: &mut alloc::vec::Vec<u8>,
     ) -> Option<Result<(), crate::transport::Error>> {
-        None
-    }
-    fn on_tls_exporter_ready(&self, _session: &impl TlsSession) -> Option<Box<dyn Any + Send>> {
         None
     }
 }
@@ -532,6 +533,7 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
                 Err(_) => self.error = Some(SLICE_ERROR),
             }
         }
+
         Ok(())
     }
 
