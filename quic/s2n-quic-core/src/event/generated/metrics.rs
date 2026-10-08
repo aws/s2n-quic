@@ -46,6 +46,7 @@ pub struct Context<R: Recorder> {
     rx_ack_range_dropped: u64,
     ack_range_received: u64,
     ack_range_sent: u64,
+    ack_delay: u64,
     packet_dropped: u64,
     packet_buffered: u64,
     packet_buffer_drained: u64,
@@ -122,6 +123,7 @@ where
             rx_ack_range_dropped: 0,
             ack_range_received: 0,
             ack_range_sent: 0,
+            ack_delay: 0,
             packet_dropped: 0,
             packet_buffered: 0,
             packet_buffer_drained: 0,
@@ -379,6 +381,17 @@ where
         context.ack_range_sent += 1;
         self.subscriber
             .on_ack_range_sent(&mut context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_ack_delay(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::AckDelay,
+    ) {
+        context.ack_delay += 1;
+        self.subscriber
+            .on_ack_delay(&mut context.recorder, meta, event);
     }
     #[inline]
     fn on_packet_dropped(
@@ -817,6 +830,8 @@ impl<R: Recorder> Drop for Context<R> {
             .increment_counter("ack_range_received", self.ack_range_received as _);
         self.recorder
             .increment_counter("ack_range_sent", self.ack_range_sent as _);
+        self.recorder
+            .increment_counter("ack_delay", self.ack_delay as _);
         self.recorder
             .increment_counter("packet_dropped", self.packet_dropped as _);
         self.recorder

@@ -64,6 +64,10 @@ mod id {
         ACK_RANGE_RECEIVED__PACKET,
         ACK_RANGE_SENT,
         ACK_RANGE_SENT__PACKET,
+        ACK_DELAY,
+        ACK_DELAY__PACKET,
+        ACK_DELAY__DELAY,
+        ACK_DELAY__DELAY__CONN,
         PACKET_DROPPED,
         PACKET_DROPPED__REASON,
         PACKET_BUFFERED,
@@ -264,6 +268,10 @@ mod id {
     pub const ACK_RANGE_RECEIVED__PACKET: usize = InfoId::ACK_RANGE_RECEIVED__PACKET as usize;
     pub const ACK_RANGE_SENT: usize = InfoId::ACK_RANGE_SENT as usize;
     pub const ACK_RANGE_SENT__PACKET: usize = InfoId::ACK_RANGE_SENT__PACKET as usize;
+    pub const ACK_DELAY: usize = InfoId::ACK_DELAY as usize;
+    pub const ACK_DELAY__PACKET: usize = InfoId::ACK_DELAY__PACKET as usize;
+    pub const ACK_DELAY__DELAY: usize = InfoId::ACK_DELAY__DELAY as usize;
+    pub const ACK_DELAY__DELAY__CONN: usize = InfoId::ACK_DELAY__DELAY__CONN as usize;
     pub const PACKET_DROPPED: usize = InfoId::PACKET_DROPPED as usize;
     pub const PACKET_DROPPED__REASON: usize = InfoId::PACKET_DROPPED__REASON as usize;
     pub const PACKET_BUFFERED: usize = InfoId::PACKET_BUFFERED as usize;
@@ -477,6 +485,7 @@ mod id {
         COUNTERS_RX_ACK_RANGE_DROPPED,
         COUNTERS_ACK_RANGE_RECEIVED,
         COUNTERS_ACK_RANGE_SENT,
+        COUNTERS_ACK_DELAY,
         COUNTERS_PACKET_DROPPED,
         COUNTERS_PACKET_BUFFERED,
         COUNTERS_PACKET_BUFFERED__BYTES__TOTAL,
@@ -578,6 +587,7 @@ mod id {
         Counters::COUNTERS_RX_ACK_RANGE_DROPPED as usize;
     pub const COUNTERS_ACK_RANGE_RECEIVED: usize = Counters::COUNTERS_ACK_RANGE_RECEIVED as usize;
     pub const COUNTERS_ACK_RANGE_SENT: usize = Counters::COUNTERS_ACK_RANGE_SENT as usize;
+    pub const COUNTERS_ACK_DELAY: usize = Counters::COUNTERS_ACK_DELAY as usize;
     pub const COUNTERS_PACKET_DROPPED: usize = Counters::COUNTERS_PACKET_DROPPED as usize;
     pub const COUNTERS_PACKET_BUFFERED: usize = Counters::COUNTERS_PACKET_BUFFERED as usize;
     pub const COUNTERS_PACKET_BUFFERED__BYTES__TOTAL: usize =
@@ -717,6 +727,7 @@ mod id {
         NOMINAL_COUNTERS_CONGESTION__SOURCE,
         NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET,
         NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET,
+        NOMINAL_COUNTERS_ACK_DELAY__PACKET,
         NOMINAL_COUNTERS_PACKET_DROPPED__REASON,
         NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE,
         NOMINAL_COUNTERS_PACKET_BUFFER_DRAINED__PACKET_TYPE,
@@ -764,6 +775,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ACK_RANGE_RECEIVED__PACKET as usize;
     pub const NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET: usize =
         NominalCounters::NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET as usize;
+    pub const NOMINAL_COUNTERS_ACK_DELAY__PACKET: usize =
+        NominalCounters::NOMINAL_COUNTERS_ACK_DELAY__PACKET as usize;
     pub const NOMINAL_COUNTERS_PACKET_DROPPED__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_PACKET_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_PACKET_BUFFERED__PACKET_TYPE: usize =
@@ -822,6 +835,7 @@ mod id {
         MEASURES_RECOVERY_METRICS__PTO_COUNT,
         MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW,
         MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT,
+        MEASURES_ACK_DELAY__DELAY__CONN,
         MEASURES_PACKET_BUFFERED__BYTES,
         MEASURES_PACKET_BUFFERED__BUFFER_LEN,
         MEASURES_PACKET_BUFFER_DRAINED__BYTES,
@@ -875,6 +889,8 @@ mod id {
         Measures::MEASURES_RECOVERY_METRICS__CONGESTION_WINDOW as usize;
     pub const MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT: usize =
         Measures::MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT as usize;
+    pub const MEASURES_ACK_DELAY__DELAY__CONN: usize =
+        Measures::MEASURES_ACK_DELAY__DELAY__CONN as usize;
     pub const MEASURES_PACKET_BUFFERED__BYTES: usize =
         Measures::MEASURES_PACKET_BUFFERED__BYTES as usize;
     pub const MEASURES_PACKET_BUFFERED__BUFFER_LEN: usize =
@@ -939,6 +955,7 @@ mod id {
     #[allow(non_camel_case_types)]
     #[allow(clippy::upper_case_acronyms)]
     enum Timers {
+        TIMERS_ACK_DELAY__DELAY,
         TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION,
         TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY,
         TIMERS_KEY_SPACE_DISCARDED__HANDSHAKE__LATENCY,
@@ -956,6 +973,7 @@ mod id {
         TIMERS_CONNECTION_CLOSED__LATENCY,
         TIMERS_PLATFORM_EVENT_LOOP_SLEEP__PROCESSING_DURATION,
     }
+    pub const TIMERS_ACK_DELAY__DELAY: usize = Timers::TIMERS_ACK_DELAY__DELAY as usize;
     pub const TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION: usize =
         Timers::TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION as usize;
     pub const TIMERS_KEY_SPACE_DISCARDED__INITIAL__LATENCY: usize =
@@ -996,7 +1014,7 @@ mod id {
     pub const NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY: usize =
         NominalTimers::NOMINAL_TIMERS_SLOW_START_EXITED__LATENCY as usize;
 }
-static INFO: &[Info; 189usize] = &[
+static INFO: &[Info; 193usize] = &[
     info::Builder {
         id: id::APPLICATION_PROTOCOL_INFORMATION,
         name: Str::new("application_protocol_information\0"),
@@ -1277,6 +1295,30 @@ static INFO: &[Info; 189usize] = &[
         id: id::ACK_RANGE_SENT__PACKET,
         name: Str::new("ack_range_sent.packet\0"),
         units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACK_DELAY,
+        name: Str::new("ack_delay\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACK_DELAY__PACKET,
+        name: Str::new("ack_delay.packet\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACK_DELAY__DELAY,
+        name: Str::new("ack_delay.delay\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACK_DELAY__DELAY__CONN,
+        name: Str::new("ack_delay.delay.conn\0"),
+        units: Units::Duration,
     }
     .build(),
     info::Builder {
@@ -2136,22 +2178,23 @@ static INFO: &[Info; 189usize] = &[
 #[allow(dead_code)]
 pub struct ConnectionContext {
     start_time: crate::event::Timestamp,
+    ctr_ack_delay_delay_conn: u64,
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 92usize]>,
+    counters: Box<[R::Counter; 93usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 3usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 34usize]>,
+    nominal_counter_offsets: Box<[usize; 35usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 43usize]>,
+    measures: Box<[R::Measure; 44usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 16usize]>,
+    timers: Box<[R::Timer; 17usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -2174,13 +2217,13 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(92usize);
+        let mut counters = Vec::with_capacity(93usize);
         let mut bool_counters = Vec::with_capacity(3usize);
-        let mut nominal_counters = Vec::with_capacity(34usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(34usize);
-        let mut measures = Vec::with_capacity(43usize);
+        let mut nominal_counters = Vec::with_capacity(35usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(35usize);
+        let mut measures = Vec::with_capacity(44usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(16usize);
+        let mut timers = Vec::with_capacity(17usize);
         let mut nominal_timers = Vec::with_capacity(1usize);
         let mut nominal_timer_offsets = Vec::with_capacity(1usize);
         counters.push(registry.register_counter(&INFO[id::APPLICATION_PROTOCOL_INFORMATION]));
@@ -2205,6 +2248,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::RX_ACK_RANGE_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACK_RANGE_RECEIVED]));
         counters.push(registry.register_counter(&INFO[id::ACK_RANGE_SENT]));
+        counters.push(registry.register_counter(&INFO[id::ACK_DELAY]));
         counters.push(registry.register_counter(&INFO[id::PACKET_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::PACKET_BUFFERED]));
         counters.push(registry.register_counter(&INFO[id::PACKET_BUFFERED__BYTES__TOTAL]));
@@ -2432,6 +2476,18 @@ impl<R: Registry> Subscriber<R> {
                     nominal_counters.push(
                         registry
                             .register_nominal_counter(&INFO[id::ACK_RANGE_SENT__PACKET], variant),
+                    );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <PacketHeader as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(
+                        registry.register_nominal_counter(&INFO[id::ACK_DELAY__PACKET], variant),
                     );
                     count += 1;
                 }
@@ -2738,6 +2794,7 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__PTO_COUNT]));
         measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__CONGESTION_WINDOW]));
         measures.push(registry.register_measure(&INFO[id::RECOVERY_METRICS__BYTES_IN_FLIGHT]));
+        measures.push(registry.register_measure(&INFO[id::ACK_DELAY__DELAY__CONN]));
         measures.push(registry.register_measure(&INFO[id::PACKET_BUFFERED__BYTES]));
         measures.push(registry.register_measure(&INFO[id::PACKET_BUFFERED__BUFFER_LEN]));
         measures.push(registry.register_measure(&INFO[id::PACKET_BUFFER_DRAINED__BYTES]));
@@ -2772,6 +2829,7 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__SYSCALLS__BLOCKED]));
         measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__ERRORS]));
         measures.push(registry.register_measure(&INFO[id::PLATFORM_RX__ERRORS__DROPPED]));
+        timers.push(registry.register_timer(&INFO[id::ACK_DELAY__DELAY]));
         timers.push(
             registry.register_timer(&INFO[id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION]),
         );
@@ -2882,6 +2940,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_RX_ACK_RANGE_DROPPED => (&INFO[id::RX_ACK_RANGE_DROPPED], entry),
                 id::COUNTERS_ACK_RANGE_RECEIVED => (&INFO[id::ACK_RANGE_RECEIVED], entry),
                 id::COUNTERS_ACK_RANGE_SENT => (&INFO[id::ACK_RANGE_SENT], entry),
+                id::COUNTERS_ACK_DELAY => (&INFO[id::ACK_DELAY], entry),
                 id::COUNTERS_PACKET_DROPPED => (&INFO[id::PACKET_DROPPED], entry),
                 id::COUNTERS_PACKET_BUFFERED => (&INFO[id::PACKET_BUFFERED], entry),
                 id::COUNTERS_PACKET_BUFFERED__BYTES__TOTAL => {
@@ -3143,6 +3202,12 @@ impl<R: Registry> Subscriber<R> {
                     let entries = &self.nominal_counters[offset..offset + variants.len()];
                     (&INFO[id::ACK_RANGE_SENT__PACKET], entries, variants)
                 }
+                id::NOMINAL_COUNTERS_ACK_DELAY__PACKET => {
+                    let offset = *entry;
+                    let variants = <PacketHeader as AsVariant>::VARIANTS;
+                    let entries = &self.nominal_counters[offset..offset + variants.len()];
+                    (&INFO[id::ACK_DELAY__PACKET], entries, variants)
+                }
                 id::NOMINAL_COUNTERS_PACKET_DROPPED__REASON => {
                     let offset = *entry;
                     let variants = <PacketDropReason as AsVariant>::VARIANTS;
@@ -3344,6 +3409,7 @@ impl<R: Registry> Subscriber<R> {
                 id::MEASURES_RECOVERY_METRICS__BYTES_IN_FLIGHT => {
                     (&INFO[id::RECOVERY_METRICS__BYTES_IN_FLIGHT], entry)
                 }
+                id::MEASURES_ACK_DELAY__DELAY__CONN => (&INFO[id::ACK_DELAY__DELAY__CONN], entry),
                 id::MEASURES_PACKET_BUFFERED__BYTES => (&INFO[id::PACKET_BUFFERED__BYTES], entry),
                 id::MEASURES_PACKET_BUFFERED__BUFFER_LEN => {
                     (&INFO[id::PACKET_BUFFERED__BUFFER_LEN], entry)
@@ -3449,6 +3515,7 @@ impl<R: Registry> Subscriber<R> {
             .iter()
             .enumerate()
             .map(|(idx, entry)| match idx {
+                id::TIMERS_ACK_DELAY__DELAY => (&INFO[id::ACK_DELAY__DELAY], entry),
                 id::TIMERS_PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION => (
                     &INFO[id::PACKET_BUFFER_DRAINED__OLDEST_BUFFERED_DURATION],
                     entry,
@@ -3538,6 +3605,7 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
     ) -> Self::ConnectionContext {
         Self::ConnectionContext {
             start_time: meta.timestamp,
+            ctr_ack_delay_delay_conn: 0,
         }
     }
     #[inline]
@@ -3974,6 +4042,31 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::NOMINAL_COUNTERS_ACK_RANGE_SENT__PACKET,
             &event.packet_header,
         );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_ack_delay(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::AckDelay,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(id::ACK_DELAY, id::COUNTERS_ACK_DELAY, 1usize);
+        self.count_nominal(
+            id::ACK_DELAY__PACKET,
+            id::NOMINAL_COUNTERS_ACK_DELAY__PACKET,
+            &event.packet_header,
+        );
+        self.time(
+            id::ACK_DELAY__DELAY,
+            id::TIMERS_ACK_DELAY__DELAY,
+            event.delay,
+        );
+        context.ctr_ack_delay_delay_conn += event.delay.as_u64();
         let _ = context;
         let _ = meta;
         let _ = event;
@@ -4925,6 +5018,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::CONNECTION_CLOSED__ERROR,
             id::NOMINAL_COUNTERS_CONNECTION_CLOSED__ERROR,
             &event.error,
+        );
+        self.measure(
+            id::ACK_DELAY__DELAY__CONN,
+            id::MEASURES_ACK_DELAY__DELAY__CONN,
+            core::time::Duration::from_micros(context.ctr_ack_delay_delay_conn),
         );
         let _ = context;
         let _ = meta;

@@ -226,6 +226,19 @@ struct AckRangeSent {
     ack_range: RangeInclusive<u64>,
 }
 
+#[event("recovery:ack_delay")]
+/// An ACK was sent after being pending for the given duration.
+struct AckDelay {
+    #[nominal_counter("packet")]
+    packet_header: PacketHeader,
+    path_id: u64,
+    /// Time from when the first packet acknowledged by this ACK made an ACK pending until the ACK
+    /// was sent.
+    #[timer("delay")]
+    #[measure_counter("delay.conn", Duration)]
+    delay: core::time::Duration,
+}
+
 #[event("transport:packet_dropped")]
 /// Packet was dropped with the given reason
 struct PacketDropped<'a> {
