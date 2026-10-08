@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{client, server};
-use crate::path::secret;
+use super::{client, probe, server};
+use crate::path::secret::{self, map::HandshakeProbeOutcome};
 use rand::RngExt;
 use s2n_quic::{
     provider::{
@@ -20,12 +20,16 @@ use std::{
     io,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU16, Ordering},
+        atomic::{AtomicU16, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::Duration,
 };
-use tokio::{runtime::Runtime, sync::Semaphore, time::Instant as TokioInstant};
+use tokio::{
+    runtime::Runtime,
+    sync::{Notify, OwnedSemaphorePermit, Semaphore, SemaphorePermit},
+    time::Instant as TokioInstant,
+};
 
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
@@ -143,6 +147,7 @@ impl Server {
             .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
             .build()?;
+        let io = probe::Provider::new(io);
 
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
@@ -396,6 +401,33 @@ struct Entry {
 struct HandshakeQueueInner {
     table: hashbrown::HashTable<Arc<Entry>>,
 }
+
+struct InflightPermit {
+    permit: Option<OwnedSemaphorePermit>,
+    capacity_changed: Arc<Notify>,
+}
+
+impl Drop for InflightPermit {
+    fn drop(&mut self) {
+        drop(self.permit.take());
+        self.capacity_changed.notify_waiters();
+    }
+}
+
+struct StartPermit<'a> {
+    permit: Option<SemaphorePermit<'a>>,
+    capacity_changed: Arc<Notify>,
+}
+
+impl Drop for StartPermit<'_> {
+    fn drop(&mut self) {
+        drop(self.permit.take());
+        self.capacity_changed.notify_waiters();
+    }
+}
+
+type HandshakeCapacity<'a> = (InflightPermit, StartPermit<'a>);
+
 pub(crate) struct HandshakeQueueConfig {
     /// Upper bound on the jitter delay after a successful handshake before allowing
     /// another handshake with the same peer.
@@ -414,6 +446,10 @@ pub(crate) struct HandshakeQueueConfig {
     /// Keeping this bounded helps avoid unbounded work ongoing in s2n-quic (which
     /// implies unbounded packet transmit/receive work).
     pub(crate) inflight_limit: usize,
+    /// Optional timeout for a pre-handshake dcQUIC liveness probe.
+    pub(crate) probe_timeout: Option<Duration>,
+    /// Maximum number of concurrent liveness probes.
+    pub(crate) probe_limit: usize,
     pub(crate) await_dedup_removal: bool,
 }
 
@@ -424,31 +460,239 @@ impl Default for HandshakeQueueConfig {
             error_jitter: Duration::from_secs(120),
             start_limit: 5,
             inflight_limit: 750,
+            probe_timeout: None,
+            probe_limit: 0,
             await_dedup_removal: false,
         }
     }
 }
 
+/// One deduplicated handshake per peer moves through these states:
+///
+/// 1. Wait for capacity. With probing enabled, the first waiter waits for handshake capacity
+///    directly. Once there is contention, waiters may probe; a probe holds only a
+///    `limiter_probe` permit while sending and waiting for a response. Newly available handshake
+///    capacity can interrupt a probe.
+/// 2. Acquire `limiter_inflight`, then `limiter_start`. Acquiring the second may wait while the
+///    first is held. Both permits are held during connection setup and handshake confirmation.
+/// 3. After handshake confirmation, release `limiter_start`. Hold `limiter_inflight` until MTU
+///    confirmation or its deadline, then release it before the deduplication delay.
+///
+/// Failed or cancelled attempts release any held permits through their drop guards. Permit drops
+/// notify probing waiters to retry capacity; waiter-count changes notify a lone waiter to start
+/// probing when contention appears. Those notifications are registered before checking capacity
+/// and waiter count so a transition between a check and a wait cannot be missed.
 struct HandshakeQueue {
     inner: Mutex<HandshakeQueueInner>,
     limiter_start: Semaphore,
     limiter_inflight: Arc<Semaphore>,
+    limiter_probe: Semaphore,
+    capacity_changed: Arc<Notify>,
+    probe_waiters: AtomicUsize,
+    probe_waiters_changed: Notify,
+    #[cfg(test)]
+    probe_observer:
+        Mutex<Option<tokio::sync::mpsc::UnboundedSender<(SocketAddr, HandshakeProbeOutcome)>>>,
     success_jitter: Duration,
     error_jitter: Duration,
+    probe_timeout: Option<Duration>,
     await_dedup_removal: bool,
     hasher: std::collections::hash_map::RandomState,
 }
 
 impl HandshakeQueue {
     fn new(config: HandshakeQueueConfig) -> Self {
+        let probe_timeout = if config.probe_limit == 0 {
+            None
+        } else {
+            config.probe_timeout
+        };
         HandshakeQueue {
             limiter_start: Semaphore::new(config.start_limit),
             limiter_inflight: Arc::new(Semaphore::new(config.inflight_limit)),
+            limiter_probe: Semaphore::new(config.probe_limit),
+            capacity_changed: Arc::new(Notify::new()),
+            probe_waiters: AtomicUsize::new(0),
+            probe_waiters_changed: Notify::new(),
+            #[cfg(test)]
+            probe_observer: Mutex::new(None),
             success_jitter: config.success_jitter,
             inner: Default::default(),
             hasher: Default::default(),
             error_jitter: config.error_jitter,
+            probe_timeout,
             await_dedup_removal: config.await_dedup_removal,
+        }
+    }
+
+    fn try_acquire_capacity(&self) -> Option<HandshakeCapacity<'_>> {
+        // Do not wrap or notify for a partial acquisition: those permits were already available,
+        // so dropping one after the other limiter rejects us is not a new capacity transition.
+        let inflight = self.limiter_inflight.clone().try_acquire_owned().ok()?;
+        let start = match self.limiter_start.try_acquire() {
+            Ok(start) => start,
+            Err(_) => {
+                drop(inflight);
+                return None;
+            }
+        };
+        let inflight = InflightPermit {
+            permit: Some(inflight),
+            capacity_changed: self.capacity_changed.clone(),
+        };
+        let start = StartPermit {
+            permit: Some(start),
+            capacity_changed: self.capacity_changed.clone(),
+        };
+        Some((inflight, start))
+    }
+
+    async fn acquire_capacity(&self) -> Option<HandshakeCapacity<'_>> {
+        let inflight = InflightPermit {
+            permit: Some(self.limiter_inflight.clone().acquire_owned().await.ok()?),
+            capacity_changed: self.capacity_changed.clone(),
+        };
+        let start = StartPermit {
+            permit: Some(self.limiter_start.acquire().await.ok()?),
+            capacity_changed: self.capacity_changed.clone(),
+        };
+        Some((inflight, start))
+    }
+
+    fn register_probe_waiter(self: &Arc<Self>) -> (ProbeWaiterGuard, usize) {
+        let waiter_count = self.probe_waiters.fetch_add(1, Ordering::AcqRel) + 1;
+        self.probe_waiters_changed.notify_waiters();
+        (
+            ProbeWaiterGuard {
+                queue: self.clone(),
+            },
+            waiter_count,
+        )
+    }
+
+    fn on_probe_complete(
+        &self,
+        map: &secret::Map,
+        peer: SocketAddr,
+        latency: Duration,
+        outcome: HandshakeProbeOutcome,
+    ) {
+        map.on_dc_handshake_probe(&peer, latency, outcome);
+        #[cfg(test)]
+        if let Some(observer) = self
+            .probe_observer
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+        {
+            let _ = observer.send((peer, outcome));
+        }
+    }
+
+    /// Acquires handshake capacity while using probes only when multiple pending handshakes need
+    /// to be ranked. Newly available capacity takes precedence over unfinished probes so the
+    /// endpoint does not sit idle; completed probes queue for capacity in result order.
+    async fn acquire_prioritized_capacity<'a>(
+        self: &'a Arc<Self>,
+        map: &secret::Map,
+        peer: SocketAddr,
+        timeout: Duration,
+    ) -> Option<(HandshakeCapacity<'a>, Duration)> {
+        let queue_start = std::time::Instant::now();
+        let (waiter, waiter_count) = self.register_probe_waiter();
+        let mut can_try_capacity = waiter_count == 1;
+        let mut probe_started = false;
+        let probe = async {
+            let Ok(permit_probe) = self.limiter_probe.acquire().await else {
+                // A closed limiter must not allow a probe without a permit.
+                return (Duration::ZERO, HandshakeProbeOutcome::Error);
+            };
+            let start = std::time::Instant::now();
+            let outcome = match Box::pin(probe::probe(peer, timeout)).await {
+                Ok(probe::Result::Responsive) => {
+                    tracing::debug!(
+                        %peer,
+                        ?timeout,
+                        "handshake liveness probe received response"
+                    );
+                    HandshakeProbeOutcome::Responsive
+                }
+                Ok(probe::Result::Unresponsive) => {
+                    tracing::debug!(
+                        %peer,
+                        ?timeout,
+                        "handshake liveness probe received no response; proceeding"
+                    );
+                    HandshakeProbeOutcome::Unresponsive
+                }
+                Err(error) => {
+                    // The probe is an optimization. Local resource or socket setup failures
+                    // should not prevent an otherwise valid handshake from proceeding.
+                    tracing::warn!(
+                        %peer,
+                        %error,
+                        "handshake liveness probe failed; proceeding without probe result"
+                    );
+                    HandshakeProbeOutcome::Error
+                }
+            };
+            let latency = start.elapsed();
+            drop(permit_probe);
+            (latency, outcome)
+        };
+        tokio::pin!(probe);
+
+        loop {
+            // Register for notifications before checking state so concurrent waiter and
+            // capacity transitions cannot be missed.
+            let waiters_changed = self.probe_waiters_changed.notified();
+            let capacity_changed = self.capacity_changed.notified();
+            tokio::pin!(waiters_changed);
+            tokio::pin!(capacity_changed);
+            waiters_changed.as_mut().enable();
+            capacity_changed.as_mut().enable();
+
+            if can_try_capacity {
+                if let Some(capacity) = self.try_acquire_capacity() {
+                    drop(waiter);
+                    return Some((capacity, queue_start.elapsed()));
+                }
+            }
+
+            if self.probe_waiters.load(Ordering::Acquire) == 1 && !probe_started {
+                let capacity = self.acquire_capacity();
+                tokio::pin!(capacity);
+                tokio::select! {
+                    biased;
+                    capacity = &mut capacity => {
+                        drop(waiter);
+                        return capacity.map(|capacity| (capacity, queue_start.elapsed()));
+                    }
+                    _ = &mut waiters_changed => {
+                        can_try_capacity = true;
+                    }
+                }
+            } else {
+                probe_started = true;
+                tokio::select! {
+                    biased;
+                    (latency, outcome) = &mut probe => {
+                        self.on_probe_complete(map, peer, latency, outcome);
+                        let capacity = self
+                            .acquire_capacity()
+                            .await
+                            .map(|capacity| (capacity, queue_start.elapsed()));
+                        drop(waiter);
+                        return capacity;
+                    }
+                    _ = &mut capacity_changed => {
+                        can_try_capacity = true;
+                    }
+                    _ = &mut waiters_changed => {
+                        can_try_capacity = true;
+                    }
+                }
+            }
         }
     }
 
@@ -524,11 +768,18 @@ impl HandshakeQueue {
 
         let handshake = async {
             // We've de-duplicated above already so the handshaker is unique per SocketAddr, so
-            // this permit will only be used for the current handshake.
-            let start = std::time::Instant::now();
-            let permit_inflight = self.limiter_inflight.clone().acquire_owned().await;
-            let permit_start = self.limiter_start.acquire().await;
-            let limiter_duration = start.elapsed();
+            // these permits will only be used for the current handshake.
+            let capacity = if let Some(timeout) = self.probe_timeout {
+                self.acquire_prioritized_capacity(map, peer, timeout).await
+            } else {
+                let start = std::time::Instant::now();
+                self.acquire_capacity()
+                    .await
+                    .map(|capacity| (capacity, start.elapsed()))
+            };
+            let Some(((permit_inflight, permit_start), limiter_duration)) = capacity else {
+                return Err(io::Error::other("handshake concurrency limiter closed"));
+            };
 
             let mut attempt =
                 client.connect(s2n_quic::client::Connect::new(peer).with_server_name(server_name));
@@ -700,6 +951,17 @@ impl HandshakeQueue {
     }
 }
 
+struct ProbeWaiterGuard {
+    queue: Arc<HandshakeQueue>,
+}
+
+impl Drop for ProbeWaiterGuard {
+    fn drop(&mut self) {
+        self.queue.probe_waiters.fetch_sub(1, Ordering::AcqRel);
+        self.queue.probe_waiters_changed.notify_waiters();
+    }
+}
+
 // This is only created if we've already logged a handshake error.
 #[derive(Debug)]
 pub struct HandshakeFailed(io::Error);
@@ -784,6 +1046,19 @@ mod tests {
         }
     }
 
+    struct CountingCloseConnectionsLimiter(Arc<AtomicUsize>);
+
+    impl Limiter for CountingCloseConnectionsLimiter {
+        fn on_connection_attempt(&mut self, _info: &ConnectionAttempt) -> Outcome {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Outcome::close()
+        }
+    }
+
+    fn is_probe_request(packet: &[u8]) -> bool {
+        probe::ProbeRequest::from_bytes(packet).is_some()
+    }
+
     /// A test event subscriber that records the maximum MTU reported by `MtuUpdated` events.
     #[derive(Clone, Default)]
     struct MtuRecorder {
@@ -822,6 +1097,23 @@ mod tests {
         async fn new<L, Event>(
             endpoint_limits: Option<L>,
             server_builder: server::Builder<Event>,
+        ) -> Self
+        where
+            L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
+            Event: s2n_quic::provider::event::Subscriber + Send + Sync + 'static,
+        {
+            Self::new_with_client_builder(
+                endpoint_limits,
+                server_builder,
+                crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+            )
+            .await
+        }
+
+        async fn new_with_client_builder<L, Event>(
+            endpoint_limits: Option<L>,
+            server_builder: server::Builder<Event>,
+            client_builder: crate::psk::client::Builder,
         ) -> Self
         where
             L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
@@ -876,7 +1168,7 @@ mod tests {
                 client_map,
                 tls.start_client().unwrap(),
                 subscriber,
-                crate::psk::client::Builder::default().with_success_jitter(Duration::ZERO),
+                client_builder,
             )
             .unwrap();
 
@@ -888,6 +1180,553 @@ mod tests {
                 _server_guard: server_guard,
             }
         }
+    }
+
+    #[tokio::test]
+    async fn handshake_server_answers_probe_without_connection_attempt() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let setup = TestSetup::new(
+            Some(CountingCloseConnectionsLimiter(attempts.clone())),
+            crate::psk::server::Builder::default(),
+        )
+        .await;
+
+        assert_eq!(
+            probe::probe(setup.server_addr, Duration::from_secs(1))
+                .await
+                .unwrap(),
+            probe::Result::Responsive
+        );
+        assert_eq!(attempts.load(Ordering::Relaxed), 0);
+    }
+
+    #[tokio::test]
+    async fn handshake_server_does_not_answer_malformed_probe() {
+        let setup = TestSetup::new::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+        )
+        .await;
+        let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        socket.connect(setup.server_addr).await.unwrap();
+
+        let mut request = *probe::ProbeRequest::new().as_bytes();
+        request[10] = 1;
+        socket.send(&request).await.unwrap();
+
+        let mut response = [0u8; probe::RECEIVE_BUFFER_SIZE];
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), socket.recv(&mut response))
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_probe_prioritizes_responsive_peers() {
+        let probe_timeout = Duration::from_secs(2);
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_start_limit(1)
+            .with_handshake_inflight_limit(1)
+            .with_handshake_probe_timeout(probe_timeout)
+            .with_handshake_probe_limit(2);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+        let server_name: s2n_quic::server::Name = "localhost".into();
+        let capacity = setup.client.queue.try_acquire_capacity().unwrap();
+        let (probe_observer, mut probe_results) = tokio::sync::mpsc::unbounded_channel();
+        *setup
+            .client
+            .queue
+            .probe_observer
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(probe_observer);
+
+        // Hold a UDP port open without servicing it. This simulates a stale fleet entry without
+        // generating an immediate ICMP port-unreachable response.
+        let unresponsive = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let unresponsive_addr = unresponsive.local_addr().unwrap();
+        let (probe_received_tx, probe_received_rx) = tokio::sync::oneshot::channel();
+        let (handshake_received_tx, handshake_received_rx) = tokio::sync::oneshot::channel();
+        let unresponsive_sink = tokio::spawn(async move {
+            let mut packet = [0u8; 1200];
+            let (len, _) = unresponsive.recv_from(&mut packet).await.unwrap();
+            assert!(is_probe_request(&packet[..len]));
+            probe_received_tx.send(()).unwrap();
+
+            let (len, _) = unresponsive.recv_from(&mut packet).await.unwrap();
+            assert!(!is_probe_request(&packet[..len]));
+            handshake_received_tx.send(()).unwrap();
+        });
+
+        let responsive = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let responsive_addr = responsive.local_addr().unwrap();
+        let (responsive_handshake_tx, responsive_handshake_rx) = tokio::sync::oneshot::channel();
+        let responsive_sink = tokio::spawn(async move {
+            let mut packet = [0u8; 1200];
+            let (len, peer) = responsive.recv_from(&mut packet).await.unwrap();
+            let request = probe::ProbeRequest::from_bytes(&packet[..len]).unwrap();
+            responsive
+                .send_to(request.response().as_bytes(), peer)
+                .await
+                .unwrap();
+
+            let (len, _) = responsive.recv_from(&mut packet).await.unwrap();
+            assert!(!is_probe_request(&packet[..len]));
+            responsive_handshake_tx.send(()).unwrap();
+        });
+
+        let client = setup.client.clone();
+        let dead_server_name = server_name.clone();
+        let dead_handshake = tokio::spawn(async move {
+            client
+                .connect(unresponsive_addr, HandshakeReason::User, dead_server_name)
+                .await
+        });
+
+        // A lone contended handshake does not probe. Wait until the stale peer has registered,
+        // then add a second waiter so the queue has peers to rank.
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while setup.client.queue.probe_waiters.load(Ordering::Acquire) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("stale peer did not enter the contended queue");
+        let client = setup.client.clone();
+        let live_handshake = tokio::spawn(async move {
+            client
+                .connect(responsive_addr, HandshakeReason::User, server_name)
+                .await
+        });
+        probe_received_rx.await.unwrap();
+
+        // Wait until the responsive probe result has been consumed. The stale peer continues
+        // probing until its deadline.
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let (peer, outcome) = probe_results.recv().await.unwrap();
+                if peer == responsive_addr {
+                    assert_eq!(outcome, HandshakeProbeOutcome::Responsive);
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("responsive probe did not complete");
+
+        // Keep capacity occupied until the silent peer's probe window ends. Both peers then enter
+        // the handshake queue in probe-completion order.
+        tokio::time::timeout(probe_timeout * 2, async {
+            loop {
+                let (peer, outcome) = probe_results.recv().await.unwrap();
+                if peer == unresponsive_addr {
+                    assert_eq!(outcome, HandshakeProbeOutcome::Unresponsive);
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("silent peer probe did not complete");
+
+        // Releasing handshake capacity lets the responsive peer overtake the stale peer.
+        drop(capacity);
+        tokio::time::timeout(Duration::from_secs(1), responsive_handshake_rx)
+            .await
+            .expect("responsive peer was blocked behind an unresponsive peer")
+            .unwrap();
+
+        // The responsive test peer does not implement a real handshake, so cancel that attempt
+        // after observing its Initial to release the single in-flight handshake permit.
+        live_handshake.abort();
+        let _ = live_handshake.await;
+
+        // A silent peer is delayed, not rejected: once the probe completes it starts its normal
+        // handshake and sends a second, supported-version packet.
+        tokio::time::timeout(Duration::from_secs(1), handshake_received_rx)
+            .await
+            .expect("silent peer did not proceed after its probe timeout")
+            .unwrap();
+
+        dead_handshake.abort();
+        let _ = dead_handshake.await;
+        unresponsive_sink.await.unwrap();
+        responsive_sink.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn preflight_probe_is_skipped_when_handshake_capacity_is_available() {
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_inflight_limit(1)
+            .with_handshake_start_limit(1)
+            .with_handshake_probe_timeout(Duration::from_secs(1))
+            .with_handshake_probe_limit(1);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+        let sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let sink_addr = sink.local_addr().unwrap();
+        let client = setup.client.clone();
+        let handshake = tokio::spawn(async move {
+            client
+                .connect(sink_addr, HandshakeReason::User, "localhost".into())
+                .await
+        });
+
+        let mut packet = [0u8; 1200];
+        let (len, _) = tokio::time::timeout(Duration::from_secs(1), sink.recv_from(&mut packet))
+            .await
+            .expect("handshake packet was not sent")
+            .unwrap();
+        assert!(
+            !is_probe_request(&packet[..len]),
+            "uncontended handshake unexpectedly sent a liveness probe"
+        );
+
+        handshake.abort();
+        let _ = handshake.await;
+    }
+
+    #[tokio::test]
+    async fn lone_waiter_skips_probe_and_uses_new_capacity() {
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_inflight_limit(1)
+            .with_handshake_start_limit(1)
+            .with_handshake_probe_timeout(Duration::from_secs(5))
+            .with_handshake_probe_limit(1);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+        let capacity = setup.client.queue.try_acquire_capacity().unwrap();
+        let sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let sink_addr = sink.local_addr().unwrap();
+        let client = setup.client.clone();
+        let handshake = tokio::spawn(async move {
+            client
+                .connect(sink_addr, HandshakeReason::User, "localhost".into())
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while setup.client.queue.probe_waiters.load(Ordering::Acquire) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("handshake did not enter the contended queue");
+        assert_eq!(
+            setup.client.queue.limiter_probe.available_permits(),
+            1,
+            "a lone waiter unexpectedly started a liveness probe"
+        );
+
+        drop(capacity);
+        let mut packet = [0u8; 1200];
+        let (len, _) = tokio::time::timeout(Duration::from_secs(1), sink.recv_from(&mut packet))
+            .await
+            .expect("lone waiter did not use newly available handshake capacity")
+            .unwrap();
+        assert!(!is_probe_request(&packet[..len]));
+
+        handshake.abort();
+        let _ = handshake.await;
+    }
+
+    #[tokio::test]
+    async fn available_capacity_preempts_in_progress_probes() {
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_inflight_limit(1)
+            .with_handshake_start_limit(1)
+            .with_handshake_probe_timeout(Duration::from_secs(5))
+            .with_handshake_probe_limit(2);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+        let capacity = setup.client.queue.try_acquire_capacity().unwrap();
+        let first_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let second_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let first_addr = first_sink.local_addr().unwrap();
+        let second_addr = second_sink.local_addr().unwrap();
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        let client = setup.client.clone();
+        let first_server_name = server_name.clone();
+        let first = tokio::spawn(async move {
+            client
+                .connect(first_addr, HandshakeReason::User, first_server_name)
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while setup.client.queue.probe_waiters.load(Ordering::Acquire) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first handshake did not enter the contended queue");
+
+        let client = setup.client.clone();
+        let second = tokio::spawn(async move {
+            client
+                .connect(second_addr, HandshakeReason::User, server_name)
+                .await
+        });
+
+        let mut first_packet = [0u8; 1200];
+        let mut second_packet = [0u8; 1200];
+        let (first_len, second_len) = tokio::time::timeout(Duration::from_secs(1), async {
+            let (first, second) = tokio::join!(
+                first_sink.recv_from(&mut first_packet),
+                second_sink.recv_from(&mut second_packet)
+            );
+            (first.unwrap().0, second.unwrap().0)
+        })
+        .await
+        .expect("both probes were not sent");
+        assert!(is_probe_request(&first_packet[..first_len]));
+        assert!(is_probe_request(&second_packet[..second_len]));
+
+        drop(capacity);
+        let mut first_handshake = [0u8; 1200];
+        let mut second_handshake = [0u8; 1200];
+        let (first_won, handshake_len) = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                result = first_sink.recv_from(&mut first_handshake) => {
+                    (true, result.unwrap().0)
+                }
+                result = second_sink.recv_from(&mut second_handshake) => {
+                    (false, result.unwrap().0)
+                }
+            }
+        })
+        .await
+        .expect("new handshake capacity remained idle while probes were in progress");
+        let packet = if first_won {
+            &first_handshake[..handshake_len]
+        } else {
+            &second_handshake[..handshake_len]
+        };
+        assert!(!is_probe_request(packet));
+
+        first.abort();
+        second.abort();
+        let _ = first.await;
+        let _ = second.await;
+    }
+
+    #[tokio::test]
+    async fn preflight_probe_respects_concurrency_limit() {
+        let probe_timeout = Duration::from_millis(200);
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_inflight_limit(1)
+            .with_handshake_probe_timeout(probe_timeout)
+            .with_handshake_probe_limit(1);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+        let capacity = setup.client.queue.try_acquire_capacity().unwrap();
+        let first_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let second_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let first_addr = first_sink.local_addr().unwrap();
+        let second_addr = second_sink.local_addr().unwrap();
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        let client = setup.client.clone();
+        let first_server_name = server_name.clone();
+        let first = tokio::spawn(async move {
+            client
+                .connect(first_addr, HandshakeReason::User, first_server_name)
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while setup.client.queue.probe_waiters.load(Ordering::Acquire) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first handshake did not enter the contended queue");
+
+        let client = setup.client.clone();
+        let second = tokio::spawn(async move {
+            client
+                .connect(second_addr, HandshakeReason::User, server_name)
+                .await
+        });
+
+        let mut first_packet = [0u8; 1200];
+        let mut second_packet = [0u8; 1200];
+        let first_probe_peer = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                result = first_sink.recv_from(&mut first_packet) => {
+                    result.unwrap();
+                    first_addr
+                }
+                result = second_sink.recv_from(&mut second_packet) => {
+                    result.unwrap();
+                    second_addr
+                }
+            }
+        })
+        .await
+        .expect("no probe was sent");
+
+        let blocked_sink = if first_probe_peer == first_addr {
+            &second_sink
+        } else {
+            &first_sink
+        };
+        let mut packet = [0u8; 1200];
+        assert!(
+            tokio::time::timeout(probe_timeout / 2, blocked_sink.recv_from(&mut packet))
+                .await
+                .is_err(),
+            "a second probe exceeded the configured concurrency limit"
+        );
+        tokio::time::timeout(probe_timeout * 2, blocked_sink.recv_from(&mut packet))
+            .await
+            .expect("the blocked probe did not start after the first probe window")
+            .unwrap();
+
+        first.abort();
+        second.abort();
+        let _ = first.await;
+        let _ = second.await;
+        drop(capacity);
+    }
+
+    #[tokio::test]
+    async fn closed_probe_limiter_skips_probes_and_allows_handshakes() {
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_inflight_limit(1)
+            .with_handshake_start_limit(1)
+            .with_handshake_probe_timeout(Duration::from_secs(5))
+            .with_handshake_probe_limit(1);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+        let capacity = setup.client.queue.try_acquire_capacity().unwrap();
+        setup.client.queue.limiter_probe.close();
+        let (probe_observer, mut probe_results) = tokio::sync::mpsc::unbounded_channel();
+        *setup
+            .client
+            .queue
+            .probe_observer
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = Some(probe_observer);
+
+        let first_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let second_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let first_addr = first_sink.local_addr().unwrap();
+        let second_addr = second_sink.local_addr().unwrap();
+        let server_name: s2n_quic::server::Name = "localhost".into();
+
+        let client = setup.client.clone();
+        let first_server_name = server_name.clone();
+        let first = tokio::spawn(async move {
+            client
+                .connect(first_addr, HandshakeReason::User, first_server_name)
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while setup.client.queue.probe_waiters.load(Ordering::Acquire) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first handshake did not enter the contended queue");
+
+        let client = setup.client.clone();
+        let second = tokio::spawn(async move {
+            client
+                .connect(second_addr, HandshakeReason::User, server_name)
+                .await
+        });
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            let mut peers = std::collections::HashSet::new();
+            for _ in 0..2 {
+                let (peer, outcome) = probe_results.recv().await.unwrap();
+                assert_eq!(outcome, HandshakeProbeOutcome::Error);
+                peers.insert(peer);
+            }
+            assert_eq!(peers.len(), 2);
+            assert!(peers.contains(&first_addr));
+            assert!(peers.contains(&second_addr));
+        })
+        .await
+        .expect("closed probe limiter did not resolve both probes");
+
+        let mut packet = [0u8; 1200];
+        assert!(first_sink.try_recv_from(&mut packet).is_err());
+        assert!(second_sink.try_recv_from(&mut packet).is_err());
+
+        drop(capacity);
+        let mut first_packet = [0u8; 1200];
+        let mut second_packet = [0u8; 1200];
+        let (first_won, len) = tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::select! {
+                result = first_sink.recv_from(&mut first_packet) => {
+                    (true, result.unwrap().0)
+                }
+                result = second_sink.recv_from(&mut second_packet) => {
+                    (false, result.unwrap().0)
+                }
+            }
+        })
+        .await
+        .expect("handshake did not proceed after the probe limiter closed");
+        let packet = if first_won {
+            &first_packet[..len]
+        } else {
+            &second_packet[..len]
+        };
+        assert!(!is_probe_request(packet));
+
+        first.abort();
+        second.abort();
+        let _ = first.await;
+        let _ = second.await;
+    }
+
+    #[test]
+    fn probing_is_opt_in() {
+        assert_eq!(HandshakeQueueConfig::default().probe_limit, 0);
+        let queue = HandshakeQueue::new(HandshakeQueueConfig {
+            probe_timeout: Some(Duration::from_secs(1)),
+            ..Default::default()
+        });
+        assert_eq!(queue.probe_timeout, None);
     }
 
     /// Verifies MtuProbingComplete works correctly (no 1-second fallback delay).

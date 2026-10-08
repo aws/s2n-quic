@@ -94,6 +94,13 @@ pub struct Map {
     store: Arc<dyn Store>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HandshakeProbeOutcome {
+    Responsive,
+    Unresponsive,
+    Error,
+}
+
 impl fmt::Debug for Map {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Map")
@@ -404,6 +411,17 @@ impl Map {
     /// Emits a DcConnectionTimeout event via the subscriber
     pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
         self.store.on_dc_connection_timeout(peer_address);
+    }
+
+    /// Emits a DcHandshakeProbe event via the subscriber.
+    pub(crate) fn on_dc_handshake_probe(
+        &self,
+        peer_address: &SocketAddr,
+        latency: std::time::Duration,
+        outcome: HandshakeProbeOutcome,
+    ) {
+        self.store
+            .on_dc_handshake_probe(peer_address, latency, outcome);
     }
 
     /// Emits a datagram encrypt event with the wire packet length

@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{ApplicationData, ApplicationDataError, DiskEntry, Entry, SendStats};
+use super::{
+    ApplicationData, ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats,
+};
 use crate::{
     credentials::{Credentials, Id},
     event,
@@ -196,6 +198,13 @@ pub trait Store: 'static + Send + Sync {
     fn reset_all_senders(&self);
 
     fn on_dc_connection_timeout(&self, peer_address: &SocketAddr);
+
+    fn on_dc_handshake_probe(
+        &self,
+        peer_address: &SocketAddr,
+        latency: Duration,
+        outcome: HandshakeProbeOutcome,
+    );
 
     fn on_datagram_encrypt(&self, packet_len: usize);
 

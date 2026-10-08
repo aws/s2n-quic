@@ -3,7 +3,7 @@
 
 use super::{
     cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
-    ApplicationDataError, DiskEntry, Entry, SendStats, Store,
+    ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -1439,6 +1439,27 @@ where
         self.subscriber()
             .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
                 peer_address: SocketAddress::from(*peer_address).into_event(),
+            });
+    }
+
+    fn on_dc_handshake_probe(
+        &self,
+        peer_address: &SocketAddr,
+        latency: Duration,
+        outcome: HandshakeProbeOutcome,
+    ) {
+        let outcome = match outcome {
+            HandshakeProbeOutcome::Responsive => event::builder::HandshakeProbeOutcome::Responsive,
+            HandshakeProbeOutcome::Unresponsive => {
+                event::builder::HandshakeProbeOutcome::Unresponsive
+            }
+            HandshakeProbeOutcome::Error => event::builder::HandshakeProbeOutcome::Error,
+        };
+        self.subscriber()
+            .on_dc_handshake_probe(event::builder::DcHandshakeProbe {
+                peer_address: SocketAddress::from(*peer_address).into_event(),
+                latency,
+                outcome,
             });
     }
 
