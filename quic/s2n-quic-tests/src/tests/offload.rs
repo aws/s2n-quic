@@ -290,6 +290,7 @@ impl s2n_quic::provider::event::Subscriber for TlsRecorder {
     ) -> Self::ConnectionContext {
     }
 
+    #[cfg(s2n_tls_provider)]
     fn on_tls_handshake_failed(
         &mut self,
         _context: &mut Self::ConnectionContext,
@@ -359,6 +360,7 @@ fn offload_connection_outputs_tls_events() {
 }
 
 #[test]
+#[cfg(s2n_tls_provider)]
 fn offload_connection_outputs_tls_failure_events() {
     let recorder = TlsRecorder::default();
 
