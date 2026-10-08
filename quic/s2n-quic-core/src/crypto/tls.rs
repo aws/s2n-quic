@@ -3,7 +3,7 @@
 
 use crate::path::{LocalAddress, RemoteAddress};
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, string::String, vec::Vec};
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
@@ -82,7 +82,7 @@ impl TlsExportError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ChainError {
     #[non_exhaustive]
@@ -141,6 +141,83 @@ pub trait TlsSession: Send {
     // https://docs.rs/s2n-tls/latest/s2n_tls/connection/struct.Connection.html#method.selected_cert
     #[cfg(feature = "alloc")]
     fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError>;
+}
+
+#[cfg(feature = "alloc")]
+struct TlsObject {
+    cipher_suite: CipherSuite,
+    server_public_key_type: Option<String>,
+    client_public_key_type: Option<String>,
+    signature_scheme: Option<&'static str>,
+
+    /// The peer's verified certificate chain. Empty if unavailable.
+    peer_cert_chain: Result<Vec<Vec<u8>>, ChainError>,
+
+    /// The unverified client certificate chain. `None` when the backend
+    /// does not expose it (rustls) or none was presented.
+    client_cert_chain: Result<Option<Vec<u8>>, ChainError>,
+
+    /// The local endpoint's own presented certificate chain. `None`
+    /// when the backend does not expose it (rustls) or none was selected.
+    selected_cert: Result<Option<Vec<Vec<u8>>>, ChainError>,
+}
+
+#[cfg(feature = "alloc")]
+impl TlsObject {
+    /// Materialize a snapshot from a live TLS backend at handshake completion.
+    fn new(backend: &impl TlsSession) -> Self {
+        Self {
+            cipher_suite: backend.cipher_suite(),
+            signature_scheme: backend.signature_scheme(),
+            server_public_key_type: backend
+                .signature_public_key_type(crate::endpoint::Type::Server),
+            client_public_key_type: backend
+                .signature_public_key_type(crate::endpoint::Type::Client),
+            peer_cert_chain: backend.peer_cert_chain_der(),
+            client_cert_chain: backend.client_cert_chain_der(),
+            selected_cert: backend.selected_cert_der(),
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl TlsSession for TlsObject {
+    fn tls_exporter(
+        &self,
+        _label: &[u8],
+        _context: &[u8],
+        _output: &mut [u8],
+    ) -> Result<(), TlsExportError> {
+        Err(TlsExportError::Failure)
+    }
+
+    fn cipher_suite(&self) -> CipherSuite {
+        self.cipher_suite
+    }
+
+    fn signature_scheme(&self) -> Option<&'static str> {
+        self.signature_scheme
+    }
+
+    fn signature_public_key_type(&self, endpoint: crate::endpoint::Type) -> Option<String> {
+        if endpoint.is_client() {
+            self.client_public_key_type.clone()
+        } else {
+            self.server_public_key_type.clone()
+        }
+    }
+
+    fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {
+        self.peer_cert_chain.clone()
+    }
+
+    fn client_cert_chain_der(&self) -> Result<Option<Vec<u8>>, ChainError> {
+        self.client_cert_chain.clone()
+    }
+
+    fn selected_cert_der(&self) -> Result<Option<Vec<Vec<u8>>>, ChainError> {
+        self.selected_cert.clone()
+    }
 }
 
 #[cfg(feature = "alloc")]
@@ -219,7 +296,7 @@ pub trait Context<Crypto: crate::crypto::CryptoSuite> {
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl TlsSession,
-        error: &(dyn core::error::Error + Send + Sync + 'static),
+        error: Box<dyn core::error::Error + Send + Sync + 'static>,
     ) -> Result<(), crate::transport::Error>;
 
     /// Receives data from the initial packet space

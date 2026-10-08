@@ -2071,14 +2071,6 @@ struct Exporter {
     stateless_reset_tokens: Vec<stateless_reset::Token>,
 }
 impl ExporterHandler for Exporter {
-    fn on_tls_handshake_failed(
-        &self,
-        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
-        _e: &(dyn core::error::Error + Send + Sync + 'static),
-    ) -> Option<Box<dyn std::any::Any + Send>> {
-        None
-    }
-
     fn on_tls_exporter_ready(
         &self,
         _session: &impl s2n_quic_core::crypto::tls::TlsSession,

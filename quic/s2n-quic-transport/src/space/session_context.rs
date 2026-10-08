@@ -586,11 +586,21 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 });
         }
 
-        self.application
-            .as_mut()
-            .expect("application keys should be ready before the tls exporter")
-            .dc_manager
-            .on_path_secrets_ready(session, self.publisher)?;
+        if Config::DcEndpoint::ENABLED {
+            if let Some(context) = self.tls_context.take() {
+                self.application
+                    .as_mut()
+                    .unwrap()
+                    .dc_manager
+                    .on_token(context, self.publisher)?;
+            } else {
+                self.application
+                    .as_mut()
+                    .expect("application keys should be ready before the tls exporter")
+                    .dc_manager
+                    .on_path_secrets_ready(session, self.publisher)?;
+            }
+        }
 
         self.publisher
             .on_tls_exporter_ready(event::builder::TlsExporterReady {
@@ -602,12 +612,12 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
     fn on_tls_handshake_failed(
         &mut self,
         session: &impl tls::TlsSession,
-        e: &(dyn std::error::Error + Send + Sync + 'static),
+        e: Box<dyn std::error::Error + Send + Sync + 'static>,
     ) -> Result<(), transport::Error> {
         self.publisher
             .on_tls_handshake_failed(event::builder::TlsHandshakeFailed {
                 session: s2n_quic_core::event::TlsSession::new(session),
-                error: e,
+                error: &*e,
             });
         Ok(())
     }
