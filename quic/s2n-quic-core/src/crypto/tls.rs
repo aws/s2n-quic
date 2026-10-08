@@ -144,9 +144,10 @@ pub trait TlsSession: Send {
 }
 
 #[cfg(feature = "alloc")]
-pub struct TlsObject {
+struct TlsObject {
     cipher_suite: CipherSuite,
-
+    server_public_key_type: Option<String>,
+    client_public_key_type: Option<String>,
     signature_scheme: Option<&'static str>,
 
     /// The peer's verified certificate chain. Empty if unavailable.
@@ -159,36 +160,22 @@ pub struct TlsObject {
     /// The local endpoint's own presented certificate chain. `None`
     /// when the backend does not expose it (rustls) or none was selected.
     selected_cert: Result<Option<Vec<Vec<u8>>>, ChainError>,
-
-    /// Store the error if something went wrong in the TLS handshake
-    error: Option<Box<dyn core::error::Error + Send + Sync>>,
 }
 
 #[cfg(feature = "alloc")]
 impl TlsObject {
     /// Materialize a snapshot from a live TLS backend at handshake completion.
-    pub fn new(backend: &impl TlsSession) -> Self {
+    fn new(backend: &impl TlsSession) -> Self {
         Self {
             cipher_suite: backend.cipher_suite(),
             signature_scheme: backend.signature_scheme(),
+            server_public_key_type: backend
+                .signature_public_key_type(crate::endpoint::Type::Server),
+            client_public_key_type: backend
+                .signature_public_key_type(crate::endpoint::Type::Client),
             peer_cert_chain: backend.peer_cert_chain_der(),
             client_cert_chain: backend.client_cert_chain_der(),
             selected_cert: backend.selected_cert_der(),
-            error: None,
-        }
-    }
-
-    pub fn handshake_failure(
-        backend: &impl TlsSession,
-        error: Box<dyn core::error::Error + Send + Sync + 'static>,
-    ) -> Self {
-        Self {
-            cipher_suite: backend.cipher_suite(),
-            signature_scheme: backend.signature_scheme(),
-            peer_cert_chain: backend.peer_cert_chain_der(),
-            client_cert_chain: backend.client_cert_chain_der(),
-            selected_cert: backend.selected_cert_der(),
-            error: Some(error),
         }
     }
 }
@@ -210,6 +197,14 @@ impl TlsSession for TlsObject {
 
     fn signature_scheme(&self) -> Option<&'static str> {
         self.signature_scheme
+    }
+
+    fn signature_public_key_type(&self, endpoint: crate::endpoint::Type) -> Option<String> {
+        if endpoint.is_client() {
+            self.client_public_key_type.clone()
+        } else {
+            self.server_public_key_type.clone()
+        }
     }
 
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, ChainError> {

@@ -272,10 +272,8 @@ where
                 }
                 context.on_tls_exporter_ready(&ctx)?;
             }
-            Request::TlsHandshakeFailed(mut ctx) => {
-                if let Some(error) = ctx.error.take() {
-                    context.on_tls_handshake_failed(&ctx, error)?
-                }
+            Request::TlsHandshakeFailed(ctx, error) => {
+                context.on_tls_handshake_failed(&ctx, error)?
             }
             Request::SendApplication(transmission) => {
                 context.send_application(transmission);
@@ -600,10 +598,10 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         session: &impl TlsSession,
         e: Box<dyn core::error::Error + Send + Sync + 'static>,
     ) -> Result<(), crate::transport::Error> {
-        let tls_object = TlsObject::handshake_failure(session, e);
+        let tls_object = TlsObject::new(session);
         match self
             .send_to_quic
-            .push(Request::TlsHandshakeFailed(tls_object))
+            .push(Request::TlsHandshakeFailed(tls_object, e))
         {
             Ok(_) => (),
             Err(_) => self.error = Some(SLICE_ERROR),
@@ -649,7 +647,10 @@ enum Request<S: CryptoSuite> {
     HandshakeComplete,
     TlsDone,
     TlsHandshakeSucceeded(TlsObject, Option<Box<dyn Any + Send>>),
-    TlsHandshakeFailed(TlsObject),
+    TlsHandshakeFailed(
+        TlsObject,
+        Box<dyn core::error::Error + Send + Sync + 'static>,
+    ),
     SendApplication(bytes::Bytes),
     TlsError(transport::Error),
 }
@@ -677,7 +678,7 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
             Request::TlsHandshakeSucceeded(_, _) => write!(f, "TlsHandshakeSucceeded"),
             Request::SendApplication(_) => write!(f, "SendApplication"),
             Request::TlsError(_) => write!(f, "TlsError"),
-            Request::TlsHandshakeFailed(_) => write!(f, "TlsHandshakeFailed"),
+            Request::TlsHandshakeFailed(_, _) => write!(f, "TlsHandshakeFailed"),
         }
     }
 }
