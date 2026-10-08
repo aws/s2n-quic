@@ -355,10 +355,7 @@ fn offload_connection_outputs_tls_events() {
         Ok(addr)
     })
     .unwrap();
-    assert_eq!(
-        recorder.tls_exporter_event_seen.load(Ordering::Relaxed),
-        true
-    );
+    assert!(recorder.tls_exporter_event_seen.load(Ordering::Relaxed));
 }
 
 #[test]
@@ -390,11 +387,8 @@ fn offload_connection_outputs_tls_failure_events() {
         /* Failed handshake case */
         let addr = server.local_addr().unwrap();
         spawn(async move {
-            match server.accept().await {
-                Some(_) => {
-                    panic!("connection should not be accepted on auth failure");
-                }
-                None => {}
+            if server.accept().await.is_some() {
+                panic!("connection should not be accepted on auth failure");
             }
         });
         primary::spawn(async move {
@@ -410,8 +404,5 @@ fn offload_connection_outputs_tls_failure_events() {
         Ok(addr)
     })
     .unwrap();
-    assert_eq!(
-        recorder.tls_handshake_failed_seen.load(Ordering::Relaxed),
-        true
-    );
+    assert!(recorder.tls_handshake_failed_seen.load(Ordering::Relaxed));
 }
