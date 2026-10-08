@@ -540,6 +540,7 @@ impl HandshakeQueue {
                 (HandshakeReason::User, 0),
                 (HandshakeReason::Periodic, 0),
                 (HandshakeReason::Remote, 0),
+                (HandshakeReason::KeyIdExhaustion, 0),
             ];
             for (reason, count) in reason_counts.iter_mut() {
                 *count = entry.by_reason[*reason as usize].load(Ordering::Relaxed) as usize;
@@ -728,9 +729,30 @@ pub enum HandshakeReason {
     Periodic,
     /// Rehandshaking driven by remote packets (e.g., unknown path secret).
     Remote,
+    /// The path secret ran out of key IDs, so it can no longer be used for sending.
+    KeyIdExhaustion,
 }
 
-const REASON_COUNT: usize = 3;
+/// Widens a background re-handshake reason, as reported on the
+/// `path_secret_map:background_handshake_requested` event, into the full set tracked by the
+/// handshake queue.
+///
+/// Only this direction is total. The event-side enum has no user-initiated variant, because
+/// user-initiated handshakes call [`Client::connect`] directly and never route through
+/// `Map::request_handshake`, so the event's `reason` counter has no bucket that is impossible to
+/// increment.
+impl From<crate::event::builder::HandshakeReason> for HandshakeReason {
+    fn from(reason: crate::event::builder::HandshakeReason) -> Self {
+        use crate::event::builder::HandshakeReason as Background;
+        match reason {
+            Background::Periodic => Self::Periodic,
+            Background::Remote => Self::Remote,
+            Background::KeyIdExhaustion => Self::KeyIdExhaustion,
+        }
+    }
+}
+
+const REASON_COUNT: usize = 4;
 
 pub struct ConnectionContext {
     pub limiter_latency: Duration,

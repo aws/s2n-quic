@@ -24,12 +24,29 @@ struct PathSecretMapUninitialized {
     lifetime: core::time::Duration,
 }
 
+/// Why a background re-handshake was requested.
+///
+/// Note that this deliberately has no user-initiated variant: those handshakes are driven
+/// directly and never routed through the path secret map, so they cannot be reported here.
+#[derive(Debug, Copy, Clone)]
+enum HandshakeReason {
+    /// Periodic re-handshaking.
+    Periodic,
+    /// Driven by remote packets (e.g., unknown path secret or replay detection).
+    Remote,
+    /// The path secret ran out of key IDs, so it can no longer be used for sending.
+    KeyIdExhaustion,
+}
+
 #[event("path_secret_map:background_handshake_requested")]
 #[subject(endpoint)]
 /// Emitted when a background handshake is requested
 struct PathSecretMapBackgroundHandshakeRequested<'a> {
     #[nominal_counter("peer_address.protocol")]
     peer_address: SocketAddress<'a>,
+    /// Why the handshake was requested
+    #[nominal_counter("reason")]
+    reason: HandshakeReason,
 }
 
 #[event("path_secret_map:entry_inserted")]

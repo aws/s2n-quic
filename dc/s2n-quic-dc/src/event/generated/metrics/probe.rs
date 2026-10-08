@@ -254,6 +254,7 @@ mod id {
         PATH_SECRET_MAP_UNINITIALIZED__LIFETIME,
         PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED,
         PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+        PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
         PATH_SECRET_MAP_ENTRY_INSERTED,
         PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ENTRY_READY,
@@ -754,6 +755,8 @@ mod id {
         InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED as usize;
     pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON as usize;
     pub const PATH_SECRET_MAP_ENTRY_INSERTED: usize =
         InfoId::PATH_SECRET_MAP_ENTRY_INSERTED as usize;
     pub const PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
@@ -1669,6 +1672,9 @@ mod counter {
                     id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_background_handshake_requested__peer_address__protocol)
                     }
+                    id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON => {
+                        Self(path_secret_map_background_handshake_requested__reason)
+                    }
                     id::PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL => {
                         Self(path_secret_map_entry_inserted__peer_address__protocol)
                     }
@@ -1839,6 +1845,13 @@ mod counter {
                 #[link_name =
             s2n_quic_dc__event__counter__nominal__path_secret_map_background_handshake_requested__peer_address__protocol]
                 fn path_secret_map_background_handshake_requested__peer_address__protocol(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__path_secret_map_background_handshake_requested__reason]
+                fn path_secret_map_background_handshake_requested__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,

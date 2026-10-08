@@ -203,8 +203,9 @@ impl Entry {
         self.retired.retired_at()
     }
 
-    pub fn uni_sealer(&self) -> (seal::Once, Credentials) {
-        let key_id = self.sender.next_key_id();
+    /// Returns `None` if this entry has exhausted its key IDs and can no longer seal.
+    pub fn uni_sealer(&self) -> Option<(seal::Once, Credentials)> {
+        let key_id = self.sender.next_key_id()?;
         let credentials = Credentials {
             id: *self.secret.id(),
             key_id,
@@ -212,7 +213,7 @@ impl Entry {
         let sealer = self.secret.application_sealer(key_id);
         let sealer = seal::Once::new(sealer);
 
-        (sealer, credentials)
+        Some((sealer, credentials))
     }
 
     pub fn uni_opener(
@@ -227,8 +228,9 @@ impl Entry {
         open::Once::new(opener, dedup)
     }
 
-    pub fn bidi_local(&self, features: &TransportFeatures) -> Bidirectional {
-        let key_id = self.sender.next_key_id();
+    /// Returns `None` if this entry has exhausted its key IDs and can no longer open a stream.
+    pub fn bidi_local(&self, features: &TransportFeatures) -> Option<Bidirectional> {
+        let key_id = self.sender.next_key_id()?;
         let initiator = Initiator::Local;
 
         let application = ApplicationPair::new(
@@ -245,14 +247,14 @@ impl Entry {
             Some(ControlPair::new(&self.secret, key_id, initiator))
         };
 
-        Bidirectional {
+        Some(Bidirectional {
             credentials: Credentials {
                 id: *self.secret.id(),
                 key_id,
             },
             application,
             control,
-        }
+        })
     }
 
     pub fn bidi_remote(
