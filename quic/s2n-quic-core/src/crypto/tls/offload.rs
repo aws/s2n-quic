@@ -266,8 +266,10 @@ where
                     },
                 )?;
             }
-            Request::TlsContext(ctx, result) => {
-                context.on_tls_context(result);
+            Request::TlsHandshakeSucceeded(ctx, result) => {
+                if let Some(result) = result {
+                    context.on_tls_context(result);
+                }
                 context.on_tls_exporter_ready(&ctx)?;
             }
             Request::TlsHandshakeFailed(mut ctx) => {
@@ -522,16 +524,14 @@ impl<S: CryptoSuite, H: ExporterHandler> tls::Context<S> for RemoteContext<'_, R
         &mut self,
         session: &impl TlsSession,
     ) -> Result<(), crate::transport::Error> {
-        if let Some(result) = self.exporter_handler.on_tls_exporter_ready(session) {
-            let tls_object = TlsObject::new(session);
-
-            match self
-                .send_to_quic
-                .push(Request::TlsContext(tls_object, result))
-            {
-                Ok(_) => (),
-                Err(_) => self.error = Some(SLICE_ERROR),
-            }
+        let context = self.exporter_handler.on_tls_exporter_ready(session);
+        let tls_object = TlsObject::new(session);
+        match self
+            .send_to_quic
+            .push(Request::TlsHandshakeSucceeded(tls_object, context))
+        {
+            Ok(_) => (),
+            Err(_) => self.error = Some(SLICE_ERROR),
         }
 
         Ok(())
@@ -648,7 +648,7 @@ enum Request<S: CryptoSuite> {
     ),
     HandshakeComplete,
     TlsDone,
-    TlsContext(TlsObject, Box<dyn Any + Send>),
+    TlsHandshakeSucceeded(TlsObject, Option<Box<dyn Any + Send>>),
     TlsHandshakeFailed(TlsObject),
     SendApplication(bytes::Bytes),
     TlsError(transport::Error),
@@ -674,7 +674,7 @@ impl<S: CryptoSuite> alloc::fmt::Debug for Request<S> {
             Request::HandshakeComplete => write!(f, "HandshakeComplete"),
             Request::TlsDone => write!(f, "TlsDone"),
             Request::ZeroRtt(_, _, _) => write!(f, "ZeroRtt"),
-            Request::TlsContext(_, _) => write!(f, "TlsContext"),
+            Request::TlsHandshakeSucceeded(_, _) => write!(f, "TlsHandshakeSucceeded"),
             Request::SendApplication(_) => write!(f, "SendApplication"),
             Request::TlsError(_) => write!(f, "TlsError"),
             Request::TlsHandshakeFailed(_) => write!(f, "TlsHandshakeFailed"),
