@@ -16,6 +16,8 @@ use crate::{
 use core::ops;
 use s2n_codec::EncoderBuffer;
 
+const PACKET_NUM_ERROR_MSG: &str = "key update packet number <= a packet protected with old keys";
+
 /// s2n-quic keeps track of two keys at all times, the current key in use
 /// as well as the next key that will be used after a key update is initiated.
 /// We keep the older key around for a short while after a key update, which
@@ -60,10 +62,10 @@ pub struct KeySet<K> {
     limits: limited::Limits,
 
     /// The lowest packet number observed in the current key phase.
-    key_change_packet_number: Option<PacketNumber>,
+    lowest_packet_number: Option<PacketNumber>,
 
-    /// The largest packet number observed in the current key phase.
-    largest_packet_number: Option<PacketNumber>,
+    /// The highest packet number observed in the current key phase.
+    highest_packet_number: Option<PacketNumber>,
 }
 
 impl<K: OneRttKey> KeySet<K> {
@@ -97,8 +99,8 @@ impl<K: OneRttKey> KeySet<K> {
             generation: 0,
             crypto: KeyArray([active_key, next_key]),
             limits,
-            key_change_packet_number: None,
-            largest_packet_number: None,
+            lowest_packet_number: None,
+            highest_packet_number: None,
         }
     }
 
@@ -180,7 +182,7 @@ impl<K: OneRttKey> KeySet<K> {
                         // straggler that was delayed by the network from before the update; accept
                         // it without disturbing the key-update state machine.
                         let is_delayed = self
-                            .key_change_packet_number
+                            .lowest_packet_number
                             .is_some_and(|smallest| packet_number <= smallest);
 
                         if !is_delayed {
@@ -193,9 +195,7 @@ impl<K: OneRttKey> KeySet<K> {
                             // current-phase packet means old keys protected a higher-numbered packet
                             // than newer keys, which is illegal.
                             return Err(transport::Error::KEY_UPDATE_ERROR
-                                .with_reason(
-                                    "packet protected with old keys carried a larger packet number",
-                                )
+                                .with_reason(PACKET_NUM_ERROR_MSG)
                                 .into());
                         }
 
@@ -220,12 +220,12 @@ impl<K: OneRttKey> KeySet<K> {
                         // keys. Otherwise those older keys protected a higher-numbered packet than
                         // these newer keys, which is illegal.
                         if self
-                            .largest_packet_number
-                            .is_some_and(|largest| packet_number < largest)
+                            .highest_packet_number
+                            .is_some_and(|largest| packet_number <= largest)
                         {
                             return Err(transport::Error::KEY_UPDATE_ERROR
                                 .with_reason(
-                                    "key update carried a smaller packet number than a packet protected with old keys",
+                                    "key update packet number <= a packet protected with old keys",
                                 )
                                 .into());
                         }
@@ -261,20 +261,20 @@ impl<K: OneRttKey> KeySet<K> {
                         // Reset the current-phase packet-number extent to the packet that carried
                         // the key change: so far it is both the lowest and the highest number seen
                         // in the new phase.
-                        self.key_change_packet_number = Some(packet_number);
-                        self.largest_packet_number = Some(packet_number);
+                        self.lowest_packet_number = Some(packet_number);
+                        self.highest_packet_number = Some(packet_number);
                         Some(self.generation)
                     }
                 } else {
                     // A packet in the current key phase. Track the lowest and highest packet numbers
                     // seen so both section 6.4 checks above stay correct regardless of the order in
                     // which packets arrive on the network.
-                    self.key_change_packet_number = Some(
-                        self.key_change_packet_number
+                    self.lowest_packet_number = Some(
+                        self.lowest_packet_number
                             .map_or(packet_number, |smallest| smallest.min(packet_number)),
                     );
-                    self.largest_packet_number = Some(
-                        self.largest_packet_number
+                    self.highest_packet_number = Some(
+                        self.highest_packet_number
                             .map_or(packet_number, |largest| largest.max(packet_number)),
                     );
                     None
@@ -797,7 +797,7 @@ mod tests {
             err,
             ProcessingError::ConnectionError(
                 transport::Error::KEY_UPDATE_ERROR
-                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .with_reason(PACKET_NUM_ERROR_MSG)
                     .into()
             )
         );
@@ -845,7 +845,7 @@ mod tests {
             err,
             ProcessingError::ConnectionError(
                 transport::Error::KEY_UPDATE_ERROR
-                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .with_reason(PACKET_NUM_ERROR_MSG)
                     .into()
             )
         );
@@ -899,7 +899,7 @@ mod tests {
             err,
             ProcessingError::ConnectionError(
                 transport::Error::KEY_UPDATE_ERROR
-                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .with_reason(PACKET_NUM_ERROR_MSG)
                     .into()
             )
         );
@@ -945,9 +945,7 @@ mod tests {
             err,
             ProcessingError::ConnectionError(
                 transport::Error::KEY_UPDATE_ERROR
-                    .with_reason(
-                        "key update carried a smaller packet number than a packet protected with old keys"
-                    )
+                    .with_reason(PACKET_NUM_ERROR_MSG)
                     .into()
             )
         );
@@ -999,7 +997,38 @@ mod tests {
             err,
             ProcessingError::ConnectionError(
                 transport::Error::KEY_UPDATE_ERROR
-                    .with_reason("packet protected with old keys carried a larger packet number")
+                    .with_reason(PACKET_NUM_ERROR_MSG)
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn duplicate_packet_number_does_not_initiate_key_update() {
+        let clock = Clock::default();
+        let pto = clock.get_time();
+        let mut keyset = KeySet::new(TestKey::default(), Default::default());
+
+        // Process a current-phase (Zero) packet with a packet number of 10
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, false, 10);
+        let (_pkt, gen) = keyset.decrypt_packet(short_packet, pto).unwrap();
+        assert_eq!(gen, None);
+        assert_eq!(keyset.key_phase(), KeyPhase::Zero);
+        assert!(!keyset.key_update_in_progress());
+
+        // Key update packet with the same packet number
+        let mut buffer = [0u8; 128];
+        let short_packet = make_short_packet(&mut buffer, true, 10);
+        let err = keyset
+            .decrypt_packet(short_packet, pto)
+            .expect_err("a key update numbered below an old-key packet must be rejected");
+
+        assert_eq!(
+            err,
+            ProcessingError::ConnectionError(
+                transport::Error::KEY_UPDATE_ERROR
+                    .with_reason(PACKET_NUM_ERROR_MSG)
                     .into()
             )
         );
