@@ -243,6 +243,7 @@ mod id {
         STREAM_HANDSHAKE_PACKET_REJECTED__CONN,
         STREAM_HANDSHAKE_PACKET_REJECTED__REASON,
         CONNECTION_CLOSED,
+        CONNECTION_CLOSED__LATENCY,
         ENDPOINT_INITIALIZED,
         ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL,
         ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL,
@@ -739,6 +740,7 @@ mod id {
     pub const STREAM_HANDSHAKE_PACKET_REJECTED__REASON: usize =
         InfoId::STREAM_HANDSHAKE_PACKET_REJECTED__REASON as usize;
     pub const CONNECTION_CLOSED: usize = InfoId::CONNECTION_CLOSED as usize;
+    pub const CONNECTION_CLOSED__LATENCY: usize = InfoId::CONNECTION_CLOSED__LATENCY as usize;
     pub const ENDPOINT_INITIALIZED: usize = InfoId::ENDPOINT_INITIALIZED as usize;
     pub const ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL: usize =
         InfoId::ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL as usize;
@@ -1975,6 +1977,7 @@ mod id {
         TIMERS_STREAM_TLS_CONNECT__TCP_LATENCY,
         TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY,
         TIMERS_STREAM_CONNECT_ERROR__LATENCY,
+        TIMERS_CONNECTION_CLOSED__LATENCY,
         TIMERS_DC_HANDSHAKE_PROBE__LATENCY,
     }
     pub const TIMERS_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION: usize =
@@ -2033,10 +2036,12 @@ mod id {
         Timers::TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY as usize;
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
+    pub const TIMERS_CONNECTION_CLOSED__LATENCY: usize =
+        Timers::TIMERS_CONNECTION_CLOSED__LATENCY as usize;
     pub const TIMERS_DC_HANDSHAKE_PROBE__LATENCY: usize =
         Timers::TIMERS_DC_HANDSHAKE_PROBE__LATENCY as usize;
 }
-static INFO: &[Info; 348usize] = &[
+static INFO: &[Info; 349usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -3394,6 +3399,12 @@ static INFO: &[Info; 348usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::CONNECTION_CLOSED__LATENCY,
+        name: Str::new("connection_closed.latency\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
         id: id::ENDPOINT_INITIALIZED,
         name: Str::new("endpoint_initialized\0"),
         units: Units::None,
@@ -4175,7 +4186,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 29usize]>,
+    timers: Box<[R::Timer; 30usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -4204,7 +4215,7 @@ impl<R: Registry> Subscriber<R> {
         let mut nominal_counter_offsets = Vec::with_capacity(41usize);
         let mut measures = Vec::with_capacity(137usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(29usize);
+        let mut timers = Vec::with_capacity(30usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STARTED]));
@@ -5286,6 +5297,7 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[id::STREAM_TLS_CONNECT__TCP_LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_TLS_CONNECT__TLS_LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_CONNECT_ERROR__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::CONNECTION_CLOSED__LATENCY]));
         timers.push(registry.register_timer(&INFO[id::DC_HANDSHAKE_PROBE__LATENCY]));
         {
             #[allow(unused_imports)]
@@ -6828,6 +6840,9 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::TIMERS_STREAM_CONNECT_ERROR__LATENCY => {
                     (&INFO[id::STREAM_CONNECT_ERROR__LATENCY], entry)
+                }
+                id::TIMERS_CONNECTION_CLOSED__LATENCY => {
+                    (&INFO[id::CONNECTION_CLOSED__LATENCY], entry)
                 }
                 id::TIMERS_DC_HANDSHAKE_PROBE__LATENCY => {
                     (&INFO[id::DC_HANDSHAKE_PROBE__LATENCY], entry)
@@ -8686,6 +8701,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::CONNECTION_CLOSED,
             id::COUNTERS_CONNECTION_CLOSED,
             1usize,
+        );
+        self.time(
+            id::CONNECTION_CLOSED__LATENCY,
+            id::TIMERS_CONNECTION_CLOSED__LATENCY,
+            meta.timestamp.saturating_duration_since(context.start_time),
         );
         self.measure(
             id::STREAM_WRITE_FLUSHED__CONN,
