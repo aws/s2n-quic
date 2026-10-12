@@ -880,8 +880,8 @@ where
             let credentials = &initial_packet.credentials;
 
             let map = &context.secrets;
-            let Some((export_secret, ciphersuite, keys, application_params)) = map
-                .secret_for_credentials(
+            let Some((export_secret, ciphersuite, keys, application_params, application_data)) =
+                map.secret_for_credentials(
                     credentials,
                     initial_packet.source_queue_id,
                     &TransportFeatures::TCP,
@@ -934,15 +934,73 @@ where
             })?;
             let encode_time = now.num_microseconds() as u64;
 
+            // Serialize the entry's application data (if any) into an opaque blob to forward
+            // alongside the stream. Absent serializer or application data degrades to `None`,
+            // producing a byte-identical v0 packet. A failing serializer is fail-open: the drop
+            // is published as an event, the error is logged beside it, and the stream is still
+            // forwarded without a blob.
+            let mut blob: Option<Vec<u8>> = match application_data
+                .as_ref()
+                .map(|d| map.serialize_application_data(d))
+            {
+                None | Some(Ok(None)) => None,
+                Some(Ok(Some(bytes))) => Some(bytes),
+                Some(Err(err)) => {
+                    publisher.on_acceptor_tcp_application_data_dropped(
+                        event::builder::AcceptorTcpApplicationDataDropped {
+                            remote_address: &remote_address,
+                            reason:
+                                event::builder::AcceptorTcpApplicationDataDropReason::SerializeFailed,
+                        },
+                    );
+                    tracing::warn!(
+                        ?err,
+                        "failed to serialize application data; forwarding without it"
+                    );
+                    None
+                }
+            };
+
             let mut estimator = EncoderLenEstimator::new(usize::MAX);
-            let size = packet::uds::encoder::encode(
+            let mut size = packet::uds::encoder::encode(
                 &mut estimator,
                 &ciphersuite,
                 &export_secret,
                 &application_params,
                 encode_time,
+                blob.as_deref(),
                 recv_buffer,
             );
+
+            // Unix datagrams cannot exceed `u16::MAX` bytes. If including the application-data
+            // blob would push the packet past that limit, drop the blob (fail-open) and
+            // re-estimate so the stream is still forwarded.
+            if size > u16::MAX as usize && blob.is_some() {
+                publisher.on_acceptor_tcp_application_data_dropped(
+                    event::builder::AcceptorTcpApplicationDataDropped {
+                        remote_address: &remote_address,
+                        reason:
+                            event::builder::AcceptorTcpApplicationDataDropReason::PacketTooLarge,
+                    },
+                );
+                tracing::warn!(
+                    size,
+                    limit = u16::MAX as usize,
+                    "UDS handoff packet exceeds datagram buffer with application data; forwarding without it"
+                );
+                blob = None;
+                let mut estimator = EncoderLenEstimator::new(usize::MAX);
+                size = packet::uds::encoder::encode(
+                    &mut estimator,
+                    &ciphersuite,
+                    &export_secret,
+                    &application_params,
+                    encode_time,
+                    blob.as_deref(),
+                    recv_buffer,
+                );
+            }
+
             let mut buffer = vec![0u8; size];
             let mut encoder = s2n_codec::EncoderBuffer::new(&mut buffer);
             packet::uds::encoder::encode(
@@ -951,6 +1009,7 @@ where
                 &export_secret,
                 &application_params,
                 encode_time,
+                blob.as_deref(),
                 recv_buffer,
             );
             let tcp_stream = socket.into_std().map_err(|error| WorkerError {

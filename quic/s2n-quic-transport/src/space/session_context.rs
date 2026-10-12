@@ -575,6 +575,17 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
                 });
         }
 
+        // Describing a certificate's public key requires the certificate to have been presented and validated.
+        let server_public_key_type = session.signature_public_key_type(endpoint::Type::Server);
+        let client_public_key_type = session.signature_public_key_type(endpoint::Type::Client);
+        if server_public_key_type.is_some() || client_public_key_type.is_some() {
+            self.publisher
+                .on_signature_public_key_type(event::builder::SignaturePublicKeyType {
+                    server_public_key_type: server_public_key_type.as_deref(),
+                    client_public_key_type: client_public_key_type.as_deref(),
+                });
+        }
+
         self.application
             .as_mut()
             .expect("application keys should be ready before the tls exporter")

@@ -64,6 +64,8 @@ mod id {
         ACCEPTOR_TCP_SOCKET_RECEIVED,
         ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME,
         ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
+        ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+        ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
         ACCEPTOR_UDP_STARTED,
         ACCEPTOR_UDP_DATAGRAM_RECEIVED,
         ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN,
@@ -248,6 +250,10 @@ mod id {
         ENDPOINT_INITIALIZED__UDP,
         DC_CONNECTION_TIMEOUT,
         DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL,
+        DC_HANDSHAKE_PROBE,
+        DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL,
+        DC_HANDSHAKE_PROBE__LATENCY,
+        DC_HANDSHAKE_PROBE__OUTCOME,
         PATH_SECRET_MAP_INITIALIZED,
         PATH_SECRET_MAP_INITIALIZED__CAPACITY,
         PATH_SECRET_MAP_UNINITIALIZED,
@@ -256,6 +262,7 @@ mod id {
         PATH_SECRET_MAP_UNINITIALIZED__LIFETIME,
         PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED,
         PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+        PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
         PATH_SECRET_MAP_ENTRY_INSERTED,
         PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL,
         PATH_SECRET_MAP_ENTRY_READY,
@@ -439,6 +446,10 @@ mod id {
         InfoId::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME as usize;
     pub const ACCEPTOR_TCP_SOCKET_RECEIVED__LEN: usize =
         InfoId::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN as usize;
+    pub const ACCEPTOR_TCP_APPLICATION_DATA_DROPPED: usize =
+        InfoId::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED as usize;
+    pub const ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON: usize =
+        InfoId::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_STARTED: usize = InfoId::ACCEPTOR_UDP_STARTED as usize;
     pub const ACCEPTOR_UDP_DATAGRAM_RECEIVED: usize =
         InfoId::ACCEPTOR_UDP_DATAGRAM_RECEIVED as usize;
@@ -738,6 +749,11 @@ mod id {
     pub const DC_CONNECTION_TIMEOUT: usize = InfoId::DC_CONNECTION_TIMEOUT as usize;
     pub const DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL as usize;
+    pub const DC_HANDSHAKE_PROBE: usize = InfoId::DC_HANDSHAKE_PROBE as usize;
+    pub const DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL: usize =
+        InfoId::DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL as usize;
+    pub const DC_HANDSHAKE_PROBE__LATENCY: usize = InfoId::DC_HANDSHAKE_PROBE__LATENCY as usize;
+    pub const DC_HANDSHAKE_PROBE__OUTCOME: usize = InfoId::DC_HANDSHAKE_PROBE__OUTCOME as usize;
     pub const PATH_SECRET_MAP_INITIALIZED: usize = InfoId::PATH_SECRET_MAP_INITIALIZED as usize;
     pub const PATH_SECRET_MAP_INITIALIZED__CAPACITY: usize =
         InfoId::PATH_SECRET_MAP_INITIALIZED__CAPACITY as usize;
@@ -752,6 +768,8 @@ mod id {
         InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED as usize;
     pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize =
         InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL as usize;
+    pub const PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON: usize =
+        InfoId::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON as usize;
     pub const PATH_SECRET_MAP_ENTRY_INSERTED: usize =
         InfoId::PATH_SECRET_MAP_ENTRY_INSERTED as usize;
     pub const PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
@@ -963,6 +981,7 @@ mod id {
         COUNTERS_ACCEPTOR_TCP_SOCKET_SENT,
         COUNTERS_ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST,
         COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED,
+        COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
         COUNTERS_ACCEPTOR_UDP_STARTED,
         COUNTERS_ACCEPTOR_UDP_DATAGRAM_RECEIVED,
         COUNTERS_ACCEPTOR_UDP_PACKET_RECEIVED,
@@ -1022,6 +1041,7 @@ mod id {
         COUNTERS_CONNECTION_CLOSED,
         COUNTERS_ENDPOINT_INITIALIZED,
         COUNTERS_DC_CONNECTION_TIMEOUT,
+        COUNTERS_DC_HANDSHAKE_PROBE,
         COUNTERS_PATH_SECRET_MAP_INITIALIZED,
         COUNTERS_PATH_SECRET_MAP_UNINITIALIZED,
         COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED,
@@ -1095,6 +1115,8 @@ mod id {
         Counters::COUNTERS_ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST as usize;
     pub const COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED: usize =
         Counters::COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED as usize;
+    pub const COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED: usize =
+        Counters::COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED as usize;
     pub const COUNTERS_ACCEPTOR_UDP_STARTED: usize =
         Counters::COUNTERS_ACCEPTOR_UDP_STARTED as usize;
     pub const COUNTERS_ACCEPTOR_UDP_DATAGRAM_RECEIVED: usize =
@@ -1204,6 +1226,7 @@ mod id {
         Counters::COUNTERS_ENDPOINT_INITIALIZED as usize;
     pub const COUNTERS_DC_CONNECTION_TIMEOUT: usize =
         Counters::COUNTERS_DC_CONNECTION_TIMEOUT as usize;
+    pub const COUNTERS_DC_HANDSHAKE_PROBE: usize = Counters::COUNTERS_DC_HANDSHAKE_PROBE as usize;
     pub const COUNTERS_PATH_SECRET_MAP_INITIALIZED: usize =
         Counters::COUNTERS_PATH_SECRET_MAP_INITIALIZED as usize;
     pub const COUNTERS_PATH_SECRET_MAP_UNINITIALIZED: usize =
@@ -1365,6 +1388,7 @@ mod id {
         NOMINAL_COUNTERS_ACCEPTOR_TCP_STREAM_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE,
+        NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON,
         NOMINAL_COUNTERS_STREAM_CONNECT__TCP,
@@ -1374,7 +1398,10 @@ mod id {
         NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL,
         NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL,
         NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL,
+        NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL,
+        NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__OUTCOME,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
+        NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_READY__PEER_ADDRESS__PROTOCOL,
         NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_REPLACED__PEER_ADDRESS__PROTOCOL,
@@ -1406,6 +1433,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_PACKET_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE: usize =
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE as usize;
+    pub const NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON: usize =
@@ -1424,8 +1453,15 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL as usize;
     pub const NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_DC_CONNECTION_TIMEOUT__PEER_ADDRESS__PROTOCOL as usize;
+    pub const NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL: usize =
+        NominalCounters::NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL as usize;
+    pub const NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__OUTCOME: usize =
+        NominalCounters::NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__OUTCOME as usize;
     pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL: usize = NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL
         as usize;
+    pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON
+            as usize;
     pub const NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL: usize =
         NominalCounters::NOMINAL_COUNTERS_PATH_SECRET_MAP_ENTRY_INSERTED__PEER_ADDRESS__PROTOCOL
             as usize;
@@ -1939,6 +1975,7 @@ mod id {
         TIMERS_STREAM_TLS_CONNECT__TCP_LATENCY,
         TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY,
         TIMERS_STREAM_CONNECT_ERROR__LATENCY,
+        TIMERS_DC_HANDSHAKE_PROBE__LATENCY,
     }
     pub const TIMERS_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION: usize =
         Timers::TIMERS_ACCEPTOR_TCP_LOOP_ITERATION_COMPLETED__PROCESSING_DURATION as usize;
@@ -1996,8 +2033,10 @@ mod id {
         Timers::TIMERS_STREAM_TLS_CONNECT__TLS_LATENCY as usize;
     pub const TIMERS_STREAM_CONNECT_ERROR__LATENCY: usize =
         Timers::TIMERS_STREAM_CONNECT_ERROR__LATENCY as usize;
+    pub const TIMERS_DC_HANDSHAKE_PROBE__LATENCY: usize =
+        Timers::TIMERS_DC_HANDSHAKE_PROBE__LATENCY as usize;
 }
-static INFO: &[Info; 341usize] = &[
+static INFO: &[Info; 348usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -2278,6 +2317,18 @@ static INFO: &[Info; 341usize] = &[
         id: id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
         name: Str::new("acceptor_tcp_socket_received.len\0"),
         units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+        name: Str::new("acceptor_tcp_application_data_dropped\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
+        name: Str::new("acceptor_tcp_application_data_dropped.reason\0"),
+        units: Units::None,
     }
     .build(),
     info::Builder {
@@ -3385,6 +3436,30 @@ static INFO: &[Info; 341usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::DC_HANDSHAKE_PROBE,
+        name: Str::new("dc_handshake_probe\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL,
+        name: Str::new("dc_handshake_probe.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::DC_HANDSHAKE_PROBE__LATENCY,
+        name: Str::new("dc_handshake_probe.latency\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::DC_HANDSHAKE_PROBE__OUTCOME,
+        name: Str::new("dc_handshake_probe.outcome\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_INITIALIZED,
         name: Str::new("path_secret_map_initialized\0"),
         units: Units::None,
@@ -3429,6 +3504,12 @@ static INFO: &[Info; 341usize] = &[
     info::Builder {
         id: id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
         name: Str::new("path_secret_map_background_handshake_requested.peer_address.protocol\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
+        name: Str::new("path_secret_map_background_handshake_requested.reason\0"),
         units: Units::None,
     }
     .build(),
@@ -4082,19 +4163,19 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 114usize]>,
+    counters: Box<[R::Counter; 116usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 37usize]>,
+    nominal_counter_offsets: Box<[usize; 41usize]>,
     #[allow(dead_code)]
     measures: Box<[R::Measure; 137usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 28usize]>,
+    timers: Box<[R::Timer; 29usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -4117,13 +4198,13 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(114usize);
+        let mut counters = Vec::with_capacity(116usize);
         let mut bool_counters = Vec::with_capacity(25usize);
-        let mut nominal_counters = Vec::with_capacity(37usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(37usize);
+        let mut nominal_counters = Vec::with_capacity(41usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(41usize);
         let mut measures = Vec::with_capacity(137usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(28usize);
+        let mut timers = Vec::with_capacity(29usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STARTED]));
@@ -4146,6 +4227,7 @@ impl<R: Registry> Subscriber<R> {
             registry.register_counter(&INFO[id::ACCEPTOR_TCP_SOCKET_SENT__BLOCKED_COUNT_HOST]),
         );
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_STARTED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_DATAGRAM_RECEIVED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_PACKET_RECEIVED]));
@@ -4217,6 +4299,7 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::CONNECTION_CLOSED]));
         counters.push(registry.register_counter(&INFO[id::ENDPOINT_INITIALIZED]));
         counters.push(registry.register_counter(&INFO[id::DC_CONNECTION_TIMEOUT]));
+        counters.push(registry.register_counter(&INFO[id::DC_HANDSHAKE_PROBE]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_INITIALIZED]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_UNINITIALIZED]));
         counters.push(
@@ -4369,6 +4452,20 @@ impl<R: Registry> Subscriber<R> {
             {
                 let offset = nominal_counters.len();
                 let mut count = 0;
+                for variant in <AcceptorTcpApplicationDataDropReason as AsVariant>::VARIANTS.iter()
+                {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
                 for variant in <AcceptorPacketDropReason as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(registry.register_nominal_counter(
                         &INFO[id::ACCEPTOR_UDP_PACKET_DROPPED__REASON],
@@ -4488,6 +4585,34 @@ impl<R: Registry> Subscriber<R> {
                 let offset = nominal_counters.len();
                 let mut count = 0;
                 for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <HandshakeProbeOutcome as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(
+                        registry.register_nominal_counter(
+                            &INFO[id::DC_HANDSHAKE_PROBE__OUTCOME],
+                            variant,
+                        ),
+                    );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <SocketAddress as AsVariant>::VARIANTS.iter() {
                     nominal_counters
                         .push(
                             registry
@@ -4496,6 +4621,19 @@ impl<R: Registry> Subscriber<R> {
                                     variant,
                                 ),
                         );
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <HandshakeReason as AsVariant>::VARIANTS.iter() {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON],
+                        variant,
+                    ));
                     count += 1;
                 }
                 debug_assert_ne!(count, 0, "field type needs at least one variant");
@@ -5148,6 +5286,7 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[id::STREAM_TLS_CONNECT__TCP_LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_TLS_CONNECT__TLS_LATENCY]));
         timers.push(registry.register_timer(&INFO[id::STREAM_CONNECT_ERROR__LATENCY]));
+        timers.push(registry.register_timer(&INFO[id::DC_HANDSHAKE_PROBE__LATENCY]));
         {
             #[allow(unused_imports)]
             use api::*;
@@ -5229,6 +5368,9 @@ impl<R: Registry> Subscriber<R> {
                 ),
                 id::COUNTERS_ACCEPTOR_TCP_SOCKET_RECEIVED => {
                     (&INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED], entry)
+                }
+                id::COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED => {
+                    (&INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED], entry)
                 }
                 id::COUNTERS_ACCEPTOR_UDP_STARTED => (&INFO[id::ACCEPTOR_UDP_STARTED], entry),
                 id::COUNTERS_ACCEPTOR_UDP_DATAGRAM_RECEIVED => {
@@ -5357,6 +5499,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_CONNECTION_CLOSED => (&INFO[id::CONNECTION_CLOSED], entry),
                 id::COUNTERS_ENDPOINT_INITIALIZED => (&INFO[id::ENDPOINT_INITIALIZED], entry),
                 id::COUNTERS_DC_CONNECTION_TIMEOUT => (&INFO[id::DC_CONNECTION_TIMEOUT], entry),
+                id::COUNTERS_DC_HANDSHAKE_PROBE => (&INFO[id::DC_HANDSHAKE_PROBE], entry),
                 id::COUNTERS_PATH_SECRET_MAP_INITIALIZED => {
                     (&INFO[id::PATH_SECRET_MAP_INITIALIZED], entry)
                 }
@@ -5620,6 +5763,17 @@ impl<R: Registry> Subscriber<R> {
                             .nominal_counters[offset..offset + variants.len()];
                         (&INFO[id::ACCEPTOR_TCP_IO_ERROR__SOURCE], entries, variants)
                     }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorTcpApplicationDataDropReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
                     id::NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON => {
                         let offset = *entry;
                         let variants = <AcceptorPacketDropReason as AsVariant>::VARIANTS;
@@ -5703,6 +5857,24 @@ impl<R: Registry> Subscriber<R> {
                             variants,
                         )
                     }
+                    id::NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL => {
+                        let offset = *entry;
+                        let variants = <SocketAddress as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__OUTCOME => {
+                        let offset = *entry;
+                        let variants = <HandshakeProbeOutcome as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (&INFO[id::DC_HANDSHAKE_PROBE__OUTCOME], entries, variants)
+                    }
                     id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL => {
                         let offset = *entry;
                         let variants = <SocketAddress as AsVariant>::VARIANTS;
@@ -5710,6 +5882,17 @@ impl<R: Registry> Subscriber<R> {
                             .nominal_counters[offset..offset + variants.len()];
                         (
                             &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON => {
+                        let offset = *entry;
+                        let variants = <HandshakeReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON],
                             entries,
                             variants,
                         )
@@ -6646,6 +6829,9 @@ impl<R: Registry> Subscriber<R> {
                 id::TIMERS_STREAM_CONNECT_ERROR__LATENCY => {
                     (&INFO[id::STREAM_CONNECT_ERROR__LATENCY], entry)
                 }
+                id::TIMERS_DC_HANDSHAKE_PROBE__LATENCY => {
+                    (&INFO[id::DC_HANDSHAKE_PROBE__LATENCY], entry)
+                }
                 _ => unsafe { core::hint::unreachable_unchecked() },
             })
     }
@@ -7111,6 +7297,27 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
             id::MEASURES_ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
             event.payload_len,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_tcp_application_data_dropped(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorTcpApplicationDataDropped,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+            id::COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED,
+            1usize,
+        );
+        self.count_nominal(
+            id::ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
+            id::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
+            &event.reason,
         );
         let _ = event;
         let _ = meta;
@@ -8758,6 +8965,33 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         let _ = meta;
     }
     #[inline]
+    fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::DC_HANDSHAKE_PROBE,
+            id::COUNTERS_DC_HANDSHAKE_PROBE,
+            1usize,
+        );
+        self.count_nominal(
+            id::DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL,
+            id::NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__PEER_ADDRESS__PROTOCOL,
+            &event.peer_address,
+        );
+        self.time(
+            id::DC_HANDSHAKE_PROBE__LATENCY,
+            id::TIMERS_DC_HANDSHAKE_PROBE__LATENCY,
+            event.latency,
+        );
+        self.count_nominal(
+            id::DC_HANDSHAKE_PROBE__OUTCOME,
+            id::NOMINAL_COUNTERS_DC_HANDSHAKE_PROBE__OUTCOME,
+            &event.outcome,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
     fn on_path_secret_map_initialized(
         &self,
         meta: &api::EndpointMeta,
@@ -8826,6 +9060,11 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
             id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__PEER_ADDRESS__PROTOCOL,
             &event.peer_address,
+        );
+        self.count_nominal(
+            id::PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
+            id::NOMINAL_COUNTERS_PATH_SECRET_MAP_BACKGROUND_HANDSHAKE_REQUESTED__REASON,
+            &event.reason,
         );
         let _ = event;
         let _ = meta;

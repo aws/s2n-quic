@@ -185,10 +185,13 @@ impl Pool {
             let router = create_router(&packets, socket);
             let recv_socket = socket.recv_socket.clone();
             let span = tracing::trace_span!("udp_socket_worker", udp_socket_worker);
-            std::thread::spawn(move || {
-                let _span = span.entered();
-                udp::blocking(recv_socket, packets, router);
-            });
+            std::thread::Builder::new()
+                .name(format!("udp-worker-{udp_socket_worker}"))
+                .spawn(move || {
+                    let _span = span.entered();
+                    udp::blocking(recv_socket, packets, router);
+                })
+                .expect("failed to spawn udp worker thread");
         }
     }
 

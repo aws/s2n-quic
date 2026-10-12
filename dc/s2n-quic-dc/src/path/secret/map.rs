@@ -37,6 +37,9 @@ pub mod testing;
 #[cfg(test)]
 mod event_tests;
 
+#[cfg(test)]
+mod tests;
+
 pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
 pub use proactive_unknown_path_secret::SendStats;
@@ -89,6 +92,13 @@ fn encode_unknown_path_secret(
 #[derive(Clone)]
 pub struct Map {
     store: Arc<dyn Store>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HandshakeProbeOutcome {
+    Responsive,
+    Unresponsive,
+    Error,
 }
 
 impl fmt::Debug for Map {
@@ -296,9 +306,18 @@ impl Map {
     ///
     /// Note that unlike by-IP lookup this should typically not be done significantly after the
     /// original secret was used for decryption.
+    ///
+    /// Returns `None` if there is no entry for `id`, or if that entry has exhausted its key IDs. In
+    /// the latter case a re-handshake is requested which replaces the peer's path secret.
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let entry = self.store.get_by_id_tracked(&id)?;
-        let (sealer, credentials) = entry.uni_sealer();
+        let Some((sealer, credentials)) = entry.uni_sealer() else {
+            self.store.request_handshake(
+                *entry.peer(),
+                event::builder::HandshakeReason::KeyIdExhaustion,
+            );
+            return None;
+        };
         Some((sealer, credentials, entry.parameters()))
     }
 
@@ -362,6 +381,7 @@ impl Map {
         Ciphersuite,
         entry::Bidirectional,
         dc::ApplicationParams,
+        Option<entry::ApplicationData>,
     )> {
         let entry = self
             .store
@@ -369,8 +389,15 @@ impl Map {
         let params = entry.parameters();
         let keys = entry.bidi_remote(self.clone(), credentials, queue_id, features); // for dedup check
         let secret = entry.secret();
+        let application_data = entry.application_data().clone();
 
-        Some((*secret.export_secret(), *secret.ciphersuite(), keys, params))
+        Some((
+            *secret.export_secret(),
+            *secret.ciphersuite(),
+            keys,
+            params,
+            application_data,
+        ))
     }
 
     /// This can be called from anywhere to ask the map to handle a packet.
@@ -384,6 +411,17 @@ impl Map {
     /// Emits a DcConnectionTimeout event via the subscriber
     pub fn on_dc_connection_timeout(&self, peer_address: &SocketAddr) {
         self.store.on_dc_connection_timeout(peer_address);
+    }
+
+    /// Emits a DcHandshakeProbe event via the subscriber.
+    pub(crate) fn on_dc_handshake_probe(
+        &self,
+        peer_address: &SocketAddr,
+        latency: std::time::Duration,
+        outcome: HandshakeProbeOutcome,
+    ) {
+        self.store
+            .on_dc_handshake_probe(peer_address, latency, outcome);
     }
 
     /// Emits a datagram encrypt event with the wire packet length
@@ -592,5 +630,36 @@ impl Map {
         >,
     ) {
         self.store.register_make_application_data(cb);
+    }
+
+    /// Registers a callback that serializes an entry's [`ApplicationData`] into opaque bytes.
+    ///
+    /// The callback receives only the type-erased [`ApplicationData`] and returns the serialized
+    /// blob (or `None` when there is nothing to forward). It mirrors
+    /// [`Map::register_make_application_data`]: the dc crate never inspects the bytes and only the
+    /// registering application knows their schema. See [`Map::serialize_application_data`] for how
+    /// the callback is invoked.
+    #[allow(clippy::type_complexity)]
+    pub fn register_application_data_serializer(
+        &self,
+        cb: Box<
+            dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync,
+        >,
+    ) {
+        self.store.register_application_data_serializer(cb);
+    }
+
+    /// Serializes `data` into an opaque blob using the callback registered via
+    /// [`Map::register_application_data_serializer`].
+    ///
+    /// Returns `Ok(None)` if no serializer is registered or if the callback yields `None`, and
+    /// passes the callback's error through unchanged. The map has no event publisher, so the
+    /// caller decides how a failure is reported; the forwarding worker publishes an event and
+    /// logs the error, then forwards the stream without a blob.
+    pub(crate) fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError> {
+        self.store.serialize_application_data(data)
     }
 }

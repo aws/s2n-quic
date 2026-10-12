@@ -155,6 +155,22 @@ event_recorder!(
     }
 );
 
+/// The server and client certificate public key types, in that order.
+pub type PublicKeyTypes = (Option<String>, Option<String>);
+
+event_recorder!(
+    SignaturePublicKeyType,
+    SignaturePublicKeyType,
+    on_signature_public_key_type,
+    PublicKeyTypes,
+    |event: &events::SignaturePublicKeyType, storage: &mut Vec<PublicKeyTypes>| {
+        storage.push((
+            event.server_public_key_type.map(String::from),
+            event.client_public_key_type.map(String::from),
+        ));
+    }
+);
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PacketDropReason {
     ConnectionError,

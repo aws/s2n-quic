@@ -9,7 +9,10 @@ use s2n_quic::{
     provider::{
         dc,
         io::testing::Result,
-        tls::offload::{Executor, ExporterHandler, OffloadBuilder},
+        tls::{
+            default::{self as default_tls, security},
+            offload::{Executor, ExporterHandler, OffloadBuilder},
+        },
     },
     server::{self, ServerProviders},
 };
@@ -844,6 +847,387 @@ fn bimodal_no_handshake_delay() -> Result<()> {
         rtt.mul_f32(2.5),
         "bimodal search should not change server handshake latency"
     );
+
+    Ok(())
+}
+
+// Covers DC completion latency across classical/PQ handshakes and all combinations of current and
+// legacy client/server MTU configurations. The receive queue is limited to one packet slot in the
+// spaced case and sized to hold a GRO-sized batch in the unspaced case, modeling the receive
+// scheduling effects of GRO without aggregating packets in the simulator.
+#[test]
+fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
+    const BASE_MTU: u16 = 1450;
+    const JUMBO_MTU: u16 = 8940;
+    const CONSTRAINED_PATH_MTU: u16 = 1500;
+    const JUMBO_PATH_MTU: u16 = 9001;
+    const RTT: Duration = Duration::from_millis(1);
+    const CLASSICAL_POLICY: &str = "20240503";
+    const ML_KEM_POLICY: &str = "20250721";
+    const PRODUCTION_PTO_JITTER_PERCENTAGE: u8 = 33;
+    const SINGLE_PACKET_RECV_BUFFER_SIZE: usize = 1;
+    const GRO_BATCH_RECV_BUFFER_SIZE: usize = u16::MAX as usize;
+
+    #[derive(Clone, Copy)]
+    struct MtuConfiguration {
+        base: u16,
+        initial: u16,
+        max: u16,
+    }
+
+    // Mirrors the current psk/io.rs configuration, which disables MTU discovery.
+    const CURRENT: MtuConfiguration = MtuConfiguration {
+        base: BASE_MTU,
+        initial: BASE_MTU,
+        max: BASE_MTU,
+    };
+
+    // Mirrors the legacy configuration deployed before MTU discovery was disabled.
+    const LEGACY: MtuConfiguration = MtuConfiguration {
+        base: BASE_MTU,
+        initial: JUMBO_MTU,
+        max: JUMBO_MTU,
+    };
+
+    #[derive(Clone, Copy, Debug)]
+    enum ServerMode {
+        Inline,
+        Offloaded,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum PacketDelivery {
+        Spaced,
+        Unspaced,
+    }
+
+    #[derive(Debug)]
+    struct Outcome {
+        client_complete: Duration,
+        server_complete: Duration,
+    }
+
+    let run = |policy_version,
+               client_mtu: MtuConfiguration,
+               server_mtu: MtuConfiguration,
+               path_mtu: u16,
+               server_mode: ServerMode,
+               packet_delivery: PacketDelivery,
+               pto_jitter_percentage: u8|
+     -> Result<Outcome> {
+        let policy = security::Policy::from_version(policy_version).unwrap();
+
+        let mut server_tls = default_tls::Server::builder()
+            .with_certificate(
+                certificates::MTLS_SERVER_CERT,
+                certificates::MTLS_SERVER_KEY,
+            )?
+            .with_client_authentication()?
+            .with_trusted_certificate(certificates::MTLS_CA_CERT)?;
+        server_tls.config_mut().set_security_policy(&policy)?;
+        let server_tls = server_tls.build()?;
+
+        let mut client_tls = default_tls::Client::builder()
+            .with_certificate(certificates::MTLS_CA_CERT)?
+            .with_client_identity(
+                certificates::MTLS_CLIENT_CERT,
+                certificates::MTLS_CLIENT_KEY,
+            )?;
+        client_tls.config_mut().set_security_policy(&policy)?;
+        let client = Client::builder()
+            .with_tls(client_tls.build()?)?
+            .with_dc(MockDcEndpoint::new(&CLIENT_TOKENS))?;
+
+        let model = Model::default();
+        model.set_delay(RTT / 2);
+        model.set_max_udp_payload(path_mtu);
+        // Bach can't produce UDP_GRO aggregates. This approximates the batching opportunity:
+        // Unspaced leaves about 65 KiB for multiple MTU-sized slots, standing in for
+        // near-simultaneous datagrams from one eligible UDP flow arriving in a GRO receive;
+        // Spaced limits RX to one slot so packets are received separately. GRO eligibility
+        // depends on UDP flow and packet properties, not QUIC packet order, so this is not an
+        // exact reproduction.
+        let recv_buffer_size = match packet_delivery {
+            PacketDelivery::Spaced => SINGLE_PACKET_RECV_BUFFER_SIZE,
+            PacketDelivery::Unspaced => GRO_BATCH_RECV_BUFFER_SIZE,
+        };
+
+        let server_subscriber = DcRecorder::new();
+        let server_events = server_subscriber.clone();
+        let client_subscriber = DcRecorder::new();
+        let client_events = client_subscriber.clone();
+
+        test(model.clone(), |handle| {
+            let server_io = handle
+                .builder()
+                .with_internal_recv_buffer_size(recv_buffer_size)?
+                .with_base_mtu(server_mtu.base)
+                .with_initial_mtu(server_mtu.initial)
+                .with_max_mtu(server_mtu.max)
+                .build()?;
+            let server_limits = provider::limits::Limits::default()
+                .with_initial_round_trip_time(RTT)?
+                .with_pto_jitter_percentage(pto_jitter_percentage)?;
+            let server_event = (
+                (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                (tracing_events(false, model.clone()), server_subscriber),
+            );
+
+            macro_rules! start_server {
+                ($tls:expr, $limits:expr) => {
+                    Server::builder()
+                        .with_io(server_io)?
+                        .with_tls($tls)?
+                        .with_dc(MockDcEndpoint::new(&SERVER_TOKENS))?
+                        .with_event(server_event)?
+                        .with_random(Random::with_seed(456))?
+                        .with_limits($limits)?
+                        .start()?
+                };
+            }
+
+            let mut server = match server_mode {
+                ServerMode::Inline => start_server!(server_tls, server_limits),
+                ServerMode::Offloaded => {
+                    let server_tls = OffloadBuilder::new()
+                        .with_endpoint(server_tls)
+                        .with_executor(BachExecutor)
+                        .with_exporter(Exporter {
+                            stateless_reset_tokens: SERVER_TOKENS.to_vec(),
+                        })
+                        .build();
+                    let server_limits = server_limits.with_packet_buffer_size(JUMBO_MTU as u32)?;
+                    start_server!(server_tls, server_limits)
+                }
+            };
+
+            let addr = server.local_addr()?;
+
+            spawn(async move {
+                let mut conn = server.accept().await.unwrap();
+                dc::ConfirmComplete::wait_ready(&mut conn).await.unwrap();
+                dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+            });
+
+            let client = client
+                .with_io(
+                    handle
+                        .builder()
+                        .with_internal_recv_buffer_size(recv_buffer_size)?
+                        .with_base_mtu(client_mtu.base)
+                        .with_initial_mtu(client_mtu.initial)
+                        .with_max_mtu(client_mtu.max)
+                        .build()?,
+                )?
+                .with_event((
+                    (dc::ConfirmComplete, dc::MtuConfirmComplete),
+                    (tracing_events(false, model.clone()), client_subscriber),
+                ))?
+                .with_random(Random::with_seed(456))?
+                .with_limits(
+                    provider::limits::Limits::default()
+                        .with_initial_round_trip_time(RTT)?
+                        .with_pto_jitter_percentage(pto_jitter_percentage)?
+                        .with_packet_buffer_size(JUMBO_MTU as u32)?,
+                )?
+                .start()?;
+
+            primary::spawn(async move {
+                let mut conn = client
+                    .connect(
+                        Connect::new(addr)
+                            .with_server_name("localhost")
+                            .with_deduplicate(true),
+                    )
+                    .await
+                    .unwrap();
+                dc::ConfirmComplete::wait_ready(&mut conn).await.unwrap();
+                dc::MtuConfirmComplete::wait_ready(&mut conn).await;
+                // The server reaches DC Complete half an RTT after the client.
+                delay(RTT).await;
+            });
+
+            Ok(addr)
+        })
+        .unwrap();
+
+        let server_dc = server_events.dc_state_changed_events.lock().unwrap();
+        let client_dc = client_events.dc_state_changed_events.lock().unwrap();
+        assert_dc_complete(&server_dc);
+        assert_dc_complete(&client_dc);
+
+        Ok(Outcome {
+            client_complete: client_dc.last().unwrap().timestamp.duration_since_start(),
+            server_complete: server_dc.last().unwrap().timestamp.duration_since_start(),
+        })
+    };
+
+    let round_trips = |duration: Duration| duration.as_nanos().div_ceil(RTT.as_nanos());
+
+    #[derive(Clone, Copy)]
+    struct CompletionRtts {
+        client: u128,
+        server: u128,
+    }
+
+    #[derive(Clone, Copy)]
+    struct ExpectedCompletion {
+        classical: CompletionRtts,
+        ml_kem: CompletionRtts,
+    }
+
+    #[derive(Clone, Copy)]
+    struct PathExpectations {
+        // Indexed by ServerMode: inline, then offloaded.
+        constrained: [ExpectedCompletion; 2],
+        jumbo: [ExpectedCompletion; 2],
+    }
+
+    #[derive(Clone, Copy)]
+    struct Configuration {
+        name: &'static str,
+        client_mtu: MtuConfiguration,
+        server_mtu: MtuConfiguration,
+        spaced: PathExpectations,
+        unspaced: PathExpectations,
+    }
+
+    macro_rules! expected {
+        (
+            $classical_client:literal /
+            $classical_server:literal,
+            $ml_kem_client:literal /
+            $ml_kem_server:literal
+        ) => {
+            ExpectedCompletion {
+                classical: CompletionRtts {
+                    client: $classical_client,
+                    server: $classical_server,
+                },
+                ml_kem: CompletionRtts {
+                    client: $ml_kem_client,
+                    server: $ml_kem_server,
+                },
+            }
+        };
+    }
+
+    let configurations = [
+        Configuration {
+            name: "current_client_current_server",
+            client_mtu: CURRENT,
+            server_mtu: CURRENT,
+            spaced: PathExpectations {
+                constrained: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+            },
+        },
+        Configuration {
+            name: "current_client_legacy_server",
+            client_mtu: CURRENT,
+            server_mtu: LEGACY,
+            spaced: PathExpectations {
+                constrained: [expected!(6 / 7, 31 / 32), expected!(45 / 45, 48 / 48)],
+                jumbo: [expected!(5 / 6, 5 / 6), expected!(31 / 31, 8 / 8)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(6 / 7, 6 / 7), expected!(44 / 44, 38 / 39)],
+                jumbo: [expected!(5 / 6, 5 / 6), expected!(45 / 45, 8 / 9)],
+            },
+        },
+        Configuration {
+            name: "legacy_client_current_server",
+            client_mtu: LEGACY,
+            server_mtu: CURRENT,
+            spaced: PathExpectations {
+                constrained: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+                jumbo: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+                jumbo: [expected!(5 / 6, 6 / 7), expected!(5 / 6, 6 / 7)],
+            },
+        },
+        Configuration {
+            name: "legacy_client_legacy_server",
+            client_mtu: LEGACY,
+            server_mtu: LEGACY,
+            spaced: PathExpectations {
+                constrained: [expected!(13 / 14, 73 / 74), expected!(46 / 46, 69 / 70)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+            },
+            unspaced: PathExpectations {
+                constrained: [expected!(13 / 14, 195 / 196), expected!(53 / 54, 195 / 196)],
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+            },
+        },
+    ];
+
+    // The endpoint RNGs are seeded, so the full matrix remains deterministic while exercising the
+    // production PTO jitter configuration. The path dimension includes both the
+    // production-relevant constrained path and a jumbo-capable control.
+    for packet_delivery in [PacketDelivery::Spaced, PacketDelivery::Unspaced] {
+        for (server_mode, server_mode_index) in
+            [(ServerMode::Inline, 0), (ServerMode::Offloaded, 1)]
+        {
+            for configuration in configurations {
+                let path_expectations = match packet_delivery {
+                    PacketDelivery::Spaced => configuration.spaced,
+                    PacketDelivery::Unspaced => configuration.unspaced,
+                };
+                for (path_name, path_mtu, expected) in [
+                    (
+                        "constrained",
+                        CONSTRAINED_PATH_MTU,
+                        path_expectations.constrained[server_mode_index],
+                    ),
+                    (
+                        "jumbo",
+                        JUMBO_PATH_MTU,
+                        path_expectations.jumbo[server_mode_index],
+                    ),
+                ] {
+                    for (policy_name, policy, expected) in [
+                        ("classical", CLASSICAL_POLICY, expected.classical),
+                        ("ML-KEM", ML_KEM_POLICY, expected.ml_kem),
+                    ] {
+                        let outcome = run(
+                            policy,
+                            configuration.client_mtu,
+                            configuration.server_mtu,
+                            path_mtu,
+                            server_mode,
+                            packet_delivery,
+                            PRODUCTION_PTO_JITTER_PERCENTAGE,
+                        )?;
+                        let client_rtts = round_trips(outcome.client_complete);
+                        let server_rtts = round_trips(outcome.server_complete);
+                        // s2n-tls randomness is not stubbed, so completion can shift by one RTT at
+                        // a scheduling boundary.
+                        let tolerance = 1;
+                        assert!(
+                            expected.client.abs_diff(client_rtts) <= tolerance,
+                            "{packet_delivery:?} {server_mode:?} {} {path_name} {policy_name}: unexpected client DC completion latency: {:?} (observed {client_rtts} RTT, expected {} ± {tolerance})",
+                            configuration.name,
+                            outcome.client_complete,
+                            expected.client,
+                        );
+                        assert!(
+                            expected.server.abs_diff(server_rtts) <= tolerance,
+                            "{packet_delivery:?} {server_mode:?} {} {path_name} {policy_name}: unexpected server DC completion latency: {:?} (observed {server_rtts} RTT, expected {} ± {tolerance})",
+                            configuration.name,
+                            outcome.server_complete,
+                            expected.server,
+                        );
+                    }
+                }
+            }
+        }
+    }
 
     Ok(())
 }

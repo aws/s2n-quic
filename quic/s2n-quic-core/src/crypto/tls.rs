@@ -3,7 +3,7 @@
 
 use crate::path::{LocalAddress, RemoteAddress};
 #[cfg(feature = "alloc")]
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 #[cfg(feature = "alloc")]
 pub use bytes::{Bytes, BytesMut};
 use core::{any::Any, fmt::Debug, net::SocketAddr};
@@ -114,6 +114,14 @@ pub trait TlsSession: Send {
     /// * the handshake was a session resumption, so no signature was produced
     /// * the TLS provider does not expose the negotiated signature scheme
     fn signature_scheme(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// A string describing the public key algorithm and parameters of
+    /// the leaf certificate. Returns `None` when the key type is unavailable.
+    #[cfg(feature = "alloc")]
+    fn signature_public_key_type(&self, endpoint: crate::endpoint::Type) -> Option<String> {
+        let _ = endpoint;
         None
     }
 

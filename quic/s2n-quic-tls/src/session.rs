@@ -122,6 +122,16 @@ impl tls::TlsSession for Session {
         self.connection.signature_scheme()
     }
 
+    fn signature_public_key_type(&self, endpoint: endpoint::Type) -> Option<String> {
+        let mode = match endpoint {
+            endpoint::Type::Client => Mode::Client,
+            endpoint::Type::Server => Mode::Server,
+        };
+
+        // This fails when the requested certificate isn't available
+        self.connection.signature_public_key_type(mode).ok()
+    }
+
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, tls::ChainError> {
         self.connection
             .peer_cert_chain()

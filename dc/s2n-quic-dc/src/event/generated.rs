@@ -435,6 +435,32 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted when the [`ApplicationData`](crate::path::secret::map::ApplicationData) associated
+    /// with a stream's path secret is dropped from the UDS handoff instead of being forwarded.
+    ///
+    /// This is the type-erased value produced by
+    /// [`Map::register_make_application_data`](crate::path::secret::map::Map::register_make_application_data),
+    /// not payload sent by the application over the stream. The stream is still forwarded and
+    /// accepted without it.
+    pub struct AcceptorTcpApplicationDataDropped<'a> {
+        /// The remote address of the TCP stream
+        pub remote_address: SocketAddress<'a>,
+        pub reason: AcceptorTcpApplicationDataDropReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorTcpApplicationDataDropped<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorTcpApplicationDataDropped");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorTcpApplicationDataDropped<'a> {
+        const NAME: &'static str = "acceptor:tcp:application_data_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Emitted when a UDP acceptor is started
     pub struct AcceptorUdpStarted<'a> {
         /// The id of the acceptor worker
@@ -753,6 +779,60 @@ pub mod api {
                 Self::Local { .. } => 5usize,
                 Self::UnknownPathSecret { .. } => 6usize,
                 Self::System { .. } => 7usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Why the path secret's [`ApplicationData`](crate::path::secret::map::ApplicationData) was
+    /// dropped from a UDS handoff
+    pub enum AcceptorTcpApplicationDataDropReason {
+        #[non_exhaustive]
+        /// The serializer registered with
+        /// [`Map::register_application_data_serializer`](crate::path::secret::map::Map::register_application_data_serializer)
+        /// returned an error
+        SerializeFailed {},
+        #[non_exhaustive]
+        /// The encoded handoff packet would exceed the Unix datagram size limit
+        PacketTooLarge {},
+        #[non_exhaustive]
+        /// The deserializer registered on the receiving server returned an error
+        DeserializeFailed {},
+        #[non_exhaustive]
+        /// The handoff carried a serialized [`ApplicationData`](crate::path::secret::map::ApplicationData)
+        /// blob but the receiving server has no deserializer registered
+        NoDeserializer {},
+    }
+    impl aggregate::AsVariant for AcceptorTcpApplicationDataDropReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("SERIALIZE_FAILED\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("PACKET_TOO_LARGE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("DESERIALIZE_FAILED\0"),
+                id: 2usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("NO_DESERIALIZER\0"),
+                id: 3usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::SerializeFailed { .. } => 0usize,
+                Self::PacketTooLarge { .. } => 1usize,
+                Self::DeserializeFailed { .. } => 2usize,
+                Self::NoDeserializer { .. } => 3usize,
             }
         }
     }
@@ -1901,6 +1981,64 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted after a pre-handshake liveness probe completes
+    pub struct DcHandshakeProbe<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub latency: core::time::Duration,
+        pub outcome: HandshakeProbeOutcome,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for DcHandshakeProbe<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("DcHandshakeProbe");
+            fmt.field("peer_address", &self.peer_address);
+            fmt.field("latency", &self.latency);
+            fmt.field("outcome", &self.outcome);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for DcHandshakeProbe<'a> {
+        const NAME: &'static str = "dc:handshake_probe";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    pub enum HandshakeProbeOutcome {
+        #[non_exhaustive]
+        Responsive {},
+        #[non_exhaustive]
+        Unresponsive {},
+        #[non_exhaustive]
+        Error {},
+    }
+    impl aggregate::AsVariant for HandshakeProbeOutcome {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("RESPONSIVE\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("UNRESPONSIVE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("ERROR\0"),
+                id: 2usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Responsive { .. } => 0usize,
+                Self::Unresponsive { .. } => 1usize,
+                Self::Error { .. } => 2usize,
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct PathSecretMapInitialized {
         /// The capacity of the path secret map
         pub capacity: usize,
@@ -1943,12 +2081,15 @@ pub mod api {
     /// Emitted when a background handshake is requested
     pub struct PathSecretMapBackgroundHandshakeRequested<'a> {
         pub peer_address: SocketAddress<'a>,
+        /// Why the handshake was requested
+        pub reason: HandshakeReason,
     }
     #[cfg(any(test, feature = "testing"))]
     impl<'a> crate::event::snapshot::Fmt for PathSecretMapBackgroundHandshakeRequested<'a> {
         fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
             let mut fmt = fmt.debug_struct("PathSecretMapBackgroundHandshakeRequested");
             fmt.field("peer_address", &self.peer_address);
+            fmt.field("reason", &self.reason);
             fmt.finish()
         }
     }
@@ -2718,6 +2859,50 @@ pub mod api {
     }
     #[non_exhaustive]
     #[derive(Debug, Copy, Clone)]
+    /// Why a background re-handshake was requested.
+    ///
+    /// Note that this deliberately has no user-initiated variant: those handshakes are driven
+    /// directly and never routed through the path secret map, so they cannot be reported here.
+    pub enum HandshakeReason {
+        #[non_exhaustive]
+        /// Periodic re-handshaking.
+        Periodic {},
+        #[non_exhaustive]
+        /// Driven by remote packets (e.g., unknown path secret or replay detection).
+        Remote {},
+        #[non_exhaustive]
+        /// The path secret ran out of key IDs, so it can no longer be used for sending.
+        KeyIdExhaustion {},
+    }
+    impl aggregate::AsVariant for HandshakeReason {
+        const VARIANTS: &'static [aggregate::info::Variant] = &[
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("PERIODIC\0"),
+                id: 0usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("REMOTE\0"),
+                id: 1usize,
+            }
+            .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("KEY_ID_EXHAUSTION\0"),
+                id: 2usize,
+            }
+            .build(),
+        ];
+        #[inline]
+        fn variant_idx(&self) -> usize {
+            match self {
+                Self::Periodic { .. } => 0usize,
+                Self::Remote { .. } => 1usize,
+                Self::KeyIdExhaustion { .. } => 2usize,
+            }
+        }
+    }
+    #[non_exhaustive]
+    #[derive(Debug, Copy, Clone)]
     pub enum EvictionReason {
         #[non_exhaustive]
         /// Capacity of map exceeded.
@@ -3129,6 +3314,24 @@ pub mod tracing {
                 tracing::field::debug(stream_id), transfer_time =
                 tracing::field::debug(transfer_time), payload_len =
                 tracing::field::debug(payload_len) }
+            );
+        }
+        #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorTcpApplicationDataDropped {
+                remote_address,
+                reason,
+            } = event;
+            tracing::event!(
+                target : "acceptor_tcp_application_data_dropped", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), reason =
+                tracing::field::debug(reason) }
             );
         }
         #[inline]
@@ -4021,6 +4224,21 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            let parent = self.parent(meta);
+            let api::DcHandshakeProbe {
+                peer_address,
+                latency,
+                outcome,
+            } = event;
+            tracing::event!(
+                target : "dc_handshake_probe", parent : parent, tracing::Level::DEBUG, {
+                peer_address = tracing::field::debug(peer_address), latency =
+                tracing::field::debug(latency), outcome = tracing::field::debug(outcome)
+                }
+            );
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -4059,11 +4277,15 @@ pub mod tracing {
             event: &api::PathSecretMapBackgroundHandshakeRequested,
         ) {
             let parent = self.parent(meta);
-            let api::PathSecretMapBackgroundHandshakeRequested { peer_address } = event;
+            let api::PathSecretMapBackgroundHandshakeRequested {
+                peer_address,
+                reason,
+            } = event;
             tracing::event!(
                 target : "path_secret_map_background_handshake_requested", parent :
                 parent, tracing::Level::DEBUG, { peer_address =
-                tracing::field::debug(peer_address) }
+                tracing::field::debug(peer_address), reason =
+                tracing::field::debug(reason) }
             );
         }
         #[inline]
@@ -5133,6 +5355,34 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Emitted when the [`ApplicationData`](crate::path::secret::map::ApplicationData) associated
+    /// with a stream's path secret is dropped from the UDS handoff instead of being forwarded.
+    ///
+    /// This is the type-erased value produced by
+    /// [`Map::register_make_application_data`](crate::path::secret::map::Map::register_make_application_data),
+    /// not payload sent by the application over the stream. The stream is still forwarded and
+    /// accepted without it.
+    pub struct AcceptorTcpApplicationDataDropped<'a> {
+        /// The remote address of the TCP stream
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        pub reason: AcceptorTcpApplicationDataDropReason,
+    }
+    impl<'a> IntoEvent<api::AcceptorTcpApplicationDataDropped<'a>>
+        for AcceptorTcpApplicationDataDropped<'a>
+    {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpApplicationDataDropped<'a> {
+            let AcceptorTcpApplicationDataDropped {
+                remote_address,
+                reason,
+            } = self;
+            api::AcceptorTcpApplicationDataDropped {
+                remote_address: remote_address.into_event(),
+                reason: reason.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     /// Emitted when a UDP acceptor is started
     pub struct AcceptorUdpStarted<'a> {
         /// The id of the acceptor worker
@@ -5395,6 +5645,34 @@ pub mod builder {
                 Self::Local => Local {},
                 Self::UnknownPathSecret => UnknownPathSecret {},
                 Self::System => System {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Why the path secret's [`ApplicationData`](crate::path::secret::map::ApplicationData) was
+    /// dropped from a UDS handoff
+    pub enum AcceptorTcpApplicationDataDropReason {
+        /// The serializer registered with
+        /// [`Map::register_application_data_serializer`](crate::path::secret::map::Map::register_application_data_serializer)
+        /// returned an error
+        SerializeFailed,
+        /// The encoded handoff packet would exceed the Unix datagram size limit
+        PacketTooLarge,
+        /// The deserializer registered on the receiving server returned an error
+        DeserializeFailed,
+        /// The handoff carried a serialized [`ApplicationData`](crate::path::secret::map::ApplicationData)
+        /// blob but the receiving server has no deserializer registered
+        NoDeserializer,
+    }
+    impl IntoEvent<api::AcceptorTcpApplicationDataDropReason> for AcceptorTcpApplicationDataDropReason {
+        #[inline]
+        fn into_event(self) -> api::AcceptorTcpApplicationDataDropReason {
+            use api::AcceptorTcpApplicationDataDropReason::*;
+            match self {
+                Self::SerializeFailed => SerializeFailed {},
+                Self::PacketTooLarge => PacketTooLarge {},
+                Self::DeserializeFailed => DeserializeFailed {},
+                Self::NoDeserializer => NoDeserializer {},
             }
         }
     }
@@ -6430,6 +6708,45 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Emitted after a pre-handshake liveness probe completes
+    pub struct DcHandshakeProbe<'a> {
+        pub peer_address: SocketAddress<'a>,
+        pub latency: core::time::Duration,
+        pub outcome: HandshakeProbeOutcome,
+    }
+    impl<'a> IntoEvent<api::DcHandshakeProbe<'a>> for DcHandshakeProbe<'a> {
+        #[inline]
+        fn into_event(self) -> api::DcHandshakeProbe<'a> {
+            let DcHandshakeProbe {
+                peer_address,
+                latency,
+                outcome,
+            } = self;
+            api::DcHandshakeProbe {
+                peer_address: peer_address.into_event(),
+                latency: latency.into_event(),
+                outcome: outcome.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub enum HandshakeProbeOutcome {
+        Responsive,
+        Unresponsive,
+        Error,
+    }
+    impl IntoEvent<api::HandshakeProbeOutcome> for HandshakeProbeOutcome {
+        #[inline]
+        fn into_event(self) -> api::HandshakeProbeOutcome {
+            use api::HandshakeProbeOutcome::*;
+            match self {
+                Self::Responsive => Responsive {},
+                Self::Unresponsive => Unresponsive {},
+                Self::Error => Error {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct PathSecretMapInitialized {
         /// The capacity of the path secret map
         pub capacity: usize,
@@ -6470,15 +6787,21 @@ pub mod builder {
     /// Emitted when a background handshake is requested
     pub struct PathSecretMapBackgroundHandshakeRequested<'a> {
         pub peer_address: SocketAddress<'a>,
+        /// Why the handshake was requested
+        pub reason: HandshakeReason,
     }
     impl<'a> IntoEvent<api::PathSecretMapBackgroundHandshakeRequested<'a>>
         for PathSecretMapBackgroundHandshakeRequested<'a>
     {
         #[inline]
         fn into_event(self) -> api::PathSecretMapBackgroundHandshakeRequested<'a> {
-            let PathSecretMapBackgroundHandshakeRequested { peer_address } = self;
+            let PathSecretMapBackgroundHandshakeRequested {
+                peer_address,
+                reason,
+            } = self;
             api::PathSecretMapBackgroundHandshakeRequested {
                 peer_address: peer_address.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -7245,6 +7568,30 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Why a background re-handshake was requested.
+    ///
+    /// Note that this deliberately has no user-initiated variant: those handshakes are driven
+    /// directly and never routed through the path secret map, so they cannot be reported here.
+    pub enum HandshakeReason {
+        /// Periodic re-handshaking.
+        Periodic,
+        /// Driven by remote packets (e.g., unknown path secret or replay detection).
+        Remote,
+        /// The path secret ran out of key IDs, so it can no longer be used for sending.
+        KeyIdExhaustion,
+    }
+    impl IntoEvent<api::HandshakeReason> for HandshakeReason {
+        #[inline]
+        fn into_event(self) -> api::HandshakeReason {
+            use api::HandshakeReason::*;
+            match self {
+                Self::Periodic => Periodic {},
+                Self::Remote => Remote {},
+                Self::KeyIdExhaustion => KeyIdExhaustion {},
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub enum EvictionReason {
         /// Capacity of map exceeded.
         Capacity,
@@ -7478,6 +7825,16 @@ mod traits {
             &self,
             meta: &api::EndpointMeta,
             event: &api::AcceptorTcpSocketReceived,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `AcceptorTcpApplicationDataDropped` event is triggered
+        #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
         ) {
             let _ = meta;
             let _ = event;
@@ -8016,6 +8373,12 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `DcHandshakeProbe` event is triggered
+        #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `PathSecretMapInitialized` event is triggered
         #[inline]
         fn on_path_secret_map_initialized(
@@ -8543,6 +8906,15 @@ mod traits {
             self.as_ref().on_acceptor_tcp_socket_received(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            self.as_ref()
+                .on_acceptor_tcp_application_data_dropped(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -8966,6 +9338,10 @@ mod traits {
             event: &api::DcConnectionTimeout,
         ) {
             self.as_ref().on_dc_connection_timeout(meta, event);
+        }
+        #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            self.as_ref().on_dc_handshake_probe(meta, event);
         }
         #[inline]
         fn on_path_secret_map_initialized(
@@ -9447,6 +9823,15 @@ mod traits {
             (self.1).on_acceptor_tcp_socket_received(meta, event);
         }
         #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            (self.0).on_acceptor_tcp_application_data_dropped(meta, event);
+            (self.1).on_acceptor_tcp_application_data_dropped(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(
             &self,
             meta: &api::EndpointMeta,
@@ -9900,6 +10285,11 @@ mod traits {
             (self.1).on_dc_connection_timeout(meta, event);
         }
         #[inline]
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            (self.0).on_dc_handshake_probe(meta, event);
+            (self.1).on_dc_handshake_probe(meta, event);
+        }
+        #[inline]
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -10287,6 +10677,11 @@ mod traits {
         fn on_acceptor_tcp_socket_sent(&self, event: builder::AcceptorTcpSocketSent);
         ///Publishes a `AcceptorTcpSocketReceived` event to the publisher's subscriber
         fn on_acceptor_tcp_socket_received(&self, event: builder::AcceptorTcpSocketReceived);
+        ///Publishes a `AcceptorTcpApplicationDataDropped` event to the publisher's subscriber
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            event: builder::AcceptorTcpApplicationDataDropped,
+        );
         ///Publishes a `AcceptorUdpStarted` event to the publisher's subscriber
         fn on_acceptor_udp_started(&self, event: builder::AcceptorUdpStarted);
         ///Publishes a `AcceptorUdpDatagramReceived` event to the publisher's subscriber
@@ -10317,6 +10712,8 @@ mod traits {
         fn on_endpoint_initialized(&self, event: builder::EndpointInitialized);
         ///Publishes a `DcConnectionTimeout` event to the publisher's subscriber
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout);
+        ///Publishes a `DcHandshakeProbe` event to the publisher's subscriber
+        fn on_dc_handshake_probe(&self, event: builder::DcHandshakeProbe);
         ///Publishes a `PathSecretMapInitialized` event to the publisher's subscriber
         fn on_path_secret_map_initialized(&self, event: builder::PathSecretMapInitialized);
         ///Publishes a `PathSecretMapUninitialized` event to the publisher's subscriber
@@ -10579,6 +10976,16 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            event: builder::AcceptorTcpApplicationDataDropped,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_tcp_application_data_dropped(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_acceptor_udp_started(&self, event: builder::AcceptorUdpStarted) {
             let event = event.into_event();
             self.subscriber.on_acceptor_udp_started(&self.meta, &event);
@@ -10673,6 +11080,12 @@ mod traits {
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
             let event = event.into_event();
             self.subscriber.on_dc_connection_timeout(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_dc_handshake_probe(&self, event: builder::DcHandshakeProbe) {
+            let event = event.into_event();
+            self.subscriber.on_dc_handshake_probe(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11427,6 +11840,7 @@ pub mod testing {
             pub acceptor_tcp_io_error: AtomicU64,
             pub acceptor_tcp_socket_sent: AtomicU64,
             pub acceptor_tcp_socket_received: AtomicU64,
+            pub acceptor_tcp_application_data_dropped: AtomicU64,
             pub acceptor_udp_started: AtomicU64,
             pub acceptor_udp_datagram_received: AtomicU64,
             pub acceptor_udp_packet_received: AtomicU64,
@@ -11442,6 +11856,7 @@ pub mod testing {
             pub stream_connect_error: AtomicU64,
             pub endpoint_initialized: AtomicU64,
             pub dc_connection_timeout: AtomicU64,
+            pub dc_handshake_probe: AtomicU64,
             pub path_secret_map_initialized: AtomicU64,
             pub path_secret_map_uninitialized: AtomicU64,
             pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -11525,6 +11940,7 @@ pub mod testing {
                     acceptor_tcp_io_error: AtomicU64::new(0),
                     acceptor_tcp_socket_sent: AtomicU64::new(0),
                     acceptor_tcp_socket_received: AtomicU64::new(0),
+                    acceptor_tcp_application_data_dropped: AtomicU64::new(0),
                     acceptor_udp_started: AtomicU64::new(0),
                     acceptor_udp_datagram_received: AtomicU64::new(0),
                     acceptor_udp_packet_received: AtomicU64::new(0),
@@ -11540,6 +11956,7 @@ pub mod testing {
                     stream_connect_error: AtomicU64::new(0),
                     endpoint_initialized: AtomicU64::new(0),
                     dc_connection_timeout: AtomicU64::new(0),
+                    dc_handshake_probe: AtomicU64::new(0),
                     path_secret_map_initialized: AtomicU64::new(0),
                     path_secret_map_uninitialized: AtomicU64::new(0),
                     path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -11777,6 +12194,18 @@ pub mod testing {
                 let out = format!("{meta:?} {event:?}");
                 self.output.lock().unwrap().push(out);
             }
+            fn on_acceptor_tcp_application_data_dropped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorTcpApplicationDataDropped,
+            ) {
+                self.acceptor_tcp_application_data_dropped
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
             fn on_acceptor_udp_started(
                 &self,
                 meta: &api::EndpointMeta,
@@ -11939,6 +12368,17 @@ pub mod testing {
                 event: &api::DcConnectionTimeout,
             ) {
                 self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_dc_handshake_probe(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::DcHandshakeProbe,
+            ) {
+                self.dc_handshake_probe.fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
                 let out = format!("{meta:?} {event:?}");
@@ -12392,6 +12832,7 @@ pub mod testing {
         pub acceptor_tcp_io_error: AtomicU64,
         pub acceptor_tcp_socket_sent: AtomicU64,
         pub acceptor_tcp_socket_received: AtomicU64,
+        pub acceptor_tcp_application_data_dropped: AtomicU64,
         pub acceptor_udp_started: AtomicU64,
         pub acceptor_udp_datagram_received: AtomicU64,
         pub acceptor_udp_packet_received: AtomicU64,
@@ -12440,6 +12881,7 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
+        pub dc_handshake_probe: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -12523,6 +12965,7 @@ pub mod testing {
                 acceptor_tcp_io_error: AtomicU64::new(0),
                 acceptor_tcp_socket_sent: AtomicU64::new(0),
                 acceptor_tcp_socket_received: AtomicU64::new(0),
+                acceptor_tcp_application_data_dropped: AtomicU64::new(0),
                 acceptor_udp_started: AtomicU64::new(0),
                 acceptor_udp_datagram_received: AtomicU64::new(0),
                 acceptor_udp_packet_received: AtomicU64::new(0),
@@ -12571,6 +13014,7 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
+                dc_handshake_probe: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -12802,6 +13246,18 @@ pub mod testing {
             event: &api::AcceptorTcpSocketReceived,
         ) {
             self.acceptor_tcp_socket_received
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorTcpApplicationDataDropped,
+        ) {
+            self.acceptor_tcp_application_data_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -13444,6 +13900,13 @@ pub mod testing {
             let out = format!("{meta:?} {event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_dc_handshake_probe(&self, meta: &api::EndpointMeta, event: &api::DcHandshakeProbe) {
+            self.dc_handshake_probe.fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_path_secret_map_initialized(
             &self,
             meta: &api::EndpointMeta,
@@ -13891,6 +14354,7 @@ pub mod testing {
         pub acceptor_tcp_io_error: AtomicU64,
         pub acceptor_tcp_socket_sent: AtomicU64,
         pub acceptor_tcp_socket_received: AtomicU64,
+        pub acceptor_tcp_application_data_dropped: AtomicU64,
         pub acceptor_udp_started: AtomicU64,
         pub acceptor_udp_datagram_received: AtomicU64,
         pub acceptor_udp_packet_received: AtomicU64,
@@ -13939,6 +14403,7 @@ pub mod testing {
         pub connection_closed: AtomicU64,
         pub endpoint_initialized: AtomicU64,
         pub dc_connection_timeout: AtomicU64,
+        pub dc_handshake_probe: AtomicU64,
         pub path_secret_map_initialized: AtomicU64,
         pub path_secret_map_uninitialized: AtomicU64,
         pub path_secret_map_background_handshake_requested: AtomicU64,
@@ -14012,6 +14477,7 @@ pub mod testing {
                 acceptor_tcp_io_error: AtomicU64::new(0),
                 acceptor_tcp_socket_sent: AtomicU64::new(0),
                 acceptor_tcp_socket_received: AtomicU64::new(0),
+                acceptor_tcp_application_data_dropped: AtomicU64::new(0),
                 acceptor_udp_started: AtomicU64::new(0),
                 acceptor_udp_datagram_received: AtomicU64::new(0),
                 acceptor_udp_packet_received: AtomicU64::new(0),
@@ -14060,6 +14526,7 @@ pub mod testing {
                 connection_closed: AtomicU64::new(0),
                 endpoint_initialized: AtomicU64::new(0),
                 dc_connection_timeout: AtomicU64::new(0),
+                dc_handshake_probe: AtomicU64::new(0),
                 path_secret_map_initialized: AtomicU64::new(0),
                 path_secret_map_uninitialized: AtomicU64::new(0),
                 path_secret_map_background_handshake_requested: AtomicU64::new(0),
@@ -14241,6 +14708,17 @@ pub mod testing {
             let out = format!("{event:?}");
             self.output.lock().unwrap().push(out);
         }
+        fn on_acceptor_tcp_application_data_dropped(
+            &self,
+            event: builder::AcceptorTcpApplicationDataDropped,
+        ) {
+            self.acceptor_tcp_application_data_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
         fn on_acceptor_udp_started(&self, event: builder::AcceptorUdpStarted) {
             self.acceptor_udp_started.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
@@ -14347,6 +14825,13 @@ pub mod testing {
         }
         fn on_dc_connection_timeout(&self, event: builder::DcConnectionTimeout) {
             self.dc_connection_timeout.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_dc_handshake_probe(&self, event: builder::DcHandshakeProbe) {
+            self.dc_handshake_probe.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
             let out = format!("{event:?}");
