@@ -552,6 +552,53 @@ async fn ignores_non_synthetic_client_random() {
     assert!(!detect_synthetic(&random).await);
 }
 
+/// A single maximum-size record holds more plaintext than one s2n-tls read returns, so s2n-tls
+/// retains the remainder after consuming all of the record's ciphertext. The client must drain it
+/// without further socket input, so the server keeps the connection open to prevent EOF from
+/// waking the reader.
+#[tokio::test]
+async fn full_record_without_eof() {
+    const LEN: usize = 1 << 14;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+
+    let (release, held) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let acceptor = s2n_tls_tokio::TlsAcceptor::new(server_config());
+        let mut stream = acceptor.accept(socket).await.unwrap();
+        // Send the response as one record regardless of the s2n-tls binding's default.
+        let conn: &mut s2n_tls::connection::Connection = stream.as_mut();
+        conn.prefer_throughput().unwrap();
+        let mut request = [0];
+        stream.read_exact(&mut request).await.unwrap();
+        stream.write_all(&[0x42; LEN]).await.unwrap();
+        stream.flush().await.unwrap();
+        let _ = held.await;
+    });
+
+    let client = dc_client();
+    let mut stream = client
+        .connect_tls(address, Name::from_static("qlaws.qlaws"), &client_config())
+        .await
+        .unwrap();
+    stream.write_all(&[1]).await.unwrap();
+
+    let mut response = vec![0; LEN];
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        stream.read_exact(&mut response),
+    )
+    .await;
+
+    let _ = release.send(());
+    server.await.unwrap();
+
+    assert!(result.is_ok(), "response stalled");
+    assert_eq!(response, [0x42; LEN]);
+}
+
 #[derive(Clone)]
 struct DummyHandshake {
     hs: crate::psk::server::Provider,
