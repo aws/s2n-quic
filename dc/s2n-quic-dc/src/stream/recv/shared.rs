@@ -471,7 +471,11 @@ impl Inner {
             .on_read_buffer(&mut self.reassembler, out_buf, accept_state, clock);
 
         // check if we have any packets to process
-        if !self.buffer.is_empty() {
+        let has_tls_plaintext = shared
+            .s2n_connection
+            .as_ref()
+            .is_some_and(|conn| conn.buffered_plaintext_len() > 0);
+        if !self.buffer.is_empty() || has_tls_plaintext {
             let res = {
                 let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
 
