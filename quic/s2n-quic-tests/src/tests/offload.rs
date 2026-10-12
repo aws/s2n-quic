@@ -315,7 +315,7 @@ impl s2n_quic::provider::event::Subscriber for TlsRecorder {
         event: &s2n_quic_core::event::api::TlsExporterReady,
     ) {
         self.tls_exporter_event_seen.store(true, Ordering::Relaxed);
-        assert!(event.session.peer_cert_chain_der().is_ok());
+        assert!(event.session.selected_cert_der().is_ok());
     }
 }
 
