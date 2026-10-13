@@ -275,11 +275,13 @@ fn async_client_hello() {
 }
 
 #[derive(Clone, Default)]
+#[cfg(s2n_tls_provider)]
 struct TlsRecorder {
     tls_handshake_failed_seen: Arc<AtomicBool>,
     tls_exporter_event_seen: Arc<AtomicBool>,
 }
 
+#[cfg(s2n_tls_provider)]
 impl s2n_quic::provider::event::Subscriber for TlsRecorder {
     type ConnectionContext = ();
 
@@ -320,6 +322,7 @@ impl s2n_quic::provider::event::Subscriber for TlsRecorder {
 }
 
 #[test]
+#[cfg(s2n_tls_provider)]
 fn offload_connection_outputs_tls_events() {
     let recorder = TlsRecorder::default();
 
