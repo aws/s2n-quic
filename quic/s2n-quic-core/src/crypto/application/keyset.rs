@@ -40,7 +40,8 @@ const PACKET_NUM_ERROR_MSG: &str = "key update packet number <= a packet protect
 ///
 /// -> Timer expires --> We now generate a new k[0] = 'c'. Any packets that arrive encrypted with k[0] = 'a'
 ///                      will fail to decrypt since we no longer store that key. Now k[1] = 'b' is our
-///                      current key and k[0] = 'c' is our future key.
+///                      current key and k[0] = 'c' is our future key. All packets will arrive using k[1],
+///                      until the next key update is initiated, signaled by a packet using k[0].
 pub struct KeySet<K> {
     /// The current [`KeyPhase`]
     key_phase: KeyPhase,
