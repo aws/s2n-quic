@@ -239,6 +239,7 @@ mod id {
         STREAM_HANDSHAKE_PACKET_REJECTED__CONN,
         STREAM_HANDSHAKE_PACKET_REJECTED__REASON,
         CONNECTION_CLOSED,
+        CONNECTION_CLOSED__LATENCY,
         ENDPOINT_INITIALIZED,
         ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL,
         ENDPOINT_INITIALIZED__HANDSHAKE__PROTOCOL,
@@ -735,6 +736,7 @@ mod id {
     pub const STREAM_HANDSHAKE_PACKET_REJECTED__REASON: usize =
         InfoId::STREAM_HANDSHAKE_PACKET_REJECTED__REASON as usize;
     pub const CONNECTION_CLOSED: usize = InfoId::CONNECTION_CLOSED as usize;
+    pub const CONNECTION_CLOSED__LATENCY: usize = InfoId::CONNECTION_CLOSED__LATENCY as usize;
     pub const ENDPOINT_INITIALIZED: usize = InfoId::ENDPOINT_INITIALIZED as usize;
     pub const ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL: usize =
         InfoId::ENDPOINT_INITIALIZED__ACCEPTOR__PROTOCOL as usize;
@@ -2911,6 +2913,7 @@ mod timer {
                 id::STREAM_TLS_CONNECT__TCP_LATENCY => Self(stream_tls_connect__tcp_latency),
                 id::STREAM_TLS_CONNECT__TLS_LATENCY => Self(stream_tls_connect__tls_latency),
                 id::STREAM_CONNECT_ERROR__LATENCY => Self(stream_connect_error__latency),
+                id::CONNECTION_CLOSED__LATENCY => Self(connection_closed__latency),
                 id::DC_HANDSHAKE_PROBE__LATENCY => Self(dc_handshake_probe__latency),
                 _ => unreachable!("invalid info: {info:?}"),
             }
@@ -3007,6 +3010,9 @@ mod timer {
             #[link_name =
         s2n_quic_dc__event__timer__stream_connect_error__latency]
             fn stream_connect_error__latency(value: core::time::Duration);
+            #[link_name =
+        s2n_quic_dc__event__timer__connection_closed__latency]
+            fn connection_closed__latency(value: core::time::Duration);
             #[link_name =
         s2n_quic_dc__event__timer__dc_handshake_probe__latency]
             fn dc_handshake_probe__latency(value: core::time::Duration);
