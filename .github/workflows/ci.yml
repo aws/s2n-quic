@@ -345,7 +345,7 @@ jobs:
 
       - name: Run cargo/cross test
         run: |
-          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }}
+          ${{ matrix.target != 'native' && 'cross' || 'cargo' }} test --workspace ${{ matrix.exclude }} ${{ matrix.target != 'native' && format('--target {0}', matrix.target) || '' }} ${{ matrix.args }} -- --test-threads=1
 
   # The previous build runs on MSVC. s2n-quic can use s2n-tls, but only on MinGW, so we need a new job to test that.
   test-windows-gnu:
