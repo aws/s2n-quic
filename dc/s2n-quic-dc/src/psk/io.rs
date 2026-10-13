@@ -81,16 +81,6 @@ struct DCExporter {
     endpoint_type: s2n_quic_core::endpoint::Type,
 }
 impl s2n_quic::provider::tls::offload::ExporterHandler for DCExporter {
-    fn on_tls_handshake_failed(
-        &self,
-        _session: &impl s2n_quic_core::crypto::tls::TlsSession,
-        _e: &(dyn core::error::Error + Send + Sync + 'static),
-    ) -> Option<Box<dyn std::any::Any + Send>> {
-        // TODO wire this up so that dc-quic can emit certificate on tls failure as an event
-        // https://github.com/aws/s2n-quic/issues/3080
-        None
-    }
-
     fn on_tls_exporter_ready(
         &self,
         session: &impl s2n_quic_core::crypto::tls::TlsSession,

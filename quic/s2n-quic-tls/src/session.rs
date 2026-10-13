@@ -205,13 +205,14 @@ impl tls::Session for Session {
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => {
-                context.on_tls_handshake_failed(self, &e)?;
+                let alert = e.alert();
+                let message = e.message();
+                context.on_tls_handshake_failed(self, Box::new(e))?;
 
-                Poll::Ready(Err(e
-                    .alert()
+                Poll::Ready(Err(alert
                     .map(tls::Error::new)
                     .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
-                    .with_reason(e.message())
+                    .with_reason(message)
                     .into()))
             }
             Poll::Pending => Poll::Pending,
