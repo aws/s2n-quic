@@ -27,7 +27,7 @@ mod tokio_impl {
     impl<T: udp::Socket> Builder for TokioUdpSocket<T> {
         #[inline]
         fn build(self: Box<Self>) -> io::Result<ArcApplication> {
-            let v = AsyncFd::new(self.0)?;
+            let v = unsafe { AsyncFd::register(self.0) }?;
             let v = application::Single(v);
             let v = Arc::new(v);
             Ok(v)
@@ -42,9 +42,9 @@ mod tokio_impl {
     impl Builder for UdpPair {
         #[inline]
         fn build(self: Box<Self>) -> io::Result<ArcApplication> {
-            let read = AsyncFd::new(self.reader)?;
+            let read = unsafe { AsyncFd::register(self.reader) }?;
             let read = Tracing(read);
-            let write = AsyncFd::new(self.writer)?;
+            let write = unsafe { AsyncFd::register(self.writer) }?;
             let write = Tracing(write);
             let v = application::Pair { read, write };
             let v = Arc::new(v);

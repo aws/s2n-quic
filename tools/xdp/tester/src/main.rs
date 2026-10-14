@@ -69,8 +69,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Continuously drain the eBPF trace logs to the configured logger.
     if let Some(logger) = logger {
-        let mut logger =
-            tokio::io::unix::AsyncFd::with_interest(logger, tokio::io::Interest::READABLE)?;
+        let mut logger = unsafe {
+            tokio::io::unix::AsyncFd::register_with_interest(logger, tokio::io::Interest::READABLE)
+        }?;
         tokio::spawn(async move {
             loop {
                 let mut guard = logger
