@@ -846,7 +846,8 @@ pub mod server {
                     Protocol::Tcp => {
                         let socket = options.build_tcp_listener().unwrap();
                         let local_addr = socket.local_addr().unwrap();
-                        let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
+                        let socket =
+                            unsafe { ::tokio::io::unix::AsyncFd::register(socket) }.unwrap();
                         let channel_behavior =
                             stream_server::tokio::tcp::worker::DefaultBehavior::new(&sender, None);
 
@@ -875,7 +876,8 @@ pub mod server {
                         let socket = options.build_udp().unwrap();
                         let local_addr = socket.local_addr().unwrap();
 
-                        let socket = ::tokio::io::unix::AsyncFd::new(socket).unwrap();
+                        let socket =
+                            unsafe { ::tokio::io::unix::AsyncFd::register(socket) }.unwrap();
 
                         let acceptor = stream_server::tokio::udp::Acceptor::new(
                             0, socket, &sender, &env, &map, flavor,
