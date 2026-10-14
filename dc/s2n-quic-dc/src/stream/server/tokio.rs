@@ -554,7 +554,10 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             self.server.local_addr = socket.local_addr()?;
         }
 
-        let socket = unsafe { AsyncFd::register(socket) }?;
+        let socket = unsafe {
+            // SAFETY: `socket` is owned by the AsyncFd, so its fd is stable until drop.
+            AsyncFd::register(socket)
+        }?;
         let id = self.id();
 
         let acceptor = udp::Acceptor::new(
@@ -606,7 +609,10 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             }
         }
 
-        let socket = unsafe { tokio::io::unix::AsyncFd::register(socket) }?;
+        let socket = unsafe {
+            // SAFETY: `socket` is owned by the AsyncFd, so its fd is stable until drop.
+            tokio::io::unix::AsyncFd::register(socket)
+        }?;
         let id = self.id();
         let channel_behavior =
             tcp::worker::DefaultBehavior::new(&self.stream_sender, self.server.tls.clone());
