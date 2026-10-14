@@ -53,7 +53,7 @@ s2n-tls = "0.3.38"
 slotmap = "1"
 hashbrown = "0.17"
 thiserror = "2"
-tokio = { version = "1", default-features = false, features = ["sync"] }
+tokio = { version = "1.51.6", default-features = false, features = ["sync"] }
 tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [

@@ -76,6 +76,11 @@ impl<Sub> Writer<Sub>
 where
     Sub: event::Subscriber,
 {
+    #[cfg(feature = "tokio")]
+    pub(crate) fn replace_application_sockets(&mut self, sockets: socket::ArcApplication) {
+        self.0.sockets = sockets;
+    }
+
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;

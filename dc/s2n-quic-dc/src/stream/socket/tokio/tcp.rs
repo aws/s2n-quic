@@ -11,10 +11,16 @@ use s2n_quic_core::{inet::ExplicitCongestionNotification, ready};
 use std::{
     io::{self, IoSlice, IoSliceMut},
     net::SocketAddr,
+    os::fd::AsFd,
 };
 use tokio::{io::Interest, net::TcpStream};
 
 impl Socket for TcpStream {
+    fn rebind_to_current_runtime(&self) -> io::Result<std::sync::Arc<dyn Socket>> {
+        let socket = std::net::TcpStream::from(self.as_fd().try_clone_to_owned()?);
+        Ok(std::sync::Arc::new(TcpStream::from_std(socket)?))
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         (*self).local_addr()
