@@ -11,6 +11,7 @@ use s2n_quic_core::{ensure, inet::ExplicitCongestionNotification, ready};
 use std::{
     io::{self, IoSlice, IoSliceMut},
     net::SocketAddr,
+    os::fd::AsFd,
 };
 use tokio::io::unix::{AsyncFd, TryIoError};
 
@@ -18,6 +19,12 @@ impl<T> Socket for AsyncFd<T>
 where
     T: udp::Socket,
 {
+    fn rebind_to_current_runtime(&self) -> io::Result<std::sync::Arc<dyn Socket>> {
+        let socket = std::net::UdpSocket::from(self.as_fd().try_clone_to_owned()?);
+        // SAFETY: UdpSocket holds a valid fd and is not changed while registered.
+        Ok(std::sync::Arc::new(unsafe { AsyncFd::register(socket) }?))
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.get_ref().local_addr()

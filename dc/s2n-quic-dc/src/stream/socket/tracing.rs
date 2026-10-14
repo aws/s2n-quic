@@ -15,6 +15,13 @@ use tracing::trace;
 pub struct Tracing<S: Socket>(pub S);
 
 impl<S: Socket> Socket for Tracing<S> {
+    #[cfg(feature = "tokio")]
+    fn rebind_to_current_runtime(&self) -> io::Result<std::sync::Arc<dyn Socket>> {
+        Ok(std::sync::Arc::new(Tracing(
+            self.0.rebind_to_current_runtime()?,
+        )))
+    }
+
     #[inline(always)]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.local_addr()

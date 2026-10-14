@@ -17,6 +17,13 @@ impl<T> Socket for SendOnly<T>
 where
     T: udp::Socket,
 {
+    #[cfg(feature = "tokio")]
+    fn rebind_to_current_runtime(&self) -> io::Result<std::sync::Arc<dyn Socket>> {
+        // Pooled UDP sockets are driven by background workers. Preserve their
+        // send-only behavior without registering a competing receive socket.
+        Ok(std::sync::Arc::new(SendOnly(self.0.try_clone()?)))
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.0.local_addr()
@@ -98,5 +105,27 @@ where
     fn send_finish(&self) -> io::Result<()> {
         // UDP sockets don't need a shut down
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "tokio"))]
+mod tests {
+    use super::{udp, SendOnly, Socket};
+    use std::{net::UdpSocket, sync::Arc};
+
+    #[test]
+    fn rebind_preserves_shared_udp_socket() {
+        let socket = Arc::new(UdpSocket::bind("127.0.0.1:0").expect("bind UDP socket"));
+        let addr = socket.local_addr().expect("socket address");
+        let send_only = SendOnly(udp::CachedAddr::new(socket.clone(), addr));
+        let owners = Arc::strong_count(&socket);
+        let rebound = send_only
+            .rebind_to_current_runtime()
+            .expect("clone shared socket");
+
+        assert_eq!(Arc::strong_count(&socket), owners + 1);
+        assert_eq!(rebound.local_addr().expect("rebound socket address"), addr);
+        drop(rebound);
+        assert_eq!(Arc::strong_count(&socket), owners);
     }
 }
