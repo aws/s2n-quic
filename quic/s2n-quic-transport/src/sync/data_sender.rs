@@ -594,6 +594,7 @@ mod tests {
             transmission_constraint: transmission::Constraint::None,
             transmission_mode: transmission::Mode::Normal,
             endpoint: endpoint::Type::Server,
+            ack_delays: Vec::new(),
         };
         let mut lost = HashSet::new();
         let mut pending = HashSet::new();

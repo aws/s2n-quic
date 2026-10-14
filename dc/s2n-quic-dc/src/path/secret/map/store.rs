@@ -1,9 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{ApplicationData, ApplicationDataError, DiskEntry, Entry, SendStats};
+use super::{
+    ApplicationData, ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats,
+};
 use crate::{
     credentials::{Credentials, Id},
+    event,
     packet::{secret_control as control, Packet},
     path::secret::{receiver, stateless_reset},
     psk::io::HandshakeReason,
@@ -84,6 +87,13 @@ pub trait Store: 'static + Send + Sync {
         &self,
         cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
     );
+
+    /// Requests a background re-handshake with `peer`, replacing its path secret.
+    fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: event::builder::HandshakeReason,
+    ) -> Option<JoinHandle<()>>;
 
     fn check_dedup(
         &self,
@@ -171,10 +181,30 @@ pub trait Store: 'static + Send + Sync {
         session: &dyn s2n_quic_core::crypto::tls::TlsSession,
     ) -> Result<Option<ApplicationData>, ApplicationDataError>;
 
+    #[allow(clippy::type_complexity)]
+    fn register_application_data_serializer(
+        &self,
+        cb: Box<
+            dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync,
+        >,
+    );
+
+    fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError>;
+
     #[cfg(test)]
     fn reset_all_senders(&self);
 
     fn on_dc_connection_timeout(&self, peer_address: &SocketAddr);
+
+    fn on_dc_handshake_probe(
+        &self,
+        peer_address: &SocketAddr,
+        latency: Duration,
+        outcome: HandshakeProbeOutcome,
+    );
 
     fn on_datagram_encrypt(&self, packet_len: usize);
 

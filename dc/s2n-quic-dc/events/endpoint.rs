@@ -21,3 +21,23 @@ struct DcConnectionTimeout<'a> {
     #[nominal_counter("peer_address.protocol")]
     peer_address: SocketAddress<'a>,
 }
+
+#[event("dc:handshake_probe")]
+#[subject(endpoint)]
+/// Emitted after a pre-handshake liveness probe completes
+struct DcHandshakeProbe<'a> {
+    #[nominal_counter("peer_address.protocol")]
+    peer_address: SocketAddress<'a>,
+
+    #[timer("latency")]
+    latency: core::time::Duration,
+
+    #[nominal_counter("outcome")]
+    outcome: HandshakeProbeOutcome,
+}
+
+enum HandshakeProbeOutcome {
+    Responsive,
+    Unresponsive,
+    Error,
+}

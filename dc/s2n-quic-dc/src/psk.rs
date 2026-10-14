@@ -3,4 +3,6 @@
 
 pub mod client;
 pub mod io;
+#[doc(hidden)]
+pub mod probe;
 pub mod server;

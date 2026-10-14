@@ -3,7 +3,7 @@
 
 use super::{
     cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
-    ApplicationDataError, DiskEntry, Entry, SendStats, Store,
+    ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -471,6 +471,17 @@ where
             >,
         >,
     >,
+
+    #[allow(clippy::type_complexity)]
+    application_data_serializer: RwLock<
+        Option<
+            Box<
+                dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError>
+                    + Send
+                    + Sync,
+            >,
+        >,
+    >,
 }
 
 // FIXME: Avoid the whole socket.
@@ -571,6 +582,7 @@ where
             subscriber,
             request_handshake: RwLock::new(None),
             mk_application_data: RwLock::new(None),
+            application_data_serializer: RwLock::new(None),
         };
 
         // Growing to double our maximum inserted entries should ensure that we never grow again, see:
@@ -711,12 +723,13 @@ where
     pub fn request_handshake(
         &self,
         peer: SocketAddr,
-        reason: HandshakeReason,
+        reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>> {
         self.subscriber()
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
                     peer_address: SocketAddress::from(peer).into_event(),
+                    reason: reason.clone(),
                 },
             );
 
@@ -731,7 +744,9 @@ where
             .unwrap_or_else(|e| e.into_inner())
             .as_deref()
         {
-            return (callback)(peer, reason);
+            // The callback feeds the handshake queue, which also counts user-initiated
+            // handshakes, so widen to the full set here.
+            return (callback)(peer, HandshakeReason::from(reason));
         }
         None
     }
@@ -919,6 +934,15 @@ where
         self.register_request_handshake(cb);
     }
 
+    fn request_handshake(
+        &self,
+        peer: SocketAddr,
+        reason: event::builder::HandshakeReason,
+    ) -> Option<JoinHandle<()>> {
+        // Resolves to the inherent method on `State`, which the cleaner also uses.
+        State::request_handshake(self, peer, reason)
+    }
+
     #[allow(clippy::type_complexity)]
     fn register_make_application_data(
         &self,
@@ -933,6 +957,20 @@ where
         // FIXME: Maybe panic if already initialized?
         *self
             .mk_application_data
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = Some(cb);
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn register_application_data_serializer(
+        &self,
+        cb: Box<
+            dyn Fn(&ApplicationData) -> Result<Option<Vec<u8>>, ApplicationDataError> + Send + Sync,
+        >,
+    ) {
+        // FIXME: Maybe panic if already initialized?
+        *self
+            .application_data_serializer
             .write()
             .unwrap_or_else(|e| e.into_inner()) = Some(cb);
     }
@@ -1079,7 +1117,7 @@ where
             // FIXME: Adjust our tests to backdate/forward date entries instead?
             && (cfg!(test) || entry.age() > Duration::from_secs(10));
         let scheduled_handshake = self
-            .request_handshake(*entry.peer(), HandshakeReason::Remote)
+            .request_handshake(*entry.peer(), event::builder::HandshakeReason::Remote)
             .is_some();
 
         self.subscriber().on_unknown_path_secret_packet_accepted(
@@ -1203,7 +1241,7 @@ where
         //
         // Handshaking will be rate limited per destination peer (and at least
         // de-duplicated).
-        self.request_handshake(*entry.peer(), HandshakeReason::Remote);
+        self.request_handshake(*entry.peer(), event::builder::HandshakeReason::Remote);
 
         Some(packet)
     }
@@ -1374,6 +1412,21 @@ where
         }
     }
 
+    fn serialize_application_data(
+        &self,
+        data: &ApplicationData,
+    ) -> Result<Option<Vec<u8>>, ApplicationDataError> {
+        if let Some(serializer) = &*self
+            .application_data_serializer
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+        {
+            (serializer)(data)
+        } else {
+            Ok(None)
+        }
+    }
+
     #[cfg(test)]
     fn reset_all_senders(&self) {
         let peer_map = self.peers.0.read();
@@ -1386,6 +1439,27 @@ where
         self.subscriber()
             .on_dc_connection_timeout(event::builder::DcConnectionTimeout {
                 peer_address: SocketAddress::from(*peer_address).into_event(),
+            });
+    }
+
+    fn on_dc_handshake_probe(
+        &self,
+        peer_address: &SocketAddr,
+        latency: Duration,
+        outcome: HandshakeProbeOutcome,
+    ) {
+        let outcome = match outcome {
+            HandshakeProbeOutcome::Responsive => event::builder::HandshakeProbeOutcome::Responsive,
+            HandshakeProbeOutcome::Unresponsive => {
+                event::builder::HandshakeProbeOutcome::Unresponsive
+            }
+            HandshakeProbeOutcome::Error => event::builder::HandshakeProbeOutcome::Error,
+        };
+        self.subscriber()
+            .on_dc_handshake_probe(event::builder::DcHandshakeProbe {
+                peer_address: SocketAddress::from(*peer_address).into_event(),
+                latency,
+                outcome,
             });
     }
 

@@ -311,6 +311,20 @@ impl S2nTlsConnection {
         Ok(())
     }
 
+    /// Returns the number of decrypted application bytes s2n-tls holds that have not been read yet.
+    ///
+    /// s2n-tls decrypts a whole record but only copies out as much as `read` offers, so plaintext
+    /// can remain after the encrypted input has been fully consumed.
+    pub(crate) fn buffered_plaintext_len(&self) -> usize {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
+        let mut guard = self.connection.lock().unwrap();
+        let conn: &mut s2n_tls::connection::Connection = (*guard.0).as_mut();
+        conn.peek_len()
+    }
+
     pub(crate) fn peer_cert_chain(&self) -> Option<&CertificateChain> {
         self.cert_chain.as_ref()
     }

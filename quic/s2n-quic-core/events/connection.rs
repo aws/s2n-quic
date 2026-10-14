@@ -32,6 +32,19 @@ struct SignatureScheme<'a> {
     chosen_signature_scheme: &'a str,
 }
 
+#[event("transport:signature_public_key_type")]
+/// The public key type of the certificates used to authenticate the connection
+///
+/// Each value describes the public key algorithm and parameters of a leaf certificate
+struct SignaturePublicKeyType<'a> {
+    /// The public key type of the server's certificate
+    server_public_key_type: Option<&'a str>,
+    /// The public key type of the client's certificate
+    ///
+    /// This is only available when the client authenticated with a certificate
+    client_public_key_type: Option<&'a str>,
+}
+
 #[event("transport:packet_skipped")]
 /// Packet was skipped with a given reason
 struct PacketSkipped {
@@ -211,6 +224,19 @@ struct AckRangeSent {
     packet_header: PacketHeader,
     path_id: u64,
     ack_range: RangeInclusive<u64>,
+}
+
+#[event("recovery:ack_delay")]
+/// An ACK was sent after being pending for the given duration.
+struct AckDelay {
+    #[nominal_counter("packet")]
+    packet_header: PacketHeader,
+    path_id: u64,
+    /// Time from when the first packet acknowledged by this ACK made an ACK pending until the ACK
+    /// was sent.
+    #[timer("delay")]
+    #[measure_counter("delay.conn", Duration)]
+    delay: core::time::Duration,
 }
 
 #[event("transport:packet_dropped")]

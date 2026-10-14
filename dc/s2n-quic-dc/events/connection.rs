@@ -614,5 +614,5 @@ pub enum StreamHandshakePacketRejectedReason {
 
 // NOTE - This event MUST come last, since connection-level aggregation depends on it
 #[event("connection:closed")]
-// #[checkpoint("latency")]
+#[checkpoint("latency")]
 pub struct ConnectionClosed {}

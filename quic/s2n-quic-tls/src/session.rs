@@ -122,6 +122,16 @@ impl tls::TlsSession for Session {
         self.connection.signature_scheme()
     }
 
+    fn signature_public_key_type(&self, endpoint: endpoint::Type) -> Option<String> {
+        let mode = match endpoint {
+            endpoint::Type::Client => Mode::Client,
+            endpoint::Type::Server => Mode::Server,
+        };
+
+        // This fails when the requested certificate isn't available
+        self.connection.signature_public_key_type(mode).ok()
+    }
+
     fn peer_cert_chain_der(&self) -> Result<Vec<Vec<u8>>, tls::ChainError> {
         self.connection
             .peer_cert_chain()
@@ -195,13 +205,14 @@ impl tls::Session for Session {
                 Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => {
-                context.on_tls_handshake_failed(self, &e)?;
+                let alert = e.alert();
+                let message = e.message();
+                context.on_tls_handshake_failed(self, Box::new(e))?;
 
-                Poll::Ready(Err(e
-                    .alert()
+                Poll::Ready(Err(alert
                     .map(tls::Error::new)
                     .unwrap_or(tls::Error::HANDSHAKE_FAILURE)
-                    .with_reason(e.message())
+                    .with_reason(message)
                     .into()))
             }
             Poll::Pending => Poll::Pending,
