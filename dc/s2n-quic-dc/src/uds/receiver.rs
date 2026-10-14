@@ -32,7 +32,7 @@ impl Receiver {
         let socket = UnixDatagram::bind(socket_path)?;
         socket.set_nonblocking(true)?;
 
-        let async_fd = Arc::new(AsyncFd::new(OwnedFd::from(socket))?);
+        let async_fd = Arc::new(unsafe { AsyncFd::register(OwnedFd::from(socket)) }?);
 
         Ok(Self {
             socket_fd: async_fd,

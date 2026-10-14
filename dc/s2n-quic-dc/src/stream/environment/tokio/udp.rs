@@ -86,12 +86,12 @@ where
 
         let read_worker = {
             let _guard = env.reader_rt.enter();
-            AsyncFd::new(reader.clone())?
+            unsafe { AsyncFd::register(reader.clone()) }?
         };
 
         let write_worker = {
             let _guard = env.writer_rt.enter();
-            AsyncFd::new(writer.clone())?
+            unsafe { AsyncFd::register(writer.clone()) }?
         };
 
         debug_assert_eq!(
