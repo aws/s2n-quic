@@ -25,7 +25,7 @@ impl Sender {
         let socket = UnixDatagram::unbound()?;
         socket.set_nonblocking(true)?;
         socket.connect(connect_path)?; // without this the socket is always writable
-        let async_fd = Arc::new(AsyncFd::new(OwnedFd::from(socket))?);
+        let async_fd = Arc::new(unsafe { AsyncFd::register(OwnedFd::from(socket)) }?);
 
         Ok(Self {
             socket_fd: async_fd,
