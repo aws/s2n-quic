@@ -47,6 +47,12 @@ pub struct RttEstimator {
     max_ack_delay: Duration,
     /// The time that the first RTT sample was obtained
     first_rtt_sample: Option<Timestamp>,
+    /// The latest RTT sample after the peer's reported `ack_delay` has been removed, i.e. the
+    /// value fed into `smoothed_rtt`. Equals `latest_rtt` when no adjustment was applied.
+    latest_adjusted_rtt: Duration,
+    /// The `ack_delay` of the ACK frame that produced the latest sample, after clamping to
+    /// `max_ack_delay` (zero in the Initial space).
+    latest_ack_delay: Duration,
 }
 
 impl Default for RttEstimator {
@@ -92,6 +98,8 @@ impl RttEstimator {
             rttvar,
             max_ack_delay,
             first_rtt_sample: None,
+            latest_adjusted_rtt: initial_rtt,
+            latest_ack_delay: ZERO_DURATION,
         }
     }
 
@@ -104,6 +112,25 @@ impl RttEstimator {
     #[inline]
     pub fn latest_rtt(&self) -> Duration {
         self.latest_rtt
+    }
+
+    /// Gets the latest round trip time sample with the peer's acknowledgement delay removed
+    ///
+    /// This is the `adjusted_rtt` of RFC 9002 section 5.3: the sample that `smoothed_rtt` and
+    /// `rttvar` were updated with. Delay-based congestion controllers want this value rather
+    /// than `latest_rtt`, which still contains the time the peer deliberately held the ACK.
+    #[inline]
+    pub fn latest_adjusted_rtt(&self) -> Duration {
+        self.latest_adjusted_rtt
+    }
+
+    /// Gets the acknowledgement delay reported by the ACK frame that produced the latest sample
+    ///
+    /// The value is clamped to `max_ack_delay` once the handshake is confirmed and is zero for
+    /// samples from the Initial packet number space.
+    #[inline]
+    pub fn latest_ack_delay(&self) -> Duration {
+        self.latest_ack_delay
     }
 
     /// Gets the weighted average round trip time
@@ -271,6 +298,8 @@ impl RttEstimator {
             //# rttvar = latest_rtt / 2
             self.smoothed_rtt = self.latest_rtt;
             self.rttvar = self.latest_rtt / 2;
+            self.latest_adjusted_rtt = self.latest_rtt;
+            self.latest_ack_delay = ZERO_DURATION;
             return;
         }
 
@@ -310,9 +339,14 @@ impl RttEstimator {
         //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
         //# *  MUST NOT subtract the acknowledgement delay from the RTT sample if
         //#    the resulting value is smaller than the min_rtt.
-        if self.min_rtt + ack_delay < self.latest_rtt {
+        let ack_delay_removed = self.min_rtt + ack_delay < self.latest_rtt;
+        if ack_delay_removed {
             adjusted_rtt -= ack_delay;
-        } else if !is_handshake_confirmed {
+        }
+        self.latest_adjusted_rtt = adjusted_rtt;
+        self.latest_ack_delay = ack_delay;
+
+        if !ack_delay_removed && !is_handshake_confirmed {
             //= https://www.rfc-editor.org/rfc/rfc9002#section-5.3
             //# Therefore, prior to handshake
             //# confirmation, an endpoint MAY ignore RTT samples if adjusting the RTT
@@ -499,6 +533,89 @@ mod test {
             rtt_estimator.pto_period(INITIAL_PTO_BACKOFF, PacketNumberSpace::ApplicationData),
             Duration::from_millis(1009)
         );
+    }
+
+    /// The adjusted sample removes the peer's ack_delay only when min_rtt allows it, is left
+    /// untouched for the first sample and in the Initial space, and always reflects the value
+    /// that fed smoothed_rtt.
+    #[test]
+    fn adjusted_rtt_tracks_the_ack_delay_removal() {
+        let now = NoopClock.get_time();
+        let mut rtt_estimator = RttEstimator::new(DEFAULT_INITIAL_RTT);
+        rtt_estimator.on_max_ack_delay(MaxAckDelay::new(VarInt::from_u8(25)).unwrap());
+        assert_eq!(rtt_estimator.latest_adjusted_rtt(), DEFAULT_INITIAL_RTT);
+        assert_eq!(rtt_estimator.latest_ack_delay(), Duration::ZERO);
+
+        // First sample: min_rtt is set from it and nothing is subtracted
+        rtt_estimator.update_rtt(
+            Duration::from_millis(10),
+            Duration::from_millis(100),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(
+            rtt_estimator.latest_adjusted_rtt(),
+            Duration::from_millis(100)
+        );
+        assert_eq!(rtt_estimator.latest_ack_delay(), Duration::ZERO);
+
+        // Subsequent sample: ack_delay fits above min_rtt and is removed
+        rtt_estimator.update_rtt(
+            Duration::from_millis(20),
+            Duration::from_millis(130),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(rtt_estimator.latest_rtt(), Duration::from_millis(130));
+        assert_eq!(
+            rtt_estimator.latest_adjusted_rtt(),
+            Duration::from_millis(110)
+        );
+        assert_eq!(rtt_estimator.latest_ack_delay(), Duration::from_millis(20));
+
+        // ack_delay above max_ack_delay is clamped before being removed
+        rtt_estimator.update_rtt(
+            Duration::from_millis(60),
+            Duration::from_millis(140),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(
+            rtt_estimator.latest_adjusted_rtt(),
+            Duration::from_millis(115)
+        );
+        assert_eq!(rtt_estimator.latest_ack_delay(), Duration::from_millis(25));
+
+        // Removing ack_delay would drop below min_rtt: the raw sample is kept
+        rtt_estimator.update_rtt(
+            Duration::from_millis(20),
+            Duration::from_millis(105),
+            now,
+            true,
+            PacketNumberSpace::ApplicationData,
+        );
+        assert_eq!(
+            rtt_estimator.latest_adjusted_rtt(),
+            Duration::from_millis(105)
+        );
+        assert_eq!(rtt_estimator.latest_ack_delay(), Duration::from_millis(20));
+
+        // Initial space never carries an ack_delay
+        rtt_estimator.update_rtt(
+            Duration::from_millis(20),
+            Duration::from_millis(150),
+            now,
+            true,
+            PacketNumberSpace::Initial,
+        );
+        assert_eq!(
+            rtt_estimator.latest_adjusted_rtt(),
+            Duration::from_millis(150)
+        );
+        assert_eq!(rtt_estimator.latest_ack_delay(), Duration::ZERO);
     }
 
     /// Test a zero RTT value is treated as 1 µs
