@@ -131,18 +131,67 @@ impl Entry {
         }
     }
 
+    /// Builds an entry from parts recovered from persistence, with an explicit creation time.
+    ///
+    /// Unlike [`Entry::new`], which stamps `Instant::now()`, this takes the `creation_time`
+    /// reconstructed from the persisted wall clock so a restored entry keeps its original age (which
+    /// drives rehandshake scheduling). The `sender` and `receiver` states passed here must already
+    /// have had their restore transforms applied; this constructor does not touch the counters. It
+    /// is `pub(super)` so only the map's own persistence path can reach it.
+    pub(super) fn from_restored_parts(
+        peer: SocketAddr,
+        secret: schedule::Secret,
+        sender: sender::State,
+        receiver: receiver::State,
+        parameters: dc::ApplicationParams,
+        creation_time: Instant,
+        application_data: Option<ApplicationData>,
+    ) -> Self {
+        // clamp max datagram size to a well-known value, as Entry::new does
+        parameters
+            .max_datagram_size
+            .fetch_min(crate::stream::MAX_DATAGRAM_SIZE as _, Ordering::Relaxed);
+
+        Self {
+            creation_time,
+            peer,
+            secret,
+            retired: Default::default(),
+            sender,
+            receiver,
+            parameters,
+            accessed: AtomicU8::new(0),
+            accessed_at: AccessedAt(AtomicU64::new(0)),
+            application_data,
+        }
+    }
+
     #[cfg(any(test, feature = "testing"))]
     #[allow(
         clippy::unwrap_used,
         reason = "test-support helper may panic to surface setup failures"
     )]
     pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
+        Self::fake_with_creation_time(peer, receiver, Instant::now())
+    }
+
+    /// As [`Entry::fake`], but with an explicit `creation_time` instead of `Instant::now()`.
+    #[cfg(any(test, feature = "testing"))]
+    #[allow(
+        clippy::unwrap_used,
+        reason = "test-support helper may panic to surface setup failures"
+    )]
+    pub fn fake_with_creation_time(
+        peer: SocketAddr,
+        receiver: Option<receiver::State>,
+        creation_time: Instant,
+    ) -> Arc<Entry> {
         let receiver = receiver.unwrap_or_default();
 
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
 
-        Arc::new(Entry::new(
+        Arc::new(Entry::from_restored_parts(
             peer,
             schedule::Secret::new(
                 schedule::Ciphersuite::AES_GCM_128_SHA256,
@@ -153,7 +202,7 @@ impl Entry {
             sender::State::new([0; control::TAG_LEN]),
             receiver,
             dc::testing::TEST_APPLICATION_PARAMS,
-            dc::testing::TEST_REHANDSHAKE_PERIOD,
+            creation_time,
             None,
         ))
     }
@@ -329,6 +378,14 @@ impl Entry {
     #[cfg(test)]
     pub fn reset_sender_counter(&self) {
         self.sender.reset_counter();
+    }
+
+    /// Test-only: apply the effect of receiving a StaleKey control packet, bumping this entry's
+    /// sender to at least `min_key_id`. Mirrors what `handle_stale_key_packet` does in production,
+    /// letting a test simulate StaleKey-driven recovery without routing a control packet.
+    #[cfg(test)]
+    pub fn simulate_stale_key(&self, min_key_id: crate::credentials::KeyId) {
+        self.sender.update_for_stale_key(min_key_id);
     }
 }
 
