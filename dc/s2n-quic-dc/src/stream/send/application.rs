@@ -32,6 +32,13 @@ pub use builder::Builder;
 
 pub struct Writer<Sub: event::Subscriber>(Box<Inner<Sub>>);
 
+#[cfg(test)]
+impl<Sub: event::Subscriber> Writer<Sub> {
+    pub(crate) fn max_datagram_size(&self) -> u16 {
+        self.0.shared.sender.path.load().max_datagram_size
+    }
+}
+
 struct Inner<Sub>
 where
     Sub: event::Subscriber,

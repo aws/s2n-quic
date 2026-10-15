@@ -292,6 +292,10 @@ impl Entry {
         self.parameters.clone()
     }
 
+    pub(crate) fn max_datagram_size(&self) -> u16 {
+        self.parameters.max_datagram_size()
+    }
+
     pub fn update_max_datagram_size(&self, mtu: u16) {
         self.parameters
             .max_datagram_size

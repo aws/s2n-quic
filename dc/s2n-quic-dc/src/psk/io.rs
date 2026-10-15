@@ -128,20 +128,22 @@ impl Server {
         // packet is impaired on both client and server. This is especially true if the ClientHello
         // is larger than the base MTU.
         //
-        // We are turning off probing fully (base = initial = max MTU) while we work through
-        // improved test coverage.
+        // Keep initial packets at the base MTU. Probing is disabled by default, but callers
+        // can opt in by configuring a larger MTU.
+        let mtu = builder.mtu.unwrap_or(DEFAULT_BASE_MTU);
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
-            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_base_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_max_mtu(mtu.min(DEFAULT_MTU))?
             .build()?;
         let io = probe::Provider::new(io);
 
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
-            builder.mtu as u64 * 10
+            // Preserve the window used before discovery became opt-in.
+            builder.mtu.unwrap_or(DEFAULT_MTU) as u64 * 10
         });
 
         let connection_limits = s2n_quic::provider::limits::Limits::new()
@@ -316,11 +318,12 @@ impl Client {
         builder: client::Builder<Event>,
     ) -> Result<Self, Error> {
         // For MTU configuration, see the comment on Server's io configuration.
+        let mtu = builder.mtu.unwrap_or(DEFAULT_BASE_MTU);
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
-            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_base_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_max_mtu(mtu.min(DEFAULT_MTU))?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .build()?;
 
@@ -1013,6 +1016,9 @@ pub struct ConnectionContext {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    mod mtu;
+
     use super::*;
     use crate::{
         path::secret::{stateless_reset::Signer, Map},
@@ -1053,6 +1059,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct MtuRecorder {
         max_mtu: Arc<AtomicU16>,
+        complete: Arc<std::sync::atomic::AtomicBool>,
     }
 
     impl s2n_quic::provider::event::Subscriber for MtuRecorder {
@@ -1072,6 +1079,9 @@ mod tests {
             event: &s2n_quic::provider::event::events::MtuUpdated,
         ) {
             self.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
+            if event.search_complete {
+                self.complete.store(true, Ordering::Relaxed);
+            }
         }
     }
 
@@ -1154,7 +1164,7 @@ mod tests {
                 NoopSubscriber,
                 s2n_quic::provider::event::default::Subscriber,
             >(
-                "0.0.0.0:0".parse().unwrap(),
+                "127.0.0.1:0".parse().unwrap(),
                 client_map,
                 tls.start_client().unwrap(),
                 subscriber,
@@ -1870,7 +1880,7 @@ mod tests {
             NoopSubscriber,
             s2n_quic::provider::event::default::Subscriber,
         >(
-            "0.0.0.0:0".parse().unwrap(),
+            "127.0.0.1:0".parse().unwrap(),
             client_map,
             tls.start_client().unwrap(),
             subscriber,
@@ -1911,7 +1921,7 @@ mod tests {
             .await
             .unwrap();
 
-        // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
+        // By default, MTU probing is disabled and the server's MTU is fixed at
         // DEFAULT_BASE_MTU.
         let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
 

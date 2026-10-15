@@ -299,6 +299,10 @@ impl Map {
         Some(Peer::new(&entry, self))
     }
 
+    pub(crate) fn get_by_id_untracked(&self, id: &Id) -> Option<Arc<Entry>> {
+        self.store.get_by_id_untracked(id)
+    }
+
     /// Retrieve a sealer by path secret ID.
     ///
     /// Generally callers should prefer to use one of the `pair` APIs; this is primarily useful for

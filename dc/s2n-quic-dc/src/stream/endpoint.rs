@@ -88,6 +88,7 @@ where
         crypto,
         entry.map(),
         parameters,
+        parameter_override.is_none(),
         endpoint::Type::Client,
         subscriber,
         subscriber_ctx,
@@ -173,6 +174,7 @@ where
         crypto,
         map,
         parameters,
+        parameter_override.is_none(),
         endpoint::Type::Server,
         subscriber,
         subscriber_ctx,
@@ -203,6 +205,7 @@ fn build_stream<Env, P>(
     crypto: secret::map::Bidirectional,
     map: &Map,
     parameters: dc::ApplicationParams,
+    follow_path_mtu: bool,
     endpoint_type: endpoint::Type,
     subscriber: Env::Subscriber,
     subscriber_ctx: <Env::Subscriber as event::Subscriber>::ConnectionContext,
@@ -228,9 +231,15 @@ where
     );
 
     let writer = {
-        let worker = sockets
-            .write_worker
-            .map(|socket| (send::state::State::new(stream_id, &parameters), socket));
+        let worker = sockets.write_worker.map(|socket| {
+            let mut sender = send::state::State::new(stream_id, &parameters);
+            if follow_path_mtu {
+                // Keep observing probes after stream creation. Parameter overrides remain
+                // authoritative for callers that explicitly supply stream parameters.
+                sender.path_secret = map.get_by_id_untracked(&crypto.credentials.id);
+            }
+            (sender, socket)
+        });
 
         let (flow_offset, send_quantum, bandwidth) =
             if let Some((worker, _socket)) = worker.as_ref() {

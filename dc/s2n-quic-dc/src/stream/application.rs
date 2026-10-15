@@ -143,6 +143,13 @@ where
     write: Writer<Sub>,
 }
 
+#[cfg(test)]
+impl<Sub: event::Subscriber> Stream<Sub> {
+    pub(crate) fn max_datagram_size(&self) -> u16 {
+        self.write.max_datagram_size()
+    }
+}
+
 impl<Sub> fmt::Debug for Stream<Sub>
 where
     Sub: event::Subscriber,

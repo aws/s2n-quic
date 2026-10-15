@@ -26,6 +26,12 @@ impl Controller {
     }
 
     #[inline]
+    pub fn on_mtu_update(&mut self, max_datagram_size: u16) {
+        self.controller
+            .on_mtu_update(max_datagram_size, &mut NoopPublisher);
+    }
+
+    #[inline]
     pub fn on_packet_sent(
         &mut self,
         time_sent: Timestamp,

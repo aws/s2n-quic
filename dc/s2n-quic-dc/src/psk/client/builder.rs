@@ -4,7 +4,7 @@
 use crate::{
     path::secret,
     psk::io::{
-        HandshakeQueueConfig, Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA, DEFAULT_MTU,
+        HandshakeQueueConfig, Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA,
         DEFAULT_PTO_JITTER_PERCENTAGE,
     },
 };
@@ -21,7 +21,7 @@ pub struct Builder<
 > {
     pub(crate) event_subscriber: Event,
     pub(crate) data_window: u64,
-    pub(crate) mtu: u16,
+    pub(crate) mtu: Option<u16>,
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
     pub(crate) handshake_queue: HandshakeQueueConfig,
@@ -32,7 +32,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
         Self {
             event_subscriber: Default::default(),
             data_window: DEFAULT_MAX_DATA,
-            mtu: DEFAULT_MTU,
+            mtu: None,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             handshake_queue: Default::default(),
@@ -63,8 +63,16 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     }
 
     /// Sets the largest maximum transmission unit (MTU) that will be used for transmission
+    ///
+    /// Defaults to 1450 bytes, including IP and UDP headers, with MTU discovery disabled.
+    /// A larger value opts this endpoint into MTU discovery. Initial packets remain at
+    /// most 1450 bytes; larger datagrams are used only after successful probing.
+    /// UDP streams opened before probing completes adopt subsequent MTU increases.
+    /// Configure both endpoints to enable larger datagrams in both directions.
+    /// The effective maximum is capped at 8940 bytes on Linux and 1450 bytes elsewhere.
+    /// Probing may increase handshake connection lifetime.
     pub fn with_mtu(mut self, mtu: u16) -> Self {
-        self.mtu = mtu;
+        self.mtu = Some(mtu);
         self
     }
 

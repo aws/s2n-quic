@@ -9,6 +9,7 @@ use crate::{
         self,
         stream::{self, decoder, encoder},
     },
+    path::secret::map::Entry,
     recovery,
     stream::{
         processing,
@@ -43,7 +44,10 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 use slotmap::SlotMap;
-use std::collections::{BinaryHeap, VecDeque};
+use std::{
+    collections::{BinaryHeap, VecDeque},
+    sync::Arc,
+};
 use tracing::{debug, trace};
 
 pub mod probe;
@@ -145,6 +149,7 @@ pub struct State {
     pub local_max_data_window: VarInt,
     pub peer_activity: Option<PeerActivity>,
     pub max_datagram_size: u16,
+    pub path_secret: Option<Arc<Entry>>,
     pub max_sent_segment_size: u16,
     pub is_reliable: bool,
 }
@@ -200,8 +205,25 @@ impl State {
             local_max_data_window: local_max_data,
             peer_activity: None,
             max_datagram_size,
+            path_secret: None,
             max_sent_segment_size: 0,
             is_reliable: stream_id.is_reliable,
+        }
+    }
+
+    /// Adopt successful probes that completed after this stream opened.
+    #[inline]
+    pub fn update_mtu(&mut self) {
+        let Some(entry) = &self.path_secret else {
+            return;
+        };
+        let mtu = entry
+            .max_datagram_size()
+            .min(crate::stream::MAX_DATAGRAM_SIZE as u16);
+        // Existing retransmissions may still use the old size, so only adopt increases.
+        if mtu > self.max_datagram_size {
+            self.max_datagram_size = mtu;
+            self.cca.on_mtu_update(mtu);
         }
     }
 
