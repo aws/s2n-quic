@@ -149,7 +149,10 @@ impl Xdp {
             address.queue_id = queue_id;
 
             // file descriptors can only be added once so wrap it in an Arc
-            let async_fd = Arc::new(unsafe { AsyncFd::register(socket.clone()) }?);
+            let async_fd = Arc::new(unsafe {
+                // SAFETY: `Fd` keeps its fd open until the last clone drops.
+                AsyncFd::register(socket.clone())
+            }?);
 
             // get the offsets for each of the rings
             let offsets = syscall::offsets(&socket)?;
@@ -234,6 +237,7 @@ impl Xdp {
         // Continuously drain the eBPF trace logs, if tracing is enabled.
         if let Some(logger) = logger {
             let mut logger = unsafe {
+                // SAFETY: the logger owns its ring buffer fd until drop.
                 tokio::io::unix::AsyncFd::register_with_interest(
                     logger,
                     tokio::io::Interest::READABLE,
