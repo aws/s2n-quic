@@ -80,8 +80,7 @@
       "server"
     ],
     "msquic": [
-      "client",
-      "server"
+      "client"
     ],
     "mvfst": [
       "client",
@@ -304,7 +303,6 @@
       "server"
     ],
     "kwik": [
-      "client",
       "server"
     ],
     "lsquic": [
@@ -336,7 +334,6 @@
       "server"
     ],
     "quiche": [
-      "client",
       "server"
     ],
     "s2n-quic": [
@@ -627,16 +624,11 @@
     "kwik": [
       "client"
     ],
-    "lsquic": [
-      "server"
-    ],
-    "msquic": [
-      "server"
-    ],
+    "lsquic": [],
+    "msquic": [],
     "mvfst": [],
     "neqo": [
-      "client",
-      "server"
+      "client"
     ],
     "ngtcp2": [
       "client",
@@ -648,18 +640,13 @@
     ],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
+    "s2n-quic": [],
     "s2n-quic-rustls": [
       "client",
       "server"
     ],
     "xquic": [],
-    "haproxy": [
-      "server"
-    ]
+    "haproxy": []
   },
   "transferloss": {
     "aioquic": [
@@ -727,24 +714,14 @@
     ]
   },
   "handshakecorruption": {
-    "aioquic": [
-      "client"
-    ],
+    "aioquic": [],
     "kwik": [
       "client"
     ],
-    "lsquic": [
-      "client",
-      "server"
-    ],
-    "msquic": [
-      "server"
-    ],
+    "lsquic": [],
+    "msquic": [],
     "mvfst": [],
-    "neqo": [
-      "client",
-      "server"
-    ],
+    "neqo": [],
     "ngtcp2": [
       "client",
       "server"
@@ -753,28 +730,16 @@
       "client",
       "server"
     ],
-    "quic-go": [
+    "quic-go": [],
+    "quiche": [],
+    "s2n-quic": [],
+    "s2n-quic-rustls": [
       "client"
     ],
-    "quiche": [],
-    "s2n-quic": [
-      "client",
-      "server"
-    ],
-    "s2n-quic-rustls": [
-      "client",
-      "server"
-    ],
     "xquic": [],
-    "quinn": [
-      "server"
-    ],
-    "haproxy": [
-      "server"
-    ],
-    "nginx": [
-      "server"
-    ]
+    "quinn": [],
+    "haproxy": [],
+    "nginx": []
   },
   "transfercorruption": {
     "aioquic": [
@@ -908,16 +873,14 @@
       "server"
     ],
     "msquic": [
-      "client",
-      "server"
+      "client"
     ],
     "mvfst": [
       "client",
       "server"
     ],
     "neqo": [
-      "client",
-      "server"
+      "client"
     ],
     "ngtcp2": [
       "client"
@@ -1067,9 +1030,7 @@
       "server"
     ],
     "xquic": [],
-    "chrome": [
-      "client"
-    ],
+    "chrome": [],
     "haproxy": [
       "server"
     ],
