@@ -646,7 +646,9 @@
       "client",
       "server"
     ],
-    "quic-go": [],
+    "quic-go": [
+      "client"
+    ],
     "quiche": [],
     "s2n-quic": [
       "client",
@@ -847,7 +849,8 @@
       "server"
     ],
     "kwik": [
-      "client"
+      "client",
+      "server"
     ],
     "lsquic": [
       "client",
@@ -901,7 +904,8 @@
       "server"
     ],
     "kwik": [
-      "client"
+      "client",
+      "server"
     ],
     "lsquic": [
       "client",
