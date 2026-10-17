@@ -1056,6 +1056,8 @@ mod tests {
     #[derive(Clone, Default)]
     struct MtuRecorder {
         max_mtu: Arc<AtomicU16>,
+        complete: Arc<std::sync::atomic::AtomicBool>,
+        gro_enabled: Arc<std::sync::atomic::AtomicBool>,
     }
 
     impl s2n_quic::provider::event::Subscriber for MtuRecorder {
@@ -1075,6 +1077,23 @@ mod tests {
             event: &s2n_quic::provider::event::events::MtuUpdated,
         ) {
             self.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
+            self.complete
+                .store(event.search_complete, Ordering::Release);
+        }
+
+        fn on_platform_feature_configured(
+            &mut self,
+            _meta: &s2n_quic::provider::event::events::EndpointMeta,
+            event: &s2n_quic::provider::event::events::PlatformFeatureConfigured,
+        ) {
+            if let s2n_quic::provider::event::events::PlatformFeatureConfiguration::Gro {
+                enabled,
+                ..
+            } = event.configuration
+            {
+                // The callback and test may run on different threads.
+                self.gro_enabled.store(enabled, Ordering::Relaxed);
+            }
         }
     }
 
@@ -1906,13 +1925,14 @@ mod tests {
                 (Some(8840), None),
                 (None, Some(8840)),
                 (Some(8840), Some(8840)),
+                (Some(9000), Some(9000)),
                 (Some(u16::MAX), Some(u16::MAX)),
             ] {
                 tokio::time::timeout(Duration::from_secs(15), async {
                     let client_events = MtuRecorder::default();
                     let server_events = MtuRecorder::default();
-                    let mut client = client::Builder::default()
-                        .with_event_subscriber(client_events.clone());
+                    let mut client =
+                        client::Builder::default().with_event_subscriber(client_events.clone());
                     let mut server = server::Builder::default()
                         .with_thread_count(offload)
                         .with_event_subscriber(server_events.clone());
@@ -1922,25 +1942,52 @@ mod tests {
                     if let Some(mtu) = server_mtu {
                         server = server.with_mtu(mtu);
                     }
-                    let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
-                        None, server, client,
-                    )
-                    .await;
+                    let setup =
+                        TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+                            None, server, client,
+                        )
+                        .await;
                     setup
                         .client
                         .connect(setup.server_addr, HandshakeReason::User, "localhost".into())
                         .await
                         .unwrap();
 
-                    // Discovery continues after connect returns. Events exclude IPv4/UDP headers.
-                    let expected = |mtu: Option<u16>| {
-                        mtu.unwrap_or(DEFAULT_BASE_MTU).min(DEFAULT_MTU) - 28
-                    };
-                    while client_events.max_mtu.load(Ordering::Relaxed) != expected(client_mtu)
-                        || server_events.max_mtu.load(Ordering::Relaxed) != expected(server_mtu)
+                    // Discovery continues after connect returns.
+                    while !client_events.complete.load(Ordering::Acquire)
+                        || !server_events.complete.load(Ordering::Acquire)
                     {
                         tokio::time::sleep(Duration::from_millis(10)).await;
                     }
+
+                    let client_max_mtu = client_mtu.unwrap_or(DEFAULT_BASE_MTU).min(DEFAULT_MTU);
+                    let server_max_mtu = server_mtu.unwrap_or(DEFAULT_BASE_MTU).min(DEFAULT_MTU);
+
+                    // GRO uses a large receive buffer for batches. Without it, each
+                    // endpoint's configured MTU limits its receive buffer.
+                    let client_receive_limit = if client_events.gro_enabled.load(Ordering::Relaxed) {
+                        u16::MAX
+                    } else {
+                        client_max_mtu
+                    };
+                    let server_receive_limit = if server_events.gro_enabled.load(Ordering::Relaxed) {
+                        u16::MAX
+                    } else {
+                        server_max_mtu
+                    };
+
+                    // Each sender is limited by its own MTU and the peer's receive capacity.
+                    // Events exclude IPv4/UDP headers.
+                    assert_eq!(
+                        client_events.max_mtu.load(Ordering::Relaxed),
+                        client_max_mtu.min(server_receive_limit) - 28,
+                        "client={client_mtu:?}, server={server_mtu:?}, offload={offload}",
+                    );
+                    assert_eq!(
+                        server_events.max_mtu.load(Ordering::Relaxed),
+                        server_max_mtu.min(client_receive_limit) - 28,
+                        "client={client_mtu:?}, server={server_mtu:?}, offload={offload}",
+                    );
                 })
                 .await
                 .unwrap_or_else(|_| {

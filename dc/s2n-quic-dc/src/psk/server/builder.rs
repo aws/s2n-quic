@@ -116,6 +116,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// Larger values opt into discovery, while initial packets remain at most 1450 bytes.
     /// The maximum is capped at 8940 bytes on Linux and 1450 bytes elsewhere.
     /// Each endpoint controls its own sending MTU; configure both for both directions.
+    /// The peer's receive capacity can also limit discovery.
     /// UDP streams snapshot the discovered MTU when opened and do not adopt later increases.
     /// Existing callers setting a larger value enable discovery upon upgrading.
     pub fn with_mtu(mut self, mtu: u16) -> Self {

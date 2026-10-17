@@ -851,7 +851,7 @@ fn bimodal_no_handshake_delay() -> Result<()> {
     Ok(())
 }
 
-// Covers DC completion latency across classical/PQ handshakes and all combinations of current and
+// Covers DC completion latency across classical/PQ handshakes and default, opt-in, and
 // legacy client/server MTU configurations. The receive queue is limited to one packet slot in the
 // spaced case and sized to hold a GRO-sized batch in the unspaced case, modeling the receive
 // scheduling effects of GRO without aggregating packets in the simulator.
@@ -875,11 +875,19 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
         max: u16,
     }
 
-    // Mirrors the current psk/io.rs configuration, which disables MTU discovery.
+    // Mirrors the default psk/io.rs configuration, which disables MTU discovery.
     const CURRENT: MtuConfiguration = MtuConfiguration {
         base: BASE_MTU,
         initial: BASE_MTU,
         max: BASE_MTU,
+    };
+
+    // Mirrors PSK with_mtu(9000) on Linux: the maximum is capped at 8940, while
+    // base and initial packets remain small to avoid the PQ first-flight regression.
+    const OPT_IN: MtuConfiguration = MtuConfiguration {
+        base: BASE_MTU,
+        initial: BASE_MTU,
+        max: JUMBO_MTU,
     };
 
     // Mirrors the legacy configuration deployed before MTU discovery was disabled.
@@ -1056,6 +1064,24 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
         assert_dc_complete(&server_dc);
         assert_dc_complete(&client_dc);
 
+        for (mtu, peer_mtu, events) in [
+            (client_mtu, server_mtu, &client_events),
+            (server_mtu, client_mtu, &server_events),
+        ] {
+            if mtu.max > mtu.initial {
+                assert!(events.mtu_probe_packets_sent() > 0);
+                if path_mtu == JUMBO_PATH_MTU {
+                    // The simulator's receive slots use the peer's configured MTU.
+                    // Both jumbo-capable endpoints must reach the jumbo maximum; an
+                    // unopted peer instead constrains discovery to the base MTU.
+                    assert_mtu_probing_completed(
+                        &events.mtu_updated_events.lock().unwrap(),
+                        mtu.max.min(peer_mtu.max) - 28,
+                    );
+                }
+            }
+        }
+
         Ok(Outcome {
             client_complete: client_dc.last().unwrap().timestamp.duration_since_start(),
             server_complete: server_dc.last().unwrap().timestamp.duration_since_start(),
@@ -1112,7 +1138,7 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
         };
     }
 
-    let configurations = [
+    let mut configurations = vec![
         Configuration {
             name: "current_client_current_server",
             client_mtu: CURRENT,
@@ -1167,6 +1193,51 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
         },
     ];
 
+    // Discovery preserves the default configuration's completion latency.
+    for (name, client_mtu, server_mtu) in [
+        ("opt_in_client_current_server", OPT_IN, CURRENT),
+        ("current_client_opt_in_server", CURRENT, OPT_IN),
+        ("opt_in_client_opt_in_server", OPT_IN, OPT_IN),
+    ] {
+        configurations.push(Configuration {
+            name,
+            client_mtu,
+            server_mtu,
+            ..configurations[0]
+        });
+    }
+
+    // Larger receive slots improve completion with legacy peers on jumbo paths.
+    // Constrained paths retain the corresponding default/legacy expectations.
+    configurations.extend([
+        Configuration {
+            name: "opt_in_client_legacy_server",
+            client_mtu: OPT_IN,
+            spaced: PathExpectations {
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(6 / 7, 7 / 8)],
+                ..configurations[1].spaced
+            },
+            unspaced: PathExpectations {
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(6 / 7, 6 / 7)],
+                ..configurations[1].unspaced
+            },
+            ..configurations[1]
+        },
+        Configuration {
+            name: "legacy_client_opt_in_server",
+            server_mtu: OPT_IN,
+            spaced: PathExpectations {
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+                ..configurations[2].spaced
+            },
+            unspaced: PathExpectations {
+                jumbo: [expected!(2 / 3, 2 / 3), expected!(2 / 3, 2 / 3)],
+                ..configurations[2].unspaced
+            },
+            ..configurations[2]
+        },
+    ]);
+
     // The endpoint RNGs are seeded, so the full matrix remains deterministic while exercising the
     // production PTO jitter configuration. The path dimension includes both the
     // production-relevant constrained path and a jumbo-capable control.
@@ -1174,7 +1245,7 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
         for (server_mode, server_mode_index) in
             [(ServerMode::Inline, 0), (ServerMode::Offloaded, 1)]
         {
-            for configuration in configurations {
+            for configuration in &configurations {
                 let path_expectations = match packet_delivery {
                     PacketDelivery::Spaced => configuration.spaced,
                     PacketDelivery::Unspaced => configuration.unspaced,
@@ -1206,6 +1277,10 @@ fn dc_complete_mtu_configuration_matrix_with_receive_batching() -> Result<()> {
                         )?;
                         let client_rtts = round_trips(outcome.client_complete);
                         let server_rtts = round_trips(outcome.server_complete);
+                        println!(
+                            "{packet_delivery:?} {server_mode:?} {} {path_name} {policy_name}: client={client_rtts} RTT server={server_rtts} RTT",
+                            configuration.name,
+                        );
                         // s2n-tls randomness is not stubbed, so completion can shift by one RTT at
                         // a scheduling boundary.
                         let tolerance = 1;
