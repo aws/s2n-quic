@@ -23,12 +23,20 @@ pub async fn rx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
 ) -> io::Result<()> {
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
-    let socket = unsafe { AsyncFd::register(socket) }.unwrap();
+    let socket = unsafe {
+        // SAFETY: `socket` is owned by the AsyncFd, so its fd is stable until drop.
+        AsyncFd::register(socket)
+    }
+    .unwrap();
 
     let socket_low = if let Some(low) = socket_low {
         let low = low.into();
         low.set_nonblocking(true).unwrap();
-        let low = unsafe { AsyncFd::register(low) }.unwrap();
+        let low = unsafe {
+            // SAFETY: `low` is owned by the AsyncFd, so its fd is stable until drop.
+            AsyncFd::register(low)
+        }
+        .unwrap();
         Some(low)
     } else {
         None
@@ -52,7 +60,11 @@ pub async fn tx<S: Into<std::net::UdpSocket>, M: UnixMessage + Unpin>(
     let socket = socket.into();
     socket.set_nonblocking(true).unwrap();
 
-    let socket = unsafe { AsyncFd::register(socket) }.unwrap();
+    let socket = unsafe {
+        // SAFETY: `socket` is owned by the AsyncFd, so its fd is stable until drop.
+        AsyncFd::register(socket)
+    }
+    .unwrap();
     let result = tx::Sender::new(consumer, socket, gso, cooldown, stats).await;
     if let Some(err) = result {
         Err(err)

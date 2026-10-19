@@ -673,6 +673,72 @@ async fn full_record_without_eof() {
     assert_eq!(response, [0x42; LEN]);
 }
 
+/// Builds client connections with receive buffering enabled, so s2n-tls reads whole records off
+/// the wire ahead of decrypting them.
+#[derive(Clone)]
+struct ReceiveBuffering(s2n_tls::config::Config);
+
+impl s2n_tls::connection::Builder for ReceiveBuffering {
+    type Output = s2n_tls::connection::Connection;
+
+    fn build_connection(
+        &self,
+        mode: s2n_tls::enums::Mode,
+    ) -> Result<Self::Output, s2n_tls::error::Error> {
+        let mut conn = s2n_tls::connection::Connection::new(mode);
+        conn.set_config(self.0.clone())?;
+        conn.set_receive_buffering(true)?;
+        Ok(conn)
+    }
+}
+
+#[tokio::test]
+async fn buffered_records_without_eof() {
+    const LEN: usize = 8192;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+
+    let (release, held) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let acceptor = s2n_tls_tokio::TlsAcceptor::new(server_config());
+        let mut stream = acceptor.accept(socket).await.unwrap();
+        // Small records, so one write produces several of them for the client to buffer.
+        let conn: &mut s2n_tls::connection::Connection = stream.as_mut();
+        conn.prefer_low_latency().unwrap();
+        let mut request = [0];
+        stream.read_exact(&mut request).await.unwrap();
+        stream.write_all(&[0x42; LEN]).await.unwrap();
+        stream.flush().await.unwrap();
+        let _ = held.await;
+    });
+
+    let client = dc_client();
+    let mut stream = client
+        .connect_tls(
+            address,
+            Name::from_static("qlaws.qlaws"),
+            &ReceiveBuffering(client_config()),
+        )
+        .await
+        .unwrap();
+    stream.write_all(&[1]).await.unwrap();
+
+    let mut response = vec![0; LEN];
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        stream.read_exact(&mut response),
+    )
+    .await;
+
+    let _ = release.send(());
+    server.await.unwrap();
+
+    assert!(result.is_ok(), "response stalled");
+    assert_eq!(response, [0x42; LEN]);
+}
+
 #[derive(Clone)]
 struct DummyHandshake {
     hs: crate::psk::server::Provider,
