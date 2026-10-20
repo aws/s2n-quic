@@ -9,6 +9,8 @@ use s2n_quic_core::{dc::ApplicationParams, inet::SocketAddress, varint::VarInt};
 pub const PACKET_VERSION: u8 = 0;
 pub const PACKET_VERSION_V1: u8 = 1;
 pub const PACKET_VERSION_V2: u8 = 2;
+/// A later packet for a UDP stream that was already handed off.
+pub const PACKET_VERSION_FORWARD: u8 = 3;
 pub const APP_PARAMS_VERSION: u8 = 0;
 
 #[inline(always)]
@@ -91,6 +93,26 @@ pub fn encode_v2<E: Encoder>(
 
     encoder.encode_with_len_prefix::<VarInt, _>(&application_data.unwrap_or_default());
 
+    encoder.encode_with_len_prefix::<VarInt, _>(&payload);
+
+    encoder.len() - start_len
+}
+
+/// Encodes a packet that belongs to a UDP stream already handed off with [`encode_v2`].
+///
+/// The receiver routes it to the existing stream and never creates a stream from it.
+#[inline(always)]
+pub fn encode_forward<E: Encoder>(
+    encoder: &mut E,
+    encode_time: u64,
+    peer_address: &SocketAddress,
+    payload: &[u8],
+) -> usize {
+    let start_len = encoder.len();
+
+    encoder.encode(&PACKET_VERSION_FORWARD);
+    encoder.encode(&encode_time);
+    encode_address(encoder, Some(peer_address));
     encoder.encode_with_len_prefix::<VarInt, _>(&payload);
 
     encoder.len() - start_len

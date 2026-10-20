@@ -4,7 +4,10 @@
 use crate::{
     packet::uds::{
         decode_address,
-        encoder::{APP_PARAMS_VERSION, PACKET_VERSION, PACKET_VERSION_V1, PACKET_VERSION_V2},
+        encoder::{
+            APP_PARAMS_VERSION, PACKET_VERSION, PACKET_VERSION_FORWARD, PACKET_VERSION_V1,
+            PACKET_VERSION_V2,
+        },
         Protocol,
     },
     path::secret::schedule::Ciphersuite,
@@ -171,6 +174,63 @@ impl Packet {
         };
 
         Ok((packet, buffer))
+    }
+}
+
+/// A later packet for a UDP stream that was already handed off.
+#[derive(Clone, Debug)]
+pub struct Forward {
+    encode_time: u64, // CLOCK_MONOTONIC_RAW in microseconds
+    peer_address: SocketAddress,
+    payload: Vec<u8>,
+}
+
+impl Forward {
+    /// Returns `true` if `packet` is encoded as a [`Forward`] rather than a [`Packet`].
+    #[inline]
+    pub fn is_forward(packet: &[u8]) -> bool {
+        packet.first() == Some(&PACKET_VERSION_FORWARD)
+    }
+
+    #[inline]
+    pub fn encode_time(&self) -> u64 {
+        self.encode_time
+    }
+
+    #[inline]
+    pub fn peer_address(&self) -> &SocketAddress {
+        &self.peer_address
+    }
+
+    #[inline]
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
+    }
+
+    #[inline(always)]
+    pub fn decode(buffer: DecoderBufferMut) -> DecoderBufferMutResult<Forward> {
+        let (version_tag, buffer) = buffer.decode::<u8>()?;
+
+        if version_tag != PACKET_VERSION_FORWARD {
+            return Err(DecoderError::InvariantViolation("Unsupported version tag"));
+        }
+
+        let (encode_time, buffer) = buffer.decode::<u64>()?;
+
+        let (peer_address, buffer) = decode_address(buffer)?;
+        let peer_address =
+            peer_address.ok_or(DecoderError::InvariantViolation("Missing peer address"))?;
+
+        let (payload_slice, buffer) = buffer.decode_slice_with_len_prefix::<VarInt>()?;
+        let payload = payload_slice.into_less_safe_slice().to_vec();
+
+        let forward = Forward {
+            encode_time,
+            peer_address,
+            payload,
+        };
+
+        Ok((forward, buffer))
     }
 }
 
@@ -620,7 +680,7 @@ mod tests {
 
     #[test]
     fn test_decode_invalid_version_tag() {
-        let mut buffer = vec![3u8, 0u8]; // Unknown version tag = 3
+        let mut buffer = vec![4u8, 0u8]; // Unknown version tag = 4
         let decoder = DecoderBufferMut::new(&mut buffer);
         let result = decoder::Packet::decode(decoder);
         assert!(result.is_err());
@@ -630,6 +690,61 @@ mod tests {
             }
             _ => panic!("Expected InvariantViolation error"),
         }
+    }
+
+    #[test]
+    fn test_encode_decode_forward() {
+        let peer_address = socket_address("[2001:db8::3]:9000");
+        let payload = b"retransmitted packet";
+
+        let mut estimator = EncoderLenEstimator::new(usize::MAX);
+        let expected_size = encoder::encode_forward(&mut estimator, 11, &peer_address, payload);
+        let mut buffer = vec![0u8; expected_size];
+        let mut enc = s2n_codec::EncoderBuffer::new(&mut buffer);
+        assert_eq!(
+            encoder::encode_forward(&mut enc, 11, &peer_address, payload),
+            expected_size
+        );
+
+        assert!(decoder::Forward::is_forward(&buffer));
+        let decoder = DecoderBufferMut::new(&mut buffer);
+        let (forward, remaining) = decoder::Forward::decode(decoder).unwrap();
+        assert!(remaining.is_empty());
+        assert_eq!(forward.encode_time(), 11);
+        assert_eq!(forward.peer_address(), &peer_address);
+        assert_eq!(forward.payload(), payload);
+    }
+
+    /// Pins the forward wire format: version, encode time, peer address, then payload.
+    #[test]
+    fn test_decode_hand_built_forward_buffer() {
+        let mut buffer = vec![3u8];
+        buffer.extend_from_slice(&5u64.to_be_bytes());
+        buffer.extend_from_slice(&[4, 10, 0, 0, 1]);
+        buffer.extend_from_slice(&80u16.to_be_bytes());
+        buffer.push(2);
+        buffer.extend_from_slice(b"hi");
+
+        let decoder = DecoderBufferMut::new(&mut buffer);
+        let (forward, remaining) = decoder::Forward::decode(decoder).unwrap();
+        assert!(remaining.is_empty());
+        assert_eq!(forward.encode_time(), 5);
+        assert_eq!(forward.peer_address(), &socket_address("10.0.0.1:80"));
+        assert_eq!(forward.payload(), b"hi");
+    }
+
+    /// A forward is never decoded as a stream handoff, and vice versa.
+    #[test]
+    fn test_forward_and_handoff_are_distinct() {
+        let mut forward = vec![3u8];
+        assert_invariant_violation(forward.clone(), "Unsupported version tag");
+        forward[0] = 2;
+        assert!(!decoder::Forward::is_forward(&forward));
+        let decoder = DecoderBufferMut::new(&mut forward);
+        assert!(matches!(
+            decoder::Forward::decode(decoder),
+            Err(DecoderError::InvariantViolation("Unsupported version tag"))
+        ));
     }
 
     #[test]

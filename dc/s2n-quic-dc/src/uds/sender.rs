@@ -35,6 +35,12 @@ impl Sender {
         })
     }
 
+    /// Sends `packet` without passing a file descriptor, returning `WouldBlock` instead of
+    /// waiting if the receiver's queue is full.
+    pub fn try_send(&self, packet: &[u8]) -> Result<(), std::io::Error> {
+        self.try_send_nonblocking(packet, None)
+    }
+
     fn try_send_nonblocking(
         &self,
         packet: &[u8],

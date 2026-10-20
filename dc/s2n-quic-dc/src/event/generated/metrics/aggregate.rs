@@ -78,6 +78,13 @@ mod id {
         ACCEPTOR_UDP_PACKET_DROPPED,
         ACCEPTOR_UDP_PACKET_DROPPED__REASON,
         ACCEPTOR_UDP_STREAM_ENQUEUED,
+        ACCEPTOR_UDP_STREAM_HANDED_OFF,
+        ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN,
+        ACCEPTOR_UDP_PACKET_FORWARDED,
+        ACCEPTOR_UDP_STREAM_RECEIVED,
+        ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME,
+        ACCEPTOR_UDP_APPLICATION_DATA_DROPPED,
+        ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON,
         ACCEPTOR_UDP_IO_ERROR,
         ACCEPTOR_STREAM_PRUNED,
         ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME,
@@ -471,6 +478,18 @@ mod id {
     pub const ACCEPTOR_UDP_PACKET_DROPPED__REASON: usize =
         InfoId::ACCEPTOR_UDP_PACKET_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_STREAM_ENQUEUED: usize = InfoId::ACCEPTOR_UDP_STREAM_ENQUEUED as usize;
+    pub const ACCEPTOR_UDP_STREAM_HANDED_OFF: usize =
+        InfoId::ACCEPTOR_UDP_STREAM_HANDED_OFF as usize;
+    pub const ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN: usize =
+        InfoId::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN as usize;
+    pub const ACCEPTOR_UDP_PACKET_FORWARDED: usize = InfoId::ACCEPTOR_UDP_PACKET_FORWARDED as usize;
+    pub const ACCEPTOR_UDP_STREAM_RECEIVED: usize = InfoId::ACCEPTOR_UDP_STREAM_RECEIVED as usize;
+    pub const ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME: usize =
+        InfoId::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME as usize;
+    pub const ACCEPTOR_UDP_APPLICATION_DATA_DROPPED: usize =
+        InfoId::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED as usize;
+    pub const ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON: usize =
+        InfoId::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_IO_ERROR: usize = InfoId::ACCEPTOR_UDP_IO_ERROR as usize;
     pub const ACCEPTOR_STREAM_PRUNED: usize = InfoId::ACCEPTOR_STREAM_PRUNED as usize;
     pub const ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME: usize =
@@ -989,6 +1008,10 @@ mod id {
         COUNTERS_ACCEPTOR_UDP_PACKET_RECEIVED,
         COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED,
         COUNTERS_ACCEPTOR_UDP_STREAM_ENQUEUED,
+        COUNTERS_ACCEPTOR_UDP_STREAM_HANDED_OFF,
+        COUNTERS_ACCEPTOR_UDP_PACKET_FORWARDED,
+        COUNTERS_ACCEPTOR_UDP_STREAM_RECEIVED,
+        COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED,
         COUNTERS_ACCEPTOR_UDP_IO_ERROR,
         COUNTERS_ACCEPTOR_STREAM_PRUNED,
         COUNTERS_ACCEPTOR_STREAM_DEQUEUED,
@@ -1129,6 +1152,14 @@ mod id {
         Counters::COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED as usize;
     pub const COUNTERS_ACCEPTOR_UDP_STREAM_ENQUEUED: usize =
         Counters::COUNTERS_ACCEPTOR_UDP_STREAM_ENQUEUED as usize;
+    pub const COUNTERS_ACCEPTOR_UDP_STREAM_HANDED_OFF: usize =
+        Counters::COUNTERS_ACCEPTOR_UDP_STREAM_HANDED_OFF as usize;
+    pub const COUNTERS_ACCEPTOR_UDP_PACKET_FORWARDED: usize =
+        Counters::COUNTERS_ACCEPTOR_UDP_PACKET_FORWARDED as usize;
+    pub const COUNTERS_ACCEPTOR_UDP_STREAM_RECEIVED: usize =
+        Counters::COUNTERS_ACCEPTOR_UDP_STREAM_RECEIVED as usize;
+    pub const COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED: usize =
+        Counters::COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED as usize;
     pub const COUNTERS_ACCEPTOR_UDP_IO_ERROR: usize =
         Counters::COUNTERS_ACCEPTOR_UDP_IO_ERROR as usize;
     pub const COUNTERS_ACCEPTOR_STREAM_PRUNED: usize =
@@ -1392,6 +1423,7 @@ mod id {
         NOMINAL_COUNTERS_ACCEPTOR_TCP_IO_ERROR__SOURCE,
         NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON,
+        NOMINAL_COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON,
         NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON,
         NOMINAL_COUNTERS_STREAM_CONNECT__TCP,
         NOMINAL_COUNTERS_STREAM_CONNECT__HANDSHAKE,
@@ -1439,6 +1471,8 @@ mod id {
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_TCP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_UDP_PACKET_DROPPED__REASON as usize;
+    pub const NOMINAL_COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON: usize =
+        NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON: usize =
         NominalCounters::NOMINAL_COUNTERS_ACCEPTOR_STREAM_PRUNED__REASON as usize;
     pub const NOMINAL_COUNTERS_STREAM_CONNECT__TCP: usize =
@@ -1545,6 +1579,7 @@ mod id {
         MEASURES_ACCEPTOR_TCP_SOCKET_RECEIVED__LEN,
         MEASURES_ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN,
         MEASURES_ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN,
+        MEASURES_ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN,
         MEASURES_STREAM_WRITE_FLUSHED__CONN,
         MEASURES_STREAM_WRITE_FLUSHED__PROVIDED,
         MEASURES_STREAM_WRITE_FLUSHED__COMMITTED,
@@ -1699,6 +1734,8 @@ mod id {
         Measures::MEASURES_ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN as usize;
     pub const MEASURES_ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN: usize =
         Measures::MEASURES_ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN as usize;
+    pub const MEASURES_ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN: usize =
+        Measures::MEASURES_ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN as usize;
     pub const MEASURES_STREAM_WRITE_FLUSHED__CONN: usize =
         Measures::MEASURES_STREAM_WRITE_FLUSHED__CONN as usize;
     pub const MEASURES_STREAM_WRITE_FLUSHED__PROVIDED: usize =
@@ -1960,6 +1997,7 @@ mod id {
         TIMERS_ACCEPTOR_TCP_STREAM_ENQUEUED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME,
         TIMERS_ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME,
+        TIMERS_ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME,
         TIMERS_ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_STREAM_DEQUEUED__SOJOURN_TIME,
         TIMERS_ACCEPTOR_STREAM_DEQUEUED__QUEUE_SOJOURN_TIME,
@@ -2002,6 +2040,8 @@ mod id {
         Timers::TIMERS_ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME: usize =
         Timers::TIMERS_ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME as usize;
+    pub const TIMERS_ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME: usize =
+        Timers::TIMERS_ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME as usize;
     pub const TIMERS_ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME: usize =
         Timers::TIMERS_ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME as usize;
     pub const TIMERS_ACCEPTOR_STREAM_DEQUEUED__SOJOURN_TIME: usize =
@@ -2041,7 +2081,7 @@ mod id {
     pub const TIMERS_DC_HANDSHAKE_PROBE__LATENCY: usize =
         Timers::TIMERS_DC_HANDSHAKE_PROBE__LATENCY as usize;
 }
-static INFO: &[Info; 349usize] = &[
+static INFO: &[Info; 356usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -2405,6 +2445,48 @@ static INFO: &[Info; 349usize] = &[
     info::Builder {
         id: id::ACCEPTOR_UDP_STREAM_ENQUEUED,
         name: Str::new("acceptor_udp_stream_enqueued\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_STREAM_HANDED_OFF,
+        name: Str::new("acceptor_udp_stream_handed_off\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN,
+        name: Str::new("acceptor_udp_stream_handed_off.payload_len\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_PACKET_FORWARDED,
+        name: Str::new("acceptor_udp_packet_forwarded\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_STREAM_RECEIVED,
+        name: Str::new("acceptor_udp_stream_received\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME,
+        name: Str::new("acceptor_udp_stream_received.transfer_time\0"),
+        units: Units::Duration,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED,
+        name: Str::new("acceptor_udp_application_data_dropped\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON,
+        name: Str::new("acceptor_udp_application_data_dropped.reason\0"),
         units: Units::None,
     }
     .build(),
@@ -4174,19 +4256,19 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 116usize]>,
+    counters: Box<[R::Counter; 120usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
     nominal_counters: Box<[R::NominalCounter]>,
     #[allow(dead_code)]
-    nominal_counter_offsets: Box<[usize; 41usize]>,
+    nominal_counter_offsets: Box<[usize; 42usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 137usize]>,
+    measures: Box<[R::Measure; 138usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
-    timers: Box<[R::Timer; 30usize]>,
+    timers: Box<[R::Timer; 31usize]>,
     #[allow(dead_code)]
     nominal_timers: Box<[R::NominalTimer]>,
     #[allow(dead_code)]
@@ -4209,13 +4291,13 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(116usize);
+        let mut counters = Vec::with_capacity(120usize);
         let mut bool_counters = Vec::with_capacity(25usize);
-        let mut nominal_counters = Vec::with_capacity(41usize);
-        let mut nominal_counter_offsets = Vec::with_capacity(41usize);
-        let mut measures = Vec::with_capacity(137usize);
+        let mut nominal_counters = Vec::with_capacity(42usize);
+        let mut nominal_counter_offsets = Vec::with_capacity(42usize);
+        let mut measures = Vec::with_capacity(138usize);
         let mut gauges = Vec::with_capacity(0usize);
-        let mut timers = Vec::with_capacity(30usize);
+        let mut timers = Vec::with_capacity(31usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
         let mut nominal_timer_offsets = Vec::with_capacity(0usize);
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_TCP_STARTED]));
@@ -4244,6 +4326,10 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_PACKET_RECEIVED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_PACKET_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_STREAM_ENQUEUED]));
+        counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_STREAM_HANDED_OFF]));
+        counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_PACKET_FORWARDED]));
+        counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_STREAM_RECEIVED]));
+        counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_UDP_IO_ERROR]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_STREAM_PRUNED]));
         counters.push(registry.register_counter(&INFO[id::ACCEPTOR_STREAM_DEQUEUED]));
@@ -4480,6 +4566,20 @@ impl<R: Registry> Subscriber<R> {
                 for variant in <AcceptorPacketDropReason as AsVariant>::VARIANTS.iter() {
                     nominal_counters.push(registry.register_nominal_counter(
                         &INFO[id::ACCEPTOR_UDP_PACKET_DROPPED__REASON],
+                        variant,
+                    ));
+                    count += 1;
+                }
+                debug_assert_ne!(count, 0, "field type needs at least one variant");
+                nominal_counter_offsets.push(offset);
+            }
+            {
+                let offset = nominal_counters.len();
+                let mut count = 0;
+                for variant in <AcceptorTcpApplicationDataDropReason as AsVariant>::VARIANTS.iter()
+                {
+                    nominal_counters.push(registry.register_nominal_counter(
+                        &INFO[id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON],
                         variant,
                     ));
                     count += 1;
@@ -5010,6 +5110,9 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN]));
         measures
             .push(registry.register_measure(&INFO[id::ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN]));
+        measures.push(
+            registry.register_measure(&INFO[id::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN]),
+        );
         measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_FLUSHED__CONN]));
         measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_FLUSHED__PROVIDED]));
         measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_FLUSHED__COMMITTED]));
@@ -5279,6 +5382,8 @@ impl<R: Registry> Subscriber<R> {
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_SOCKET_SENT__SOJOURN_TIME]));
         timers
             .push(registry.register_timer(&INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME]));
+        timers
+            .push(registry.register_timer(&INFO[id::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME]));
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME]));
         timers.push(registry.register_timer(&INFO[id::ACCEPTOR_STREAM_DEQUEUED__SOJOURN_TIME]));
         timers
@@ -5396,6 +5501,18 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::COUNTERS_ACCEPTOR_UDP_STREAM_ENQUEUED => {
                     (&INFO[id::ACCEPTOR_UDP_STREAM_ENQUEUED], entry)
+                }
+                id::COUNTERS_ACCEPTOR_UDP_STREAM_HANDED_OFF => {
+                    (&INFO[id::ACCEPTOR_UDP_STREAM_HANDED_OFF], entry)
+                }
+                id::COUNTERS_ACCEPTOR_UDP_PACKET_FORWARDED => {
+                    (&INFO[id::ACCEPTOR_UDP_PACKET_FORWARDED], entry)
+                }
+                id::COUNTERS_ACCEPTOR_UDP_STREAM_RECEIVED => {
+                    (&INFO[id::ACCEPTOR_UDP_STREAM_RECEIVED], entry)
+                }
+                id::COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED => {
+                    (&INFO[id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED], entry)
                 }
                 id::COUNTERS_ACCEPTOR_UDP_IO_ERROR => (&INFO[id::ACCEPTOR_UDP_IO_ERROR], entry),
                 id::COUNTERS_ACCEPTOR_STREAM_PRUNED => (&INFO[id::ACCEPTOR_STREAM_PRUNED], entry),
@@ -5793,6 +5910,17 @@ impl<R: Registry> Subscriber<R> {
                             .nominal_counters[offset..offset + variants.len()];
                         (
                             &INFO[id::ACCEPTOR_UDP_PACKET_DROPPED__REASON],
+                            entries,
+                            variants,
+                        )
+                    }
+                    id::NOMINAL_COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON => {
+                        let offset = *entry;
+                        let variants = <AcceptorTcpApplicationDataDropReason as AsVariant>::VARIANTS;
+                        let entries = &self
+                            .nominal_counters[offset..offset + variants.len()];
+                        (
+                            &INFO[id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON],
                             entries,
                             variants,
                         )
@@ -6255,6 +6383,9 @@ impl<R: Registry> Subscriber<R> {
                     }
                     id::MEASURES_ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN => {
                         (&INFO[id::ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN], entry)
+                    }
+                    id::MEASURES_ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN => {
+                        (&INFO[id::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN], entry)
                     }
                     id::MEASURES_STREAM_WRITE_FLUSHED__CONN => {
                         (&INFO[id::STREAM_WRITE_FLUSHED__CONN], entry)
@@ -6787,6 +6918,10 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::TIMERS_ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME => (
                     &INFO[id::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME],
+                    entry,
+                ),
+                id::TIMERS_ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME => (
+                    &INFO[id::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME],
                     entry,
                 ),
                 id::TIMERS_ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME => {
@@ -7444,6 +7579,85 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::ACCEPTOR_UDP_STREAM_ENQUEUED,
             id::COUNTERS_ACCEPTOR_UDP_STREAM_ENQUEUED,
             1usize,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_udp_stream_handed_off(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorUdpStreamHandedOff,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_UDP_STREAM_HANDED_OFF,
+            id::COUNTERS_ACCEPTOR_UDP_STREAM_HANDED_OFF,
+            1usize,
+        );
+        self.measure(
+            id::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN,
+            id::MEASURES_ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN,
+            event.payload_len,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_udp_packet_forwarded(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorUdpPacketForwarded,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_UDP_PACKET_FORWARDED,
+            id::COUNTERS_ACCEPTOR_UDP_PACKET_FORWARDED,
+            1usize,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_udp_stream_received(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorUdpStreamReceived,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_UDP_STREAM_RECEIVED,
+            id::COUNTERS_ACCEPTOR_UDP_STREAM_RECEIVED,
+            1usize,
+        );
+        self.time(
+            id::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME,
+            id::TIMERS_ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME,
+            event.transfer_time,
+        );
+        let _ = event;
+        let _ = meta;
+    }
+    #[inline]
+    fn on_acceptor_udp_application_data_dropped(
+        &self,
+        meta: &api::EndpointMeta,
+        event: &api::AcceptorUdpApplicationDataDropped,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED,
+            id::COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED,
+            1usize,
+        );
+        self.count_nominal(
+            id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON,
+            id::NOMINAL_COUNTERS_ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON,
+            &event.reason,
         );
         let _ = event;
         let _ = meta;
