@@ -5,7 +5,7 @@ use crate::{
     either::{self, Either},
     event::{self, EndpointPublisher, Subscriber},
     msg::recv::Message,
-    packet::uds::decoder,
+    packet::uds::{decoder, Protocol},
     path::secret::{
         map::{ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, Dedup},
         schedule::{ExportSecret, Initiator, Secret},
@@ -109,6 +109,7 @@ where
 
         let transfer_time = Self::get_transfer_time(decoded_packet.encode_time())?;
 
+        let fd = tcp_fd(decoded_packet.protocol(), fd)?;
         let tcp_stream = Self::create_tcp_stream_from_fd(fd)?;
 
         let remote_address = tcp_stream.peer_addr()?;
@@ -290,5 +291,40 @@ where
         let std_stream = std::net::TcpStream::from(fd);
         std_stream.set_nonblocking(true)?;
         TcpStream::from_std(std_stream)
+    }
+}
+
+fn tcp_fd(protocol: Protocol, fd: Option<OwnedFd>) -> std::io::Result<OwnedFd> {
+    match protocol {
+        Protocol::Tcp => fd.ok_or_else(|| {
+            std::io::Error::new(
+                ErrorKind::InvalidData,
+                "TCP handoff is missing its socket file descriptor",
+            )
+        }),
+        Protocol::Udp => Err(std::io::Error::new(
+            ErrorKind::Unsupported,
+            "UDP handoff is not supported by this receiver",
+        )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tcp_handoff_requires_a_file_descriptor() {
+        let err = tcp_fd(Protocol::Tcp, None).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+
+        let fd = OwnedFd::from(std::fs::File::open("/dev/null").unwrap());
+        assert!(tcp_fd(Protocol::Tcp, Some(fd)).is_ok());
+    }
+
+    #[test]
+    fn udp_handoff_is_rejected() {
+        let err = tcp_fd(Protocol::Udp, None).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Unsupported);
     }
 }

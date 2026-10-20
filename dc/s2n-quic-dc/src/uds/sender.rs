@@ -38,10 +38,10 @@ impl Sender {
     fn try_send_nonblocking(
         &self,
         packet: &[u8],
-        fd_to_send: BorrowedFd,
+        fd_to_send: Option<BorrowedFd>,
     ) -> Result<(), std::io::Error> {
-        let fds = [fd_to_send.as_raw_fd()];
-        let cmsg = ControlMessage::ScmRights(&fds);
+        let fds = fd_to_send.map(|fd| [fd.as_raw_fd()]);
+        let cmsg = fds.as_ref().map(|fds| ControlMessage::ScmRights(fds));
 
         #[cfg(target_os = "linux")]
         let send_flags = MsgFlags::MSG_NOSIGNAL;
@@ -52,7 +52,7 @@ impl Sender {
         sendmsg::<()>(
             self.socket_fd.as_raw_fd(),
             &[std::io::IoSlice::new(packet)],
-            &[cmsg],
+            cmsg.as_slice(),
             send_flags,
             None,
         )?;
@@ -65,7 +65,7 @@ pub enum SendMsg {
     Initial {
         sender: Sender,
         packet: Vec<u8>,
-        fd_to_send: OwnedFd,
+        fd_to_send: Option<OwnedFd>,
     },
     Blocked {
         send_future: Pin<Box<dyn Future<Output = std::io::Result<()>> + Send + Sync>>,
@@ -78,7 +78,16 @@ impl SendMsg {
         Self::Initial {
             sender,
             packet,
-            fd_to_send,
+            fd_to_send: Some(fd_to_send),
+        }
+    }
+
+    /// Sends `packet` without passing a file descriptor.
+    pub fn without_fd(sender: Sender, packet: Vec<u8>) -> SendMsg {
+        Self::Initial {
+            sender,
+            packet,
+            fd_to_send: None,
         }
     }
 }
@@ -94,14 +103,17 @@ impl Future for SendMsg {
                 sender,
                 packet,
                 fd_to_send,
-            } => match sender.try_send_nonblocking(&packet, fd_to_send.as_fd()) {
+            } => match sender.try_send_nonblocking(&packet, fd_to_send.as_ref().map(AsFd::as_fd)) {
                 Ok(_) => Poll::Ready(Ok(())),
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                     let mut future = Box::pin(async move {
                         sender
                             .socket_fd
                             .async_io(Interest::WRITABLE, |_| {
-                                sender.try_send_nonblocking(&packet, fd_to_send.as_fd())
+                                sender.try_send_nonblocking(
+                                    &packet,
+                                    fd_to_send.as_ref().map(AsFd::as_fd),
+                                )
                             })
                             .await
                     });
