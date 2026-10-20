@@ -7,12 +7,16 @@
 mod simple;
 #[cfg(unix)]
 mod unix;
+#[cfg(s2n_quic_platform_socket_wsamsg)]
+mod win;
 
 cfg_if::cfg_if! {
     if #[cfg(s2n_quic_platform_socket_mmsg)] {
         pub use mmsg::{rx, tx};
     } else if #[cfg(s2n_quic_platform_socket_msg)] {
         pub use msg::{rx, tx};
+    } else if #[cfg(s2n_quic_platform_socket_wsamsg)] {
+        pub use win::{rx, tx};
     } else {
         pub use simple::{rx, tx};
     }
