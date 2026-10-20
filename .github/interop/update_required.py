@@ -9,8 +9,10 @@ Analyze interop results and update required.json with newly passing tests.
 Downloads the interop reports for the last N commits on main, including every
 retry attempt that was recorded, and identifies (test, impl, role) combinations
 that passed in all of them (and were observed at least --min-samples times) but
-are not yet in required.json, and removes required entries that failed more
-than --max-failures times in the same window.
+are not yet in required.json, and removes required entries that flaked more
+than --max-failures times in the same window. A failure only counts as flaky
+when another attempt of the same commit passed; a tuple that fails every
+attempt is a real failure and is never removed.
 """
 
 from __future__ import annotations
@@ -71,10 +73,11 @@ def fetch_results(n_commits: int, out_dir: str) -> None:
             path = os.path.join(out_dir, f"{commit}.attempt-{attempt}.json")
             if not os.path.exists(path):
                 url = f"{CDN}/{commit}/interop/logs/attempt-{attempt}/result.json"
-                if not _fetch(url, path):
-                    break
+                _fetch(url, path)
+            # An attempt that failed before interop-report ran has no
+            # result.json; skip just that slot, a later attempt may have one.
             if os.path.getsize(path) == 0:
-                break
+                continue
             attempts_found += 1
 
         path = os.path.join(out_dir, f"{commit}.json")
@@ -88,19 +91,69 @@ def fetch_results(n_commits: int, out_dir: str) -> None:
             _fetch(f"{CDN}/{commit}/interop/logs/latest/result.json", path)
 
 
+Tuple = tuple[str, str, str]
+
+
+def _parse_report(report: dict[str, Any]) -> dict[Tuple, bool]:
+    """Map each (test, impl, role) in one report to whether it passed."""
+    outcome: dict[Tuple, bool] = {}
+    clients = report.get("clients", [])
+    servers = report.get("servers", [])
+    results = report.get("results", [])
+
+    # The results array is a flat list of test outcomes in row-major order
+    # over (client, server) pairs. Each entry is an array of per-test results.
+    # We only care about pairs where s2n-quic is either the client or server.
+    idx = 0
+    for client in clients:
+        for server in servers:
+            if idx >= len(results):
+                break
+            result = results[idx]
+            idx += 1
+
+            if client != S2N_QUIC and server != S2N_QUIC:
+                continue
+
+            for test in result:
+                name = test["name"]
+                success = test["result"] == "succeeded"
+
+                if client == S2N_QUIC and server == S2N_QUIC:
+                    # Self-test: counts as both client and server
+                    outcome[(name, S2N_QUIC, "client")] = success
+                    outcome[(name, S2N_QUIC, "server")] = success
+                elif client == S2N_QUIC:
+                    # s2n-quic client vs other server: record the other
+                    # impl's result as a server
+                    outcome[(name, server, "server")] = success
+                else:
+                    # Other client vs s2n-quic server: record the other
+                    # impl's result as a client
+                    outcome[(name, client, "client")] = success
+    return outcome
+
+
 def collect_stats(
     results_dir: str,
-) -> dict[tuple[str, str, str], list[int]]:
-    """Parse all result files and collect pass/total stats per (test, impl, role).
+) -> tuple[dict[Tuple, list[int]], dict[Tuple, list[str]]]:
+    """Parse all result files and collect stats per (test, impl, role).
 
-    Returns a dict mapping (test, impl, role) to [passed, total], e.g.:
+    Returns (stats, flaky_runs). stats maps (test, impl, role) to
+    [passed, total, flaky], e.g.:
         {
-            ("handshake", "quic-go", "client"): [48, 48],
-            ("retry", "picoquic", "server"): [47, 48],
-            ("http3", "s2n-quic", "client"): [48, 48],
+            ("handshake", "quic-go", "client"): [48, 48, 0],
+            ("retry", "picoquic", "server"): [47, 48, 1],
         }
+    flaky_runs maps the same key to the "<commit> <attempt>" of each flaky failure.
+
+    A failure is counted as flaky only when another attempt of the same commit
+    passed that tuple: same s2n-quic binary, fail then pass. A tuple that fails
+    every attempt of a commit (a regression, or a peer that broke) adds to total
+    but never to flaky, so it is left in required.json and main stays red.
     """
-    stats: dict[tuple[str, str, str], list[int]] = defaultdict(lambda: [0, 0])
+    # commit -> list of (attempt label, per-attempt outcomes)
+    by_commit: dict[str, list[tuple[str, dict[Tuple, bool]]]] = defaultdict(list)
 
     for filename in sorted(os.listdir(results_dir)):
         if not filename.endswith(".json"):
@@ -116,76 +169,56 @@ def collect_stats(
                 logger.debug("Skipping invalid JSON: %s", filename)
                 continue
 
-        clients = report.get("clients", [])
-        servers = report.get("servers", [])
-        results = report.get("results", [])
+        commit = filename.split(".")[0]
+        label = filename[len(commit) + 1 : -len(".json")] or "latest"
+        by_commit[commit].append((label, _parse_report(report)))
 
-        # The results array is a flat list of test outcomes in row-major order
-        # over (client, server) pairs. Each entry is an array of per-test results.
-        # We only care about pairs where s2n-quic is either the client or server.
-        idx = 0
-        for client in clients:
-            for server in servers:
-                if idx >= len(results):
-                    break
-                result = results[idx]
-                idx += 1
+    stats: dict[Tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
+    flaky_runs: dict[Tuple, list[str]] = defaultdict(list)
+    for commit, attempts in by_commit.items():
+        passed_once: set[Tuple] = set()
+        for _, outcome in attempts:
+            passed_once.update(k for k, ok in outcome.items() if ok)
+        for label, outcome in attempts:
+            for key, ok in outcome.items():
+                stat = stats[key]
+                stat[1] += 1
+                if ok:
+                    stat[0] += 1
+                elif key in passed_once:
+                    stat[2] += 1
+                    flaky_runs[key].append(f"{commit[:8]} {label}")
 
-                if client != S2N_QUIC and server != S2N_QUIC:
-                    continue
-
-                for test in result:
-                    name = test["name"]
-                    success = test["result"] == "succeeded"
-
-                    if client == S2N_QUIC and server == S2N_QUIC:
-                        # Self-test: counts as both client and server passing
-                        stats[(name, S2N_QUIC, "client")][1] += 1
-                        stats[(name, S2N_QUIC, "server")][1] += 1
-                        if success:
-                            stats[(name, S2N_QUIC, "client")][0] += 1
-                            stats[(name, S2N_QUIC, "server")][0] += 1
-                    elif client == S2N_QUIC:
-                        # s2n-quic client vs other server: record the other
-                        # impl's success as a server
-                        stats[(name, server, "server")][1] += 1
-                        if success:
-                            stats[(name, server, "server")][0] += 1
-                    else:
-                        # Other client vs s2n-quic server: record the other
-                        # impl's success as a client
-                        stats[(name, client, "client")][1] += 1
-                        if success:
-                            stats[(name, client, "client")][0] += 1
-
-    return stats
+    return stats, flaky_runs
 
 
 def qualifies(stat: list[int] | None, min_samples: int) -> bool:
     """A tuple qualifies if it was observed at least min_samples times and never failed."""
     if stat is None:
         return False
-    passed, total = stat
+    passed, total, _ = stat
     return total >= min_samples and passed == total
 
 
 def should_demote(stat: list[int] | None, max_failures: int) -> bool:
-    """A required tuple is demoted once it has failed more than max_failures times."""
+    """A required tuple is demoted once it has flaked more than max_failures times.
+
+    Only same-commit fail-then-pass failures count; see collect_stats.
+    """
     if stat is None:
         return False
-    passed, total = stat
-    return total - passed > max_failures
+    return stat[2] > max_failures
 
 
 def update_required(
     required_path: str,
-    stats: dict[tuple[str, str, str], list[int]],
+    stats: dict[Tuple, list[int]],
     min_samples: int,
     max_failures: int,
-) -> tuple[dict[str, Any], list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+) -> tuple[dict[str, Any], list[Tuple], list[Tuple]]:
     """
     Update required.json: add entries that passed every one of at least
-    min_samples observed runs, and remove entries that failed more than
+    min_samples observed runs, and remove entries that flaked more than
     max_failures times.
 
     Returns (updated_json, additions, removals), each a list of
@@ -194,8 +227,8 @@ def update_required(
     with open(required_path) as f:
         current = json.load(f)
 
-    additions: list[tuple[str, str, str]] = []
-    removals: list[tuple[str, str, str]] = []
+    additions: list[Tuple] = []
+    removals: list[Tuple] = []
     output: dict[str, Any] = {}
 
     # Process existing tests: preserve impl order, add new roles/impls
@@ -264,8 +297,10 @@ def update_required(
 
 
 def format_pr_description(
-    additions: list[tuple[str, str, str]],
-    removals: list[tuple[str, str, str]],
+    additions: list[Tuple],
+    removals: list[Tuple],
+    stats: dict[Tuple, list[int]],
+    flaky_runs: dict[Tuple, list[str]],
     n_commits: int,
     min_samples: int,
     max_failures: int,
@@ -274,7 +309,7 @@ def format_pr_description(
     if not additions and not removals:
         return ""
 
-    def group(entries: list[tuple[str, str, str]]) -> list[str]:
+    def group(entries: list[Tuple], detail: bool = False) -> list[str]:
         by_test: dict[str, list[tuple[str, str]]] = defaultdict(list)
         for test, impl, role in entries:
             by_test[test].append((impl, role))
@@ -282,7 +317,13 @@ def format_pr_description(
         for test in sorted(by_test.keys()):
             out.append(f"**{test}**:")
             for impl, role in sorted(by_test[test]):
-                out.append(f"- {impl} ({role})")
+                line = f"- {impl} ({role})"
+                if detail:
+                    key = (test, impl, role)
+                    _, total, flaky = stats[key]
+                    runs = ", ".join(flaky_runs[key])
+                    line += f": flaked {flaky} of {total} runs ({runs})"
+                out.append(line)
             out.append("")
         return out
 
@@ -305,9 +346,9 @@ def format_pr_description(
     if removals:
         lines += [
             f"### Removed required checks (failed more than {max_failures} "
-            f"time(s) in the window):",
+            f"time(s) on a commit that passed on another attempt):",
             "",
-            *group(removals),
+            *group(removals, detail=True),
         ]
 
     lines += [
@@ -334,8 +375,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--max-failures", type=int, default=1,
-        help="A required tuple that failed more than this many times in the "
-        "window is removed (default: 1)",
+        help="A required tuple that flaked (failed on a commit that passed on "
+        "another attempt) more than this many times in the window is removed "
+        "(default: 1)",
     )
     parser.add_argument(
         "--results-dir", default="target/interop/results",
@@ -362,7 +404,7 @@ def main() -> None:
     )
 
     fetch_results(args.commits, args.results_dir)
-    stats = collect_stats(args.results_dir)
+    stats, flaky_runs = collect_stats(args.results_dir)
 
     if not stats:
         print("No interop results found", file=sys.stderr)
@@ -384,7 +426,8 @@ def main() -> None:
 
     if args.pr_description:
         print(format_pr_description(
-            additions, removals, args.commits, args.min_samples, args.max_failures
+            additions, removals, stats, flaky_runs,
+            args.commits, args.min_samples, args.max_failures,
         ))
 
     if args.dry_run:

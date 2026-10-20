@@ -99,8 +99,7 @@
       "server"
     ],
     "quic-go": [
-      "client",
-      "server"
+      "client"
     ],
     "quiche": [
       "client",
@@ -114,9 +113,7 @@
       "client",
       "server"
     ],
-    "xquic": [
-      "server"
-    ],
+    "xquic": [],
     "go-x-net": [
       "client",
       "server"
@@ -303,6 +300,7 @@
       "server"
     ],
     "kwik": [
+      "client",
       "server"
     ],
     "lsquic": [
@@ -366,8 +364,7 @@
       "server"
     ],
     "kwik": [
-      "client",
-      "server"
+      "client"
     ],
     "lsquic": [
       "client",
