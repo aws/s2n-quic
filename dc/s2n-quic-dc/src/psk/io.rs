@@ -128,20 +128,22 @@ impl Server {
         // packet is impaired on both client and server. This is especially true if the ClientHello
         // is larger than the base MTU.
         //
-        // We are turning off probing fully (base = initial = max MTU) while we work through
-        // improved test coverage.
+        // Keep initial packets small. Discovery is disabled by default and callers opt in
+        // by explicitly configuring a larger maximum MTU.
+        let mtu = builder.mtu.unwrap_or(DEFAULT_BASE_MTU);
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
-            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_base_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_max_mtu(mtu.min(DEFAULT_MTU))?
             .build()?;
         let io = probe::Provider::new(io);
 
         let initial_max_data = builder.initial_data_window.unwrap_or_else(|| {
             // default to only receive 10 packet worth before the application accepts the connection
-            builder.mtu as u64 * 10
+            // Preserve the flow-control default independently of opting into discovery.
+            builder.mtu.unwrap_or(DEFAULT_MTU) as u64 * 10
         });
 
         let connection_limits = s2n_quic::provider::limits::Limits::new()
@@ -316,11 +318,12 @@ impl Client {
         builder: client::Builder<Event>,
     ) -> Result<Self, Error> {
         // For MTU configuration, see the comment on Server's io configuration.
+        let mtu = builder.mtu.unwrap_or(DEFAULT_BASE_MTU);
         let io = s2n_quic::provider::io::default::Builder::default()
             .with_receive_address(addr)?
-            .with_base_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_initial_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
-            .with_max_mtu(DEFAULT_BASE_MTU.min(builder.mtu))?
+            .with_base_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_initial_mtu(DEFAULT_BASE_MTU.min(mtu))?
+            .with_max_mtu(mtu.min(DEFAULT_MTU))?
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .build()?;
 
@@ -1053,6 +1056,8 @@ mod tests {
     #[derive(Clone, Default)]
     struct MtuRecorder {
         max_mtu: Arc<AtomicU16>,
+        complete: Arc<std::sync::atomic::AtomicBool>,
+        gro_enabled: Arc<std::sync::atomic::AtomicBool>,
     }
 
     impl s2n_quic::provider::event::Subscriber for MtuRecorder {
@@ -1072,6 +1077,23 @@ mod tests {
             event: &s2n_quic::provider::event::events::MtuUpdated,
         ) {
             self.max_mtu.fetch_max(event.mtu, Ordering::Relaxed);
+            self.complete
+                .store(event.search_complete, Ordering::Release);
+        }
+
+        fn on_platform_feature_configured(
+            &mut self,
+            _meta: &s2n_quic::provider::event::events::EndpointMeta,
+            event: &s2n_quic::provider::event::events::PlatformFeatureConfigured,
+        ) {
+            if let s2n_quic::provider::event::events::PlatformFeatureConfiguration::Gro {
+                enabled,
+                ..
+            } = event.configuration
+            {
+                // The callback and test may run on different threads.
+                self.gro_enabled.store(enabled, Ordering::Relaxed);
+            }
         }
     }
 
@@ -1103,7 +1125,9 @@ mod tests {
         async fn new_with_client_builder<L, Event>(
             endpoint_limits: Option<L>,
             server_builder: server::Builder<Event>,
-            client_builder: crate::psk::client::Builder,
+            client_builder: crate::psk::client::Builder<
+                impl s2n_quic::provider::event::Subscriber + Sync + 'static,
+            >,
         ) -> Self
         where
             L: s2n_quic::provider::endpoint_limits::Limiter + Send + Sync + 'static,
@@ -1149,11 +1173,7 @@ mod tests {
                 subscriber.clone(),
             );
 
-            let client = Client::bind::<
-                <TestTlsProvider as Provider>::Client,
-                NoopSubscriber,
-                s2n_quic::provider::event::default::Subscriber,
-            >(
+            let client = Client::bind::<<TestTlsProvider as Provider>::Client, NoopSubscriber, _>(
                 "0.0.0.0:0".parse().unwrap(),
                 client_map,
                 tls.start_client().unwrap(),
@@ -1894,6 +1914,89 @@ mod tests {
         );
     }
 
+    /// Check default, explicit, asymmetric, and capped MTUs with inline and offloaded TLS.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn configured_mtu_discovery() {
+        for offload in [0, 2] {
+            for (client_mtu, server_mtu) in [
+                (None, None),
+                (Some(1280), Some(1280)),
+                (Some(8840), None),
+                (None, Some(8840)),
+                (Some(8840), Some(8840)),
+                (Some(9000), Some(9000)),
+                (Some(u16::MAX), Some(u16::MAX)),
+            ] {
+                tokio::time::timeout(Duration::from_secs(15), async {
+                    let client_events = MtuRecorder::default();
+                    let server_events = MtuRecorder::default();
+                    let mut client =
+                        client::Builder::default().with_event_subscriber(client_events.clone());
+                    let mut server = server::Builder::default()
+                        .with_thread_count(offload)
+                        .with_event_subscriber(server_events.clone());
+                    if let Some(mtu) = client_mtu {
+                        client = client.with_mtu(mtu);
+                    }
+                    if let Some(mtu) = server_mtu {
+                        server = server.with_mtu(mtu);
+                    }
+                    let setup =
+                        TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+                            None, server, client,
+                        )
+                        .await;
+                    setup
+                        .client
+                        .connect(setup.server_addr, HandshakeReason::User, "localhost".into())
+                        .await
+                        .unwrap();
+
+                    // Discovery continues after connect returns.
+                    while !client_events.complete.load(Ordering::Acquire)
+                        || !server_events.complete.load(Ordering::Acquire)
+                    {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+
+                    let client_max_mtu = client_mtu.unwrap_or(DEFAULT_BASE_MTU).min(DEFAULT_MTU);
+                    let server_max_mtu = server_mtu.unwrap_or(DEFAULT_BASE_MTU).min(DEFAULT_MTU);
+
+                    // GRO uses a large receive buffer for batches. Without it, each
+                    // endpoint's configured MTU limits its receive buffer.
+                    let client_receive_limit = if client_events.gro_enabled.load(Ordering::Relaxed) {
+                        u16::MAX
+                    } else {
+                        client_max_mtu
+                    };
+                    let server_receive_limit = if server_events.gro_enabled.load(Ordering::Relaxed) {
+                        u16::MAX
+                    } else {
+                        server_max_mtu
+                    };
+
+                    // Each sender is limited by its own MTU and the peer's receive capacity.
+                    // Events exclude IPv4/UDP headers.
+                    assert_eq!(
+                        client_events.max_mtu.load(Ordering::Relaxed),
+                        client_max_mtu.min(server_receive_limit) - 28,
+                        "client={client_mtu:?}, server={server_mtu:?}, offload={offload}",
+                    );
+                    assert_eq!(
+                        server_events.max_mtu.load(Ordering::Relaxed),
+                        server_max_mtu.min(client_receive_limit) - 28,
+                        "client={client_mtu:?}, server={server_mtu:?}, offload={offload}",
+                    );
+                })
+                .await
+                .unwrap_or_else(|_| {
+                    panic!("MTU discovery timed out: client={client_mtu:?}, server={server_mtu:?}, offload={offload}");
+                });
+            }
+        }
+    }
+
     /// Confirm that without offloading (default configuration) we don't perform MTU probing.
     #[tokio::test]
     async fn no_mtu_probing() {
@@ -1911,7 +2014,7 @@ mod tests {
             .await
             .unwrap();
 
-        // With offloading enabled, MTU probing is disabled and the server's MTU is fixed at
+        // By default, MTU probing is disabled and the server's MTU is fixed at
         // DEFAULT_BASE_MTU.
         let mtu = mtu_recorder.max_mtu.load(Ordering::Relaxed);
 
