@@ -206,7 +206,10 @@ impl Pool {
         for (udp_socket_worker, socket) in sockets.iter().enumerate() {
             let packets = create_packets();
             let router = create_router(&packets, socket);
-            let recv_socket = unsafe { AsyncFd::register(socket.recv_socket.clone()) }?;
+            let recv_socket = unsafe {
+                // SAFETY: the Arc keeps the socket alive, so its fd is stable until drop.
+                AsyncFd::register(socket.recv_socket.clone())
+            }?;
             let span = tracing::trace_span!("udp_socket_worker", udp_socket_worker);
             let task = async move {
                 udp::non_blocking(recv_socket, packets, router).await;

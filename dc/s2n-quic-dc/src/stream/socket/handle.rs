@@ -14,6 +14,17 @@ use std::{
 pub type Flags = libc::c_int;
 
 pub trait Socket: 'static + Send + Sync {
+    /// Creates an application socket registered with the current Tokio runtime.
+    ///
+    /// The original socket remains usable if registration fails.
+    #[cfg(feature = "tokio")]
+    fn rebind_to_current_runtime(&self) -> io::Result<Arc<dyn Socket>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "socket does not support runtime rebinding",
+        ))
+    }
+
     /// Returns the local address for the socket
     fn local_addr(&self) -> io::Result<SocketAddr>;
 
@@ -116,7 +127,12 @@ impl<T: Socket> Ext for T {}
 
 macro_rules! impl_box {
     ($b:ident) => {
-        impl<T: Socket> Socket for $b<T> {
+        impl<T: Socket + ?Sized> Socket for $b<T> {
+            #[cfg(feature = "tokio")]
+            fn rebind_to_current_runtime(&self) -> io::Result<Arc<dyn Socket>> {
+                (**self).rebind_to_current_runtime()
+            }
+
             #[inline(always)]
             fn local_addr(&self) -> io::Result<SocketAddr> {
                 (**self).local_addr()

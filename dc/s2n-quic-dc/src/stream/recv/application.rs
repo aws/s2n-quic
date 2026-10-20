@@ -125,6 +125,21 @@ impl<Sub> Reader<Sub>
 where
     Sub: event::Subscriber,
 {
+    #[cfg(feature = "tokio")]
+    pub(crate) fn rebind_to_current_runtime(&mut self) -> io::Result<socket::ArcApplication> {
+        let sockets = self.0.sockets.rebind_to_current_runtime()?;
+        // The receiver computes its deadline on each poll. Recreate the sleep
+        // handle using the same clock so that timestamps keep their original epoch.
+        let timer = self
+            .0
+            .timer
+            .as_ref()
+            .map(|_| Timer::new(&self.0.shared.clock));
+        self.0.timer = timer;
+        self.0.sockets = sockets.clone();
+        Ok(sockets)
+    }
+
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.0.shared.common.ensure_open()?;

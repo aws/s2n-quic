@@ -17,6 +17,7 @@ mod recv;
 mod request_response;
 mod restart;
 mod rpc;
+mod runtime_rebind;
 mod shared_cache;
 mod uds_application_data;
 

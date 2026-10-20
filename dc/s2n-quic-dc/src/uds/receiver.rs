@@ -32,7 +32,10 @@ impl Receiver {
         let socket = UnixDatagram::bind(socket_path)?;
         socket.set_nonblocking(true)?;
 
-        let async_fd = Arc::new(unsafe { AsyncFd::register(OwnedFd::from(socket)) }?);
+        let async_fd = Arc::new(unsafe {
+            // SAFETY: the OwnedFd is owned by the AsyncFd, so its fd is stable until drop.
+            AsyncFd::register(OwnedFd::from(socket))
+        }?);
 
         Ok(Self {
             socket_fd: async_fd,

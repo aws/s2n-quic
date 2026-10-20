@@ -167,6 +167,30 @@ impl<Sub> Stream<Sub>
 where
     Sub: event::Subscriber,
 {
+    /// Registers application I/O with the current Tokio runtime.
+    ///
+    /// Call this after moving the stream to the runtime that will drive its I/O.
+    /// Buffered data, cryptographic state, and stream settings are preserved.
+    /// Receive timers also move to the current runtime; background workers and
+    /// shutdown tasks continue using their original runtimes.
+    ///
+    /// Returns an error if no Tokio runtime is current or socket duplication or
+    /// registration fails. Custom socket implementations may return
+    /// [`io::ErrorKind::Unsupported`]. On error, the stream keeps its original
+    /// registration and remains usable.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the current runtime has its I/O driver disabled, or if a receive
+    /// timer is needed and its timer driver is disabled.
+    #[cfg(feature = "tokio")]
+    pub fn rebind_to_current_runtime(&mut self) -> io::Result<()> {
+        tokio::runtime::Handle::try_current().map_err(io::Error::other)?;
+        let sockets = self.read.rebind_to_current_runtime()?;
+        self.write.replace_application_sockets(sockets);
+        Ok(())
+    }
+
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
         self.read.peer_addr()

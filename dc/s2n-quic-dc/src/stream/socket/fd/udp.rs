@@ -15,9 +15,26 @@ use std::{
 
 pub trait Socket: 'static + AsRawFd + Send + Sync {
     fn local_addr(&self) -> io::Result<SocketAddr>;
+
+    /// Clones the socket for application use, preserving shared ownership when available.
+    #[cfg(feature = "tokio")]
+    fn try_clone(&self) -> io::Result<Self>
+    where
+        Self: Sized,
+    {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "socket does not support cloning",
+        ))
+    }
 }
 
 impl Socket for std::net::UdpSocket {
+    #[cfg(feature = "tokio")]
+    fn try_clone(&self) -> io::Result<Self> {
+        std::net::UdpSocket::try_clone(self)
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         (*self).local_addr()
@@ -32,6 +49,11 @@ impl Socket for tokio::net::UdpSocket {
 }
 
 impl<T: Socket> Socket for std::sync::Arc<T> {
+    #[cfg(feature = "tokio")]
+    fn try_clone(&self) -> io::Result<Self> {
+        Ok(self.clone())
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         (**self).local_addr()
@@ -39,6 +61,11 @@ impl<T: Socket> Socket for std::sync::Arc<T> {
 }
 
 impl<T: Socket> Socket for Box<T> {
+    #[cfg(feature = "tokio")]
+    fn try_clone(&self) -> io::Result<Self> {
+        Ok(Box::new((**self).try_clone()?))
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         (**self).local_addr()
@@ -66,6 +93,11 @@ impl<S: Socket> AsRawFd for CachedAddr<S> {
 }
 
 impl<S: Socket> Socket for CachedAddr<S> {
+    #[cfg(feature = "tokio")]
+    fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self::new(self.inner.try_clone()?, self.addr))
+    }
+
     #[inline]
     fn local_addr(&self) -> io::Result<SocketAddr> {
         Ok(self.addr)

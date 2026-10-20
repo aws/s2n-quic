@@ -86,12 +86,18 @@ where
 
         let read_worker = {
             let _guard = env.reader_rt.enter();
-            unsafe { AsyncFd::register(reader.clone()) }?
+            unsafe {
+                // SAFETY: the Arc keeps the socket alive, so its fd is stable until drop.
+                AsyncFd::register(reader.clone())
+            }?
         };
 
         let write_worker = {
             let _guard = env.writer_rt.enter();
-            unsafe { AsyncFd::register(writer.clone()) }?
+            unsafe {
+                // SAFETY: the Arc keeps the socket alive, so its fd is stable until drop.
+                AsyncFd::register(writer.clone())
+            }?
         };
 
         debug_assert_eq!(
