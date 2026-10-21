@@ -10,7 +10,7 @@ use crate::{
 };
 use s2n_quic::provider::{event::Subscriber as Sub, tls::Provider as Prov};
 use s2n_quic_dc_metrics::Registry;
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, os::fd::OwnedFd, sync::Arc, time::Duration};
 
 use super::Provider;
 
@@ -27,6 +27,7 @@ pub struct Builder<
     pub(crate) endpoint_limits: Option<TestEndpointLimiter>,
     pub(crate) thread_offload_count: usize,
     pub(crate) registry: Option<Registry>,
+    pub(crate) attach_reuseport_ebpf: Option<Arc<OwnedFd>>,
 }
 
 /// A wrapper type for test endpoint limiters
@@ -58,6 +59,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             endpoint_limits: None,
             thread_offload_count: DEFAULT_THREAD_COUNT,
             registry: None,
+            attach_reuseport_ebpf: None,
         }
     }
 }
@@ -79,6 +81,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             endpoint_limits: self.endpoint_limits,
             thread_offload_count: self.thread_offload_count,
             registry: self.registry,
+            attach_reuseport_ebpf: self.attach_reuseport_ebpf,
         }
     }
 
@@ -162,6 +165,12 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
 
     pub fn with_registry(mut self, registry: Registry) -> Self {
         self.registry = Some(registry);
+        self
+    }
+
+    /// Installs a BPF program on the handshake socket via `SO_ATTACH_REUSEPORT_EBPF`
+    pub fn with_attach_reuseport_ebpf(mut self, fd: Arc<OwnedFd>) -> Self {
+        self.attach_reuseport_ebpf = Some(fd);
         self
     }
 
