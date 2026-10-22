@@ -324,6 +324,10 @@ where
         crypto,
     });
 
+    // Idle timers count from the last peer activity, so start it at open rather than the clock's
+    // epoch; otherwise on an endpoint older than the idle timeout the read worker exits at once.
+    shared.on_peer_activity();
+
     // spawn the read worker
     if let Some(socket) = sockets.read_worker {
         let socket = socket.setup();
