@@ -19,6 +19,7 @@ use std::{
     hash::BuildHasher,
     io,
     net::SocketAddr,
+    os::fd::AsRawFd,
     sync::{
         atomic::{AtomicU16, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -124,6 +125,12 @@ impl Server {
         subscriber: Subscriber,
         builder: server::Builder<Event>,
     ) -> Result<Self, Error> {
+        let io = s2n_quic::provider::io::default::Builder::default();
+        let io = match builder.attach_reuseport_ebpf.as_ref() {
+            Some(prog_fd) => io.with_rx_socket(bind_reuseport_socket(addr, prog_fd)?)?,
+            None => io.with_receive_address(addr)?,
+        };
+
         // If the initial packet exceeds base MTU, s2n-quic's ability to recover from losing that
         // packet is impaired on both client and server. This is especially true if the ClientHello
         // is larger than the base MTU.
@@ -131,8 +138,7 @@ impl Server {
         // Keep initial packets small. Discovery is disabled by default and callers opt in
         // by explicitly configuring a larger maximum MTU.
         let mtu = builder.mtu.unwrap_or(DEFAULT_BASE_MTU);
-        let io = s2n_quic::provider::io::default::Builder::default()
-            .with_receive_address(addr)?
+        let io = io
             .with_internal_recv_buffer_size(BUFFER_SIZE)?
             .with_base_mtu(DEFAULT_BASE_MTU.min(mtu))?
             .with_initial_mtu(DEFAULT_BASE_MTU.min(mtu))?
@@ -218,6 +224,47 @@ impl Server {
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.server.local_addr()
     }
+}
+
+fn bind_reuseport_socket(
+    addr: SocketAddr,
+    prog_fd: &std::os::fd::OwnedFd,
+) -> io::Result<std::net::UdpSocket> {
+    if addr.port() == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "attaching a reuseport BPF program requires a fixed handshake port",
+        ));
+    }
+
+    let mut options = crate::socket::Options::new(addr);
+    options.reuse_port = crate::socket::ReusePort::BeforeBind;
+    let socket = options.build_udp()?;
+
+    #[cfg(target_os = "linux")]
+    {
+        let prog_raw_fd: libc::c_int = prog_fd.as_raw_fd();
+        // SAFETY: setsockopt with valid socket fd, valid optval pointer,
+        // and matching optlen for SO_ATTACH_REUSEPORT_EBPF. The BPF
+        // program fd is borrowed via the Arc<OwnedFd>. The kernel takes
+        // its own reference on success.
+        let ret = unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_ATTACH_REUSEPORT_EBPF,
+                &prog_raw_fd as *const libc::c_int as *const libc::c_void,
+                std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            )
+        };
+        if ret != 0 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = prog_fd;
+
+    Ok(socket)
 }
 
 pub(super) async fn server<

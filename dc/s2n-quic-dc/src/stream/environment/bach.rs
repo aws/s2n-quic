@@ -95,6 +95,7 @@ where
         let rt = Arc::new(runtime::Handle::current());
 
         let mut env = Environment {
+            clock: Clock::default(),
             gso,
             socket_options,
             rt,
@@ -114,6 +115,7 @@ where
 
 #[derive(Clone)]
 pub struct Environment<Sub> {
+    clock: Clock,
     gso: features::Gso,
     socket_options: socket::Options,
     rt: Arc<runtime::Handle>,
@@ -175,7 +177,7 @@ where
 
     #[inline]
     fn clock(&self) -> Self::Clock {
-        Clock::default()
+        self.clock.clone()
     }
 
     #[inline]
