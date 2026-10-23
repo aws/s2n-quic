@@ -299,8 +299,11 @@ impl Cleaner {
         let mut handshake_requests = 0;
         let handshake_requests_skipped =
             rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
+                // The batch holds addresses collected at refill time; the peer's current entry is
+                // the one to replace, and it may have gone since.
+                let entry = state.peers.get(peer)?;
                 handshake_requests += 1;
-                state.request_handshake(peer, event::builder::HandshakeReason::Periodic)
+                state.request_handshake(&entry, event::builder::HandshakeReason::Periodic)
             });
 
         drop(rehandshake);
