@@ -240,6 +240,7 @@ impl<'a> View<'a> {
         debug_assert!(range.end_exclusive() <= buffer.total_len());
 
         let mut offset = 0;
+        let mut found = false;
 
         // find the chunk and offset where the range starts
         for chunk in buffer.chunks.iter().skip(*chunk_index) {
@@ -249,11 +250,33 @@ impl<'a> View<'a> {
 
             if (start..end).contains(&range.start_inclusive()) {
                 offset = (range.start_inclusive().as_u64() - start) as usize;
+                found = true;
                 break;
             }
 
             *stream_offset += len;
             *chunk_index += 1;
+        }
+
+        // If the range start wasn't located (a stale/inconsistent cursor), fail closed
+        // with an empty view rather than an invalid `chunk_index`/`offset`. `len == 0`
+        // means it is never dereferenced. The debug_assert still catches the invariant
+        // violation in test/CI; release relies on the empty view.
+        if !found {
+            debug_assert!(
+                *chunk_index < buffer.chunks.len(),
+                "range ({:?}) start could not be located in the buffer: {:?}",
+                range,
+                buffer.head..buffer.total_len()
+            );
+
+            return Self {
+                buffer,
+                chunk_index: (*chunk_index).min(buffer.chunks.len()),
+                offset: 0,
+                len: 0,
+                is_fin: false,
+            };
         }
 
         debug_assert!(*chunk_index < buffer.chunks.len());
@@ -317,13 +340,21 @@ impl<'a, S: Slice<'a>> Iterator for ViewIter<'a, S> {
             return None;
         }
 
-        let chunk = &view.buffer.chunks[view.chunk_index];
+        // Checked index: a past-the-end `chunk_index` ends iteration instead of panicking.
+        let Some(chunk) = view.buffer.chunks.get(view.chunk_index) else {
+            view.len = 0;
+            return None;
+        };
 
         let start = view.offset;
         // reset the offset to the beginning of the next chunk
         view.offset = 0;
-        // compute the chunk len with the given offset
-        let len = chunk.len() - start;
+        // Guard against underflow: a bad `offset` (`start > chunk.len()`) ends iteration
+        // instead of feeding a huge length into the slice.
+        let Some(len) = chunk.len().checked_sub(start) else {
+            view.len = 0;
+            return None;
+        };
         // make sure we don't exceed that max len
         let len = view.len.min(len);
 
@@ -334,6 +365,9 @@ impl<'a, S: Slice<'a>> Iterator for ViewIter<'a, S> {
         // move to the next chunk
         view.chunk_index += 1;
 
+        // Bounds are now provably valid (`start <= end <= chunk.len()`), so the
+        // `&[u8]` `Slice` impl's `get_unchecked` fast path is safe.
+        debug_assert!(start <= end && end <= chunk.len());
         debug_assert_eq!(chunk[start..end].len(), len);
         Some(S::from_chunk(chunk, start, end))
     }
@@ -347,9 +381,18 @@ pub trait Slice<'a> {
 impl<'a> Slice<'a> for &'a [u8] {
     #[inline]
     fn from_chunk(chunk: &'a Bytes, start: usize, end: usize) -> Self {
-        unsafe {
-            debug_assert!(chunk.len() >= end);
-            chunk.get_unchecked(start..end)
+        // Zero-copy fast path only when bounds are provably valid; otherwise yield an
+        // empty slice so an invalid view never triggers `get_unchecked` out-of-bounds (UB).
+        if start <= end && end <= chunk.len() {
+            // Safety: bounds checked above, so `start..end` is within `chunk`.
+            unsafe { chunk.get_unchecked(start..end) }
+        } else {
+            debug_assert!(
+                false,
+                "ViewIter produced out-of-bounds slice bounds {start}..{end} for chunk of len {}",
+                chunk.len()
+            );
+            &[]
         }
     }
 }
@@ -536,5 +579,313 @@ mod tests {
         check_viewer(&mut viewer, (0..1).into(), &[0]);
         check_viewer(&mut viewer, (2..4).into(), &[2, 3]);
         check_viewer(&mut viewer, (5..6).into(), &[5]);
+    }
+
+    // Bug-condition tests: ranges whose start can't be located (isBugCondition). The fixed
+    // `View::new` returns an empty view, so these assert empty-and-safe. Some shapes still
+    // trip a retained `debug_assert!` in debug, so they are gated by profile (should_panic in
+    // debug, empty view in release).
+
+    /// Asserts a `View` is empty and safe: `len() == 0`, both iterators yield nothing, and
+    /// encode writes nothing.
+    #[cfg(not(debug_assertions))]
+    fn assert_empty_view_release(view: &View) {
+        assert_eq!(view.len(), VarInt::ZERO, "fixed view must be empty");
+
+        let via_slice: Vec<u8> = view.iter::<&[u8]>().flatten().copied().collect();
+        assert!(via_slice.is_empty(), "&[u8] iter must yield nothing");
+        let via_bytes: Vec<Bytes> = view.iter::<Bytes>().collect();
+        assert!(via_bytes.is_empty(), "Bytes iter must yield nothing");
+
+        use s2n_codec::EncoderBuffer;
+        let mut out = [0u8; 8];
+        let mut encoder = EncoderBuffer::new(&mut out);
+        let mut view_copy = *view;
+        let view_ref = &mut view_copy;
+        view_ref.encode(&mut encoder);
+        assert_eq!(encoder.len(), 0, "encode of an empty view writes nothing");
+    }
+
+    /// Unlocatable ranges extending past the buffer end: empty buffer past `VarInt::MAX` (the
+    /// production surface), one chunk with an out-of-range start, and empty buffer. All trip the
+    /// `end_exclusive <= total_len` guard in debug; in release each yields an empty view.
+    /// (Debug `should_panic` stops at the first case; release runs all three.)
+    #[cfg_attr(
+        debug_assertions,
+        should_panic(expected = "range.end_exclusive() <= buffer.total_len()")
+    )]
+    #[test]
+    fn bug_condition_end_past_total_len_test() {
+        let one_chunk = buffer_from_chunks(&[vec![0, 1, 2]]);
+        let empty = Buffer::default();
+        let cases: [(&Buffer, Interval<VarInt>); 3] = [
+            (&empty, (VarInt::ZERO..=VarInt::MAX).into()),
+            (&one_chunk, (VarInt::from_u8(5)..=VarInt::from_u8(5)).into()),
+            (&empty, (VarInt::from_u8(0)..=VarInt::from_u8(0)).into()),
+        ];
+
+        for (buffer, range) in cases {
+            let mut stream_offset = buffer.head.as_u64();
+            let mut chunk_index = 0usize;
+            let view = View::new(buffer, range, false, &mut stream_offset, &mut chunk_index);
+
+            #[cfg(not(debug_assertions))]
+            assert_empty_view_release(&view);
+            #[cfg(debug_assertions)]
+            let _ = view;
+        }
+    }
+
+    /// Stale cursor after release: the cursor is left on a chunk that release then dropped, so
+    /// a still-live range can't be found. Debug trips the not-found guard; release yields empty.
+    #[cfg_attr(
+        debug_assertions,
+        should_panic(expected = "start could not be located in the buffer")
+    )]
+    #[test]
+    fn bug_condition_stale_cursor_after_release_test() {
+        let mut buffer = Buffer::default();
+        buffer.push(Bytes::from_static(&[0, 1, 2])); // stream offsets [0,3)
+        buffer.push(Bytes::from_static(&[3, 4, 5])); // stream offsets [3,6)
+
+        // cursor already advanced onto the second chunk
+        let mut stream_offset = 3u64;
+        let mut chunk_index = 1usize;
+
+        // release the first chunk: only [3,4,5] remains, but the cursor still points at index 1
+        buffer.release(VarInt::from_u8(3));
+        assert_eq!(buffer.chunks.len(), 1);
+        assert_eq!(buffer.chunks[0][..], [3, 4, 5]);
+
+        // still-live range [4,5], but unlocatable from the stale cursor (skip(1) skips the
+        // only remaining chunk)
+        let range: Interval<VarInt> = (VarInt::from_u8(4)..=VarInt::from_u8(5)).into();
+
+        let view = View::new(&buffer, range, false, &mut stream_offset, &mut chunk_index);
+
+        #[cfg(not(debug_assertions))]
+        assert_empty_view_release(&view);
+        #[cfg(debug_assertions)]
+        let _ = view;
+    }
+
+    /// Offset-past-chunk underflow: an invalid `View` (`offset > chunk.len()`) built directly,
+    /// since `View::new` can't produce it. The `checked_sub` guard ends iteration safely
+    /// (previously this underflowed into a silent out-of-bounds `get_unchecked` in release).
+    #[test]
+    fn bug_condition_offset_past_chunk_underflow_test() {
+        let mut buffer = Buffer::default();
+        buffer.push(Bytes::from_static(&[0, 1, 2])); // len 3
+
+        // invalid view: chunk_index valid (0), but offset (5) exceeds chunks[0].len() (3)
+        let view = View {
+            buffer: &buffer,
+            chunk_index: 0,
+            offset: 5,
+            len: 1,
+            is_fin: false,
+        };
+
+        let via_bytes: Vec<Bytes> = view.iter::<Bytes>().collect();
+        assert!(via_bytes.is_empty(), "Bytes iter must yield nothing");
+        let via_slice: Vec<u8> = view.iter::<&[u8]>().flatten().copied().collect();
+        assert!(via_slice.is_empty(), "&[u8] iter must yield nothing");
+    }
+
+    // Preservation (property-based): for every locatable range, `View::new` + `ViewIter` must
+    // yield exactly the requested bytes on both slice paths and both `EncoderValue` paths, and
+    // reuse the cursor across advancing ranges. These add the `Bytes`/encode and random-layout
+    // coverage that `view_test`/`viewer_test` don't exercise.
+
+    /// Builds a buffer from a list of chunk byte-slices, each pushed as its own chunk.
+    fn buffer_from_chunks(chunks: &[Vec<u8>]) -> Buffer {
+        let mut buffer = Buffer::default();
+        for chunk in chunks {
+            buffer.push(Bytes::copy_from_slice(chunk));
+        }
+        buffer
+    }
+
+    /// The concatenated bytes currently held by the buffer (chunk contents in order).
+    fn concat_bytes(chunks: &[Vec<u8>]) -> Vec<u8> {
+        chunks.iter().flat_map(|c| c.iter().copied()).collect()
+    }
+
+    /// Builds chunks from raw size bytes: each size is taken mod 8 (0 -> skipped) and each
+    /// byte's value equals its absolute stream offset (mod 256), so expected bytes are
+    /// trivially checkable. Keeps total length small for valid VarInt/offset arithmetic.
+    fn build_chunks(sizes: &[u8]) -> Vec<Vec<u8>> {
+        let mut chunks: Vec<Vec<u8>> = Vec::new();
+        let mut next: usize = 0;
+        for &sz in sizes {
+            let sz = (sz % 8) as usize;
+            if sz == 0 {
+                continue;
+            }
+            chunks.push((0..sz).map(|i| ((next + i) % 256) as u8).collect());
+            next += sz;
+        }
+        chunks
+    }
+
+    /// Bytes from the `&[u8]` path for a fresh view over `range`.
+    fn view_bytes_slice(buffer: &Buffer, range: Interval<VarInt>) -> Vec<u8> {
+        let mut stream_offset = buffer.head.as_u64();
+        let mut chunk_index = 0usize;
+        View::new(buffer, range, false, &mut stream_offset, &mut chunk_index)
+            .iter::<&[u8]>()
+            .flatten()
+            .copied()
+            .collect()
+    }
+
+    /// Bytes from the zero-copy `Bytes` path for a fresh view over `range`.
+    fn view_bytes_bytes(buffer: &Buffer, range: Interval<VarInt>) -> Vec<u8> {
+        let mut stream_offset = buffer.head.as_u64();
+        let mut chunk_index = 0usize;
+        View::new(buffer, range, false, &mut stream_offset, &mut chunk_index)
+            .iter::<Bytes>()
+            .flat_map(|b| b.to_vec())
+            .collect()
+    }
+
+    /// Bytes from the `write_sized` `EncoderValue` path (EncoderBuffer doesn't specialize on
+    /// bytes) for a fresh view over `range`.
+    fn encode_write_sized(buffer: &Buffer, range: Interval<VarInt>) -> Vec<u8> {
+        use s2n_codec::EncoderBuffer;
+        let mut stream_offset = buffer.head.as_u64();
+        let mut chunk_index = 0usize;
+        let mut view = View::new(buffer, range, false, &mut stream_offset, &mut chunk_index);
+
+        let mut out = vec![0u8; range.len()];
+        let mut encoder = EncoderBuffer::new(&mut out);
+        let view_ref = &mut view;
+        view_ref.encode(&mut encoder);
+        out
+    }
+
+    /// Chunks, the locatable range over them, and the expected byte-slice indices.
+    type LocatableCase = (Vec<Vec<u8>>, Interval<VarInt>, core::ops::Range<usize>);
+
+    /// A locatable range (`len > 0`, within the buffer) and its expected buffer slice.
+    /// Returns `None` when no non-empty range can be formed (empty buffer).
+    fn make_locatable(chunk_sizes: &[u8], start_raw: u64, span_raw: u64) -> Option<LocatableCase> {
+        let chunks = build_chunks(chunk_sizes);
+        let total = chunks.iter().map(|c| c.len()).sum::<usize>() as u64;
+        if total == 0 {
+            return None;
+        }
+        // constrain start into [0, total) and span into [1, total - start]
+        let start = start_raw % total;
+        let max_span = total - start;
+        let span = (span_raw % max_span) + 1; // in [1, max_span]
+        let end = start + span;
+
+        let range: Interval<VarInt> =
+            (VarInt::new(start).unwrap()..=VarInt::new(end - 1).unwrap()).into();
+        Some((chunks, range, (start as usize)..(end as usize)))
+    }
+
+    /// Property: for random buffer layouts and random LOCATABLE ranges, the yielded byte
+    /// sequence equals the exact requested slice of the concatenated buffer bytes, on both
+    /// the `&[u8]` and zero-copy `Bytes` paths, and both `EncoderValue` paths.
+    #[test]
+    fn preservation_property_random_layouts_test() {
+        use bolero::{check, generator::*};
+
+        // up to 6 chunks, each size byte in [0,7] (0 -> skipped); start/span as u64.
+        let generator = (
+            produce::<Vec<u8>>().with().len(0usize..=6),
+            produce::<u64>(),
+            produce::<u64>(),
+        );
+
+        check!()
+            .with_generator(generator)
+            .for_each(|(chunk_sizes, start_raw, span_raw)| {
+                let Some((chunks, range, expected_range)) =
+                    make_locatable(chunk_sizes, *start_raw, *span_raw)
+                else {
+                    return;
+                };
+                let buffer = buffer_from_chunks(&chunks);
+                let concat = concat_bytes(&chunks);
+                let expected = concat[expected_range].to_vec();
+
+                let via_slice = view_bytes_slice(&buffer, range);
+                let via_bytes = view_bytes_bytes(&buffer, range);
+                let via_write_sized = encode_write_sized(&buffer, range);
+
+                assert_eq!(via_slice, expected, "&[u8] path, range {range:?}");
+                assert_eq!(via_bytes, expected, "Bytes path, range {range:?}");
+                assert_eq!(
+                    via_write_sized, expected,
+                    "write_sized path, range {range:?}"
+                );
+            });
+    }
+
+    /// Property: monotonic sequences of locatable ranges over a shared `Viewer` yield the
+    /// correct bytes for each range and reuse the cursor (it never moves backwards and its
+    /// tracked stream_offset stays consistent with the located chunk).
+    #[test]
+    fn preservation_property_monotonic_viewer_test() {
+        use bolero::{check, generator::*};
+
+        // a buffer layout plus a sorted list of "cut points" that define contiguous,
+        // monotonically advancing ranges over the whole buffer.
+        let generator = (
+            produce::<Vec<u8>>().with().len(1usize..=6),
+            produce::<Vec<u8>>().with().len(0usize..=6),
+        );
+
+        check!()
+            .with_generator(generator)
+            .for_each(|(chunk_sizes, cut_raw)| {
+                let chunks = build_chunks(chunk_sizes);
+                let total = chunks.iter().map(|c| c.len()).sum::<usize>();
+                if total == 0 {
+                    return;
+                }
+                let concat = concat_bytes(&chunks);
+                let buffer = buffer_from_chunks(&chunks);
+
+                // derive sorted, in-range cut points -> contiguous ranges [prev, cut)
+                let mut cuts: Vec<usize> = cut_raw
+                    .iter()
+                    .map(|c| (*c as usize) % (total + 1))
+                    .collect();
+                cuts.push(total);
+                cuts.sort_unstable();
+
+                let mut viewer = buffer.viewer();
+                let mut prev = 0usize;
+                let mut last_offset = viewer.offset;
+                let mut last_chunk_index = viewer.chunk_index;
+
+                for cut in cuts {
+                    if cut <= prev {
+                        continue; // skip empty ranges (keep every range locatable, len > 0)
+                    }
+                    let range: Interval<VarInt> = (VarInt::new(prev as u64).unwrap()
+                        ..=VarInt::new((cut - 1) as u64).unwrap())
+                        .into();
+                    let bytes: Vec<u8> = viewer
+                        .next_view(range, false)
+                        .iter::<&[u8]>()
+                        .flatten()
+                        .copied()
+                        .collect();
+                    assert_eq!(bytes, concat[prev..cut].to_vec(), "range {range:?}");
+
+                    // cursor is reused monotonically: never moves backwards
+                    assert!(viewer.offset >= last_offset);
+                    assert!(viewer.chunk_index >= last_chunk_index);
+                    last_offset = viewer.offset;
+                    last_chunk_index = viewer.chunk_index;
+
+                    prev = cut;
+                }
+            });
     }
 }
