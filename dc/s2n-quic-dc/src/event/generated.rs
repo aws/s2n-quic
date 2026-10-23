@@ -2913,6 +2913,10 @@ pub mod api {
         #[non_exhaustive]
         /// A newer entry is replacing this one, so we're retiring these.
         Retiring {},
+        #[non_exhaustive]
+        /// The local endpoint that created this entry was dropped, so it can no longer be
+        /// re-handshaked from the same address.
+        LocalEndpointDropped {},
     }
     impl aggregate::AsVariant for EvictionReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -2931,6 +2935,11 @@ pub mod api {
                 id: 2usize,
             }
             .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("LOCAL_ENDPOINT_DROPPED\0"),
+                id: 3usize,
+            }
+            .build(),
         ];
         #[inline]
         fn variant_idx(&self) -> usize {
@@ -2938,6 +2947,7 @@ pub mod api {
                 Self::Capacity { .. } => 0usize,
                 Self::UnknownPathSecret { .. } => 1usize,
                 Self::Retiring { .. } => 2usize,
+                Self::LocalEndpointDropped { .. } => 3usize,
             }
         }
     }
@@ -7599,6 +7609,9 @@ pub mod builder {
         UnknownPathSecret,
         /// A newer entry is replacing this one, so we're retiring these.
         Retiring,
+        /// The local endpoint that created this entry was dropped, so it can no longer be
+        /// re-handshaked from the same address.
+        LocalEndpointDropped,
     }
     impl IntoEvent<api::EvictionReason> for EvictionReason {
         #[inline]
@@ -7608,6 +7621,7 @@ pub mod builder {
                 Self::Capacity => Capacity {},
                 Self::UnknownPathSecret => UnknownPathSecret {},
                 Self::Retiring => Retiring {},
+                Self::LocalEndpointDropped => LocalEndpointDropped {},
             }
         }
     }
