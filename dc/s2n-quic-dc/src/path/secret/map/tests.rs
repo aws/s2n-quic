@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{stateless_reset, ApplicationData, ApplicationDataError, Map};
+use super::{stateless_reset, ApplicationData, ApplicationDataError, LocalEndpoint, Map};
 use s2n_quic_core::time::NoopClock;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -84,12 +84,10 @@ fn key_id_exhaustion_requests_rehandshake() {
     use std::net::SocketAddr;
 
     let map = test_map();
-    let peer_addr: SocketAddr = "127.0.0.1:1234".parse().expect("valid address literal");
-    map.test_insert(peer_addr);
-
+    let endpoint = map.register_local_endpoint();
     let requests = Arc::new(AtomicUsize::new(0));
     let requests_in_cb = requests.clone();
-    map.register_request_handshake(Box::new(move |_peer, reason| {
+    endpoint.set_rehandshake_callback(Arc::new(move |_peer, reason| {
         assert!(
             matches!(reason, crate::psk::io::HandshakeReason::KeyIdExhaustion),
             "expected KeyIdExhaustion, got {reason:?}"
@@ -97,6 +95,10 @@ fn key_id_exhaustion_requests_rehandshake() {
         requests_in_cb.fetch_add(1, Ordering::Relaxed);
         None
     }));
+
+    let map = map.with_local_endpoint(&endpoint);
+    let peer_addr: SocketAddr = "127.0.0.1:1234".parse().expect("valid address literal");
+    map.test_insert(peer_addr);
 
     let peer = map.get_tracked(peer_addr).expect("just inserted");
 
@@ -122,4 +124,108 @@ fn key_id_exhaustion_requests_rehandshake() {
 
     assert!(map.seal_once_id(*entry.id()).is_none());
     assert_eq!(requests.load(Ordering::Relaxed), 3);
+}
+
+/// Registers a local endpoint whose re-handshake callback records each peer it is asked to
+/// re-handshake.
+fn recording_endpoint(
+    map: &Map,
+) -> (
+    LocalEndpoint,
+    Arc<std::sync::Mutex<Vec<std::net::SocketAddr>>>,
+) {
+    let endpoint = map.register_local_endpoint();
+    let requested = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let requested_in_cb = requested.clone();
+    endpoint.set_rehandshake_callback(Arc::new(move |peer, _reason| {
+        requested_in_cb
+            .lock()
+            .expect("lock is never poisoned in this test")
+            .push(peer);
+        None
+    }));
+    (endpoint, requested)
+}
+
+/// Several client endpoints can share one map. A re-handshake must leave from the endpoint that
+/// created the entry: servers key entries by client address, so a re-handshake from another
+/// endpoint's socket would leave the original entry behind on the server.
+#[test]
+fn rehandshake_goes_through_the_creating_endpoint() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (endpoint_a, requested_a) = recording_endpoint(&map);
+    let (endpoint_b, requested_b) = recording_endpoint(&map);
+
+    let peer_a: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    let peer_b: SocketAddr = "127.0.0.1:1002".parse().expect("valid address literal");
+    map.with_local_endpoint(&endpoint_a).test_insert(peer_a);
+    map.with_local_endpoint(&endpoint_b).test_insert(peer_b);
+
+    for peer in [peer_a, peer_b] {
+        let entry = map
+            .store
+            .get_by_addr_untracked(&peer)
+            .expect("just inserted");
+        map.store
+            .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+    }
+
+    assert_eq!(*requested_a.lock().expect("not poisoned"), vec![peer_a]);
+    assert_eq!(*requested_b.lock().expect("not poisoned"), vec![peer_b]);
+}
+
+/// Once the creating endpoint is gone its socket is too, so the entry can't be re-handshaked from
+/// the same address. It is evicted instead, so the next connection attempt handshakes afresh.
+#[test]
+fn rehandshake_with_dropped_endpoint_evicts_entry() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (endpoint, requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.with_local_endpoint(&endpoint).test_insert(peer);
+    drop(endpoint);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    let handle = map
+        .store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(handle.is_none());
+    assert!(requested.lock().expect("not poisoned").is_empty());
+    assert!(
+        !map.contains(&peer),
+        "entry with a dropped endpoint is evicted"
+    );
+    assert!(map.store.get_by_id_untracked(entry.id()).is_none());
+}
+
+/// Entries created by a remotely initiated handshake have no creating endpoint; re-handshaking them
+/// is the remote's job, so nothing is requested and the entry stays.
+#[test]
+fn rehandshake_without_endpoint_is_not_requested() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.test_insert(peer);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    let handle = map
+        .store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(handle.is_none());
+    assert!(
+        map.contains(&peer),
+        "entry without a creating endpoint is kept"
+    );
 }
