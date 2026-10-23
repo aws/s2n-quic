@@ -57,11 +57,21 @@ impl Io {
             mtu_config_builder,
             max_segments,
             gro_enabled,
+            wsa_enabled,
             reuse_address,
             reuse_port,
             only_v6,
             prioritized_socket,
         } = self.builder;
+
+        // Without the Windows `WSASendMsg`/`WSARecvMsg` extensions the socket tasks fall back to
+        // plain `send_to`/`recv_from`, which carry no segmentation, coalescing or ECN, so those
+        // features are left unconfigured. The reason to add this capability is to allow the
+        // extensions to be disabled on Windows, extensions may behave buggy, e.g. see
+        // https://max-inden.de/post/fast-udp-io-in-firefox/
+        //
+        // Always `true` on other platforms.
+        let wsa_enabled = !cfg!(s2n_quic_platform_socket_wsamsg) || wsa_enabled.unwrap_or(true);
 
         let clock = Clock::default();
 
@@ -73,12 +83,6 @@ impl Io {
             None,
             endpoint.subscriber(),
         );
-
-        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
-            configuration: event::builder::PlatformFeatureConfiguration::Gso {
-                max_segments: max_segments.into(),
-            },
-        });
 
         // try to use the tokio runtime handle if provided, otherwise try to use the implicit tokio
         // runtime in the current scope of the application.
@@ -124,6 +128,27 @@ impl Io {
             }
         }
 
+        // Some platforms (Windows) only report segmentation offload support at runtime, so the
+        // socket needs to be probed before the ring buffers are sized with the segment count.
+        //
+        // This has to happen here, after the socket is created and configured but before the TX
+        // ring is allocated below, because the entry payload length is `max_mtu * max_segments`.
+        // Probing later would either waste memory or require re-allocating the ring.
+        //
+        // On unix `supports_gso` just returns the compile-time `gso::IS_SUPPORTED`, so this is a
+        // no-op there.
+        let max_segments = if wsa_enabled && syscall::supports_gso(&tx_socket) {
+            max_segments
+        } else {
+            1.try_into().expect("1 is always a valid MaxSegments value")
+        };
+
+        publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
+            configuration: event::builder::PlatformFeatureConfiguration::Gso {
+                max_segments: max_segments.into(),
+            },
+        });
+
         let mut mtu_config = mtu_config_builder
             .build()
             .map_err(|err| io::Error::new(ErrorKind::InvalidInput, format!("{err}")))?;
@@ -154,7 +179,8 @@ impl Io {
         });
 
         // Configure the socket with GRO
-        let gro_enabled = gro_enabled.unwrap_or(true)
+        let gro_enabled = wsa_enabled
+            && gro_enabled.unwrap_or(true)
             && syscall::configure_gro(&rx_socket)
             && prioritized_socket
                 .as_ref()
@@ -170,11 +196,11 @@ impl Io {
         syscall::configure_pktinfo(&rx_socket);
 
         // Configure TOS/ECN
-        let mut tos_enabled = syscall::configure_tos(&rx_socket);
+        let mut tos_enabled = wsa_enabled && syscall::configure_tos(&rx_socket);
 
         if let Some(ref ps) = prioritized_socket {
             syscall::configure_pktinfo(ps);
-            tos_enabled |= syscall::configure_tos(ps);
+            tos_enabled |= wsa_enabled && syscall::configure_tos(ps);
         }
 
         publisher.on_platform_feature_configured(event::builder::PlatformFeatureConfigured {
@@ -216,13 +242,15 @@ impl Io {
                 let (producer, consumer) = socket::ring::pair(entries, payload_len);
                 consumers.push(consumer);
 
-                handle.spawn(task::rx(
+                spawn_rx(
+                    &handle,
                     prioritized_socket,
                     Some(rx_socket),
                     producer,
                     rx_cooldown,
                     stats_sender.clone(),
-                ));
+                    wsa_enabled,
+                );
             } else {
                 let rx_socket_count = parse_env("S2N_QUIC_UNSTABLE_RX_SOCKET_COUNT").unwrap_or(1);
 
@@ -232,23 +260,27 @@ impl Io {
 
                     // spawn a task that actually reads from the socket into the ring buffer
                     if idx + 1 == rx_socket_count {
-                        handle.spawn(task::rx(
+                        spawn_rx(
+                            &handle,
                             rx_socket,
                             None,
                             producer,
                             rx_cooldown,
                             stats_sender.clone(),
-                        ));
+                            wsa_enabled,
+                        );
                         break;
                     } else {
                         let rx_socket = rx_socket.try_clone()?;
-                        handle.spawn(task::rx(
+                        spawn_rx(
+                            &handle,
                             rx_socket,
                             None,
                             producer,
                             rx_cooldown.clone(),
                             stats_sender.clone(),
-                        ));
+                            wsa_enabled,
+                        );
                     }
                 }
             }
@@ -292,23 +324,27 @@ impl Io {
 
                 // spawn a task that actually flushes the ring buffer to the socket
                 if idx + 1 == tx_socket_count {
-                    handle.spawn(task::tx(
+                    spawn_tx(
+                        &handle,
                         tx_socket,
                         consumer,
                         gso.clone(),
                         tx_cooldown,
                         stats_sender.clone(),
-                    ));
+                        wsa_enabled,
+                    );
                     break;
                 } else {
                     let tx_socket = tx_socket.try_clone()?;
-                    handle.spawn(task::tx(
+                    spawn_tx(
+                        &handle,
                         tx_socket,
                         consumer,
                         gso.clone(),
                         tx_cooldown.clone(),
                         stats_sender.clone(),
-                    ));
+                        wsa_enabled,
+                    );
                 }
             }
 
@@ -344,6 +380,68 @@ fn convert_addr_to_std(addr: socket2::SockAddr) -> io::Result<std::net::SocketAd
 
 fn parse_env<T: core::str::FromStr>(name: &str) -> Option<T> {
     std::env::var(name).ok().and_then(|v| v.parse().ok())
+}
+
+/// Spawns a receive task.
+///
+/// Only the Windows task takes `wsa_enabled`; the other platforms' tasks keep their signatures
+/// and the flag is ignored.
+#[allow(clippy::too_many_arguments)]
+fn spawn_rx<S: Into<std::net::UdpSocket> + Send + 'static>(
+    handle: &Handle,
+    socket: S,
+    socket_low: Option<S>,
+    producer: socket::ring::Producer<message::Message>,
+    cooldown: Cooldown,
+    stats: socket::stats::Sender,
+    wsa_enabled: bool,
+) {
+    #[cfg(s2n_quic_platform_socket_wsamsg)]
+    handle.spawn(task::rx(
+        socket,
+        socket_low,
+        producer,
+        cooldown,
+        stats,
+        wsa_enabled,
+    ));
+
+    #[cfg(not(s2n_quic_platform_socket_wsamsg))]
+    {
+        let _ = wsa_enabled;
+        handle.spawn(task::rx(socket, socket_low, producer, cooldown, stats));
+    }
+}
+
+/// Spawns a transmit task.
+///
+/// Only the Windows task takes `wsa_enabled`; the other platforms' tasks keep their signatures
+/// and the flag is ignored.
+#[allow(clippy::too_many_arguments)]
+fn spawn_tx<S: Into<std::net::UdpSocket> + Send + 'static>(
+    handle: &Handle,
+    socket: S,
+    consumer: socket::ring::Consumer<message::Message>,
+    gso: crate::features::Gso,
+    cooldown: Cooldown,
+    stats: socket::stats::Sender,
+    wsa_enabled: bool,
+) {
+    #[cfg(s2n_quic_platform_socket_wsamsg)]
+    handle.spawn(task::tx(
+        socket,
+        consumer,
+        gso,
+        cooldown,
+        stats,
+        wsa_enabled,
+    ));
+
+    #[cfg(not(s2n_quic_platform_socket_wsamsg))]
+    {
+        let _ = wsa_enabled;
+        handle.spawn(task::tx(socket, consumer, gso, cooldown, stats));
+    }
 }
 
 pub fn cooldown(direction: &str) -> Cooldown {

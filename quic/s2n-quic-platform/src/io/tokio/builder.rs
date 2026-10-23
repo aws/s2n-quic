@@ -17,6 +17,7 @@ pub struct Builder {
     pub(super) mtu_config_builder: mtu::Builder,
     pub(super) max_segments: gso::MaxSegments,
     pub(super) gro_enabled: Option<bool>,
+    pub(super) wsa_enabled: Option<bool>,
     pub(super) reuse_address: bool,
     pub(super) reuse_port: bool,
     pub(super) only_v6: bool,
@@ -218,6 +219,18 @@ impl Builder {
         } else {
             self.with_gro_disabled()
         }
+    }
+
+    /// Configures the use of the Windows `WSASendMsg`/`WSARecvMsg` extensions
+    ///
+    /// By default, the extensions are used. When disabled, sends and receives fall back to plain
+    /// `send_to`/`recv_from`, which also disables segmentation offload (USO), receive coalescing
+    /// (URO) and ECN. This trades throughput for robustness against buggy Winsock providers.
+    ///
+    /// This option has no effect on other platforms.
+    pub fn with_wsa(mut self, enabled: bool) -> io::Result<Self> {
+        self.wsa_enabled = Some(enabled);
+        Ok(self)
     }
 
     /// Enables the address reuse (SO_REUSEADDR) socket option
