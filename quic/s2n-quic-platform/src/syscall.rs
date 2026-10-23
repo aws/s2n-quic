@@ -147,7 +147,43 @@ pub fn configure_mtu_disc(tx_socket: &Socket) -> bool {
     //# processing of outgoing packets that enforces a PMTU
     //# [RFC1191][RFC8201] for each flow utilizing DPLPMTUD and instead use
     //# DPLPMTUD to control the size of packets that are sent by a flow.
-    #[cfg(s2n_quic_platform_mtu_disc)]
+
+    // Apple platforms have no `IP_MTU_DISCOVER`, so the stack keeps enforcing
+    // its cached path MTU and rejects larger datagrams with `EMSGSIZE`.
+    // DPLPMTUD converges regardless, since a rejected probe is
+    // indistinguishable from a lost one.
+    #[cfg(all(target_vendor = "apple", s2n_quic_platform_mtu_disc))]
+    {
+        use std::os::unix::io::AsRawFd;
+
+        let enabled: libc::c_int = 1;
+
+        // On a dual-stack socket this is both necessary and sufficient: it
+        // prevents IPv6 fragmentation and sets the DF bit on IPv4-mapped sends,
+        // and the IPv4 level cannot be set separately.
+        success |= libc!(setsockopt(
+            tx_socket.as_raw_fd(),
+            libc::IPPROTO_IPV6,
+            libc::IPV6_DONTFRAG,
+            &enabled as *const _ as _,
+            core::mem::size_of_val(&enabled) as _,
+        ))
+        .is_ok();
+
+        success |= libc!(setsockopt(
+            tx_socket.as_raw_fd(),
+            libc::IPPROTO_IP,
+            libc::IP_DONTFRAG,
+            &enabled as *const _ as _,
+            core::mem::size_of_val(&enabled) as _,
+        ))
+        .is_ok();
+    }
+
+    #[cfg(all(
+        any(target_os = "linux", target_os = "android"),
+        s2n_quic_platform_mtu_disc
+    ))]
     {
         use std::os::unix::io::AsRawFd;
 
