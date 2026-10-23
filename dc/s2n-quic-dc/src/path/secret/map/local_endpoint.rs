@@ -66,7 +66,7 @@ impl LocalEndpoints {
         )]
         let id = self
             .next_id
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
             .ok()
             .and_then(|id| NonZeroU32::new(id + 1))
             .expect("local endpoint ids exhausted");
