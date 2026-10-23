@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner,
-    disk,
-    local_endpoint::{LocalEndpoints, Lookup},
-    proactive_unknown_path_secret, stateless_reset, ApplicationData, ApplicationDataError,
-    DiskEntry, Entry, HandshakeProbeOutcome, LocalEndpointId, RequestHandshake, SendStats, Store,
+    cleaner::Cleaner, disk, local_endpoint::LocalEndpoints, proactive_unknown_path_secret,
+    stateless_reset, ApplicationData, ApplicationDataError, DiskEntry, Entry,
+    HandshakeProbeOutcome, LocalEndpointId, RequestHandshake, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -734,16 +732,12 @@ where
                 },
             );
 
-        let callback = match self.local_endpoints.get(entry.created_by()?) {
-            Lookup::Registered(callback) => callback?,
-            Lookup::Unregistered => {
-                // The endpoint that created this entry, and its socket, are gone. Re-handshaking
-                // from any other endpoint would reach the peer from a new address and leave this
-                // entry behind on the peer, so drop it and let the next connection attempt
-                // handshake afresh.
-                self.evict(entry, event::builder::EvictionReason::LocalEndpointDropped);
-                return None;
-            }
+        let Some(callback) = self.local_endpoints.get(entry.created_by()?) else {
+            // The endpoint that created this entry, and its socket, are gone. Re-handshaking from
+            // any other endpoint would reach the peer from a new address and leave this entry
+            // behind on the peer, so drop it and let the next connection attempt handshake afresh.
+            self.evict(entry, event::builder::EvictionReason::LocalEndpointDropped);
+            return None;
         };
 
         // The callback feeds the handshake queue, which also counts user-initiated handshakes, so

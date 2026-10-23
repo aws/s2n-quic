@@ -32,7 +32,6 @@ struct State {
     map: secret::Map,
     client: io::Client,
     local_addr: SocketAddr,
-    // Unregisters this client from the map when dropped, along with its socket.
     local_endpoint: LocalEndpoint,
 }
 

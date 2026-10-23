@@ -51,19 +51,11 @@ impl Drop for LocalEndpoint {
     }
 }
 
-/// What a map can look up about a local endpoint by its id.
-pub(super) enum Lookup {
-    /// Registered; the callback is `None` until set.
-    Registered(Option<Arc<RequestHandshake>>),
-    /// Never registered with this map, or since dropped.
-    Unregistered,
-}
-
 /// The local endpoints currently registered with a map.
 #[derive(Default)]
 pub(super) struct LocalEndpoints {
     next_id: AtomicU32,
-    endpoints: RwLock<HashMap<LocalEndpointId, Option<Arc<RequestHandshake>>>>,
+    callbacks: RwLock<HashMap<LocalEndpointId, Arc<RequestHandshake>>>,
 }
 
 impl LocalEndpoints {
@@ -78,12 +70,7 @@ impl LocalEndpoints {
             .ok()
             .and_then(|id| NonZeroU32::new(id + 1))
             .expect("local endpoint ids exhausted");
-        let id = LocalEndpointId(id);
-        self.endpoints
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(id, None);
-        id
+        LocalEndpointId(id)
     }
 
     pub(super) fn set_rehandshake_callback(
@@ -91,32 +78,24 @@ impl LocalEndpoints {
         id: LocalEndpointId,
         callback: Arc<RequestHandshake>,
     ) {
-        if let Some(slot) = self
-            .endpoints
+        self.callbacks
             .write()
             .unwrap_or_else(|e| e.into_inner())
-            .get_mut(&id)
-        {
-            *slot = Some(callback);
-        }
+            .insert(id, callback);
     }
 
     pub(super) fn unregister(&self, id: LocalEndpointId) {
-        self.endpoints
+        self.callbacks
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&id);
     }
 
-    pub(super) fn get(&self, id: LocalEndpointId) -> Lookup {
-        match self
-            .endpoints
+    pub(super) fn get(&self, id: LocalEndpointId) -> Option<Arc<RequestHandshake>> {
+        self.callbacks
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .get(&id)
-        {
-            Some(callback) => Lookup::Registered(callback.clone()),
-            None => Lookup::Unregistered,
-        }
+            .cloned()
     }
 }
