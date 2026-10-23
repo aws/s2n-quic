@@ -97,6 +97,9 @@ enum EvictionReason {
     UnknownPathSecret,
     /// A newer entry is replacing this one, so we're retiring these.
     Retiring,
+    /// The local endpoint that created this entry was dropped, so it can no longer be
+    /// re-handshaked from the same address.
+    LocalEndpointDropped,
 }
 
 #[event("path_secret_map:id_entry_evicted")]

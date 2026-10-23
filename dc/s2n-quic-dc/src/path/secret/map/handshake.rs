@@ -247,7 +247,8 @@ impl HandshakingPathInner {
             self.parameters.clone(),
             self.map.store.rehandshake_period(),
             self.application_data.take(),
-        );
+        )
+        .with_created_by(self.map.local_endpoint);
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());
         self.map.store.on_new_path_secrets(entry);
