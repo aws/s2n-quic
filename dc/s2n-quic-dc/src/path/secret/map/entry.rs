@@ -4,7 +4,7 @@
 use super::{
     size_of::SizeOf,
     status::{Dedup, IsRetired},
-    Map,
+    LocalEndpointId, Map,
 };
 use crate::{
     credentials::{self, Credentials},
@@ -57,6 +57,9 @@ pub struct Entry {
     // maps while not having two writes and wasting an extra byte of space.
     accessed: AtomicU8,
     application_data: Option<ApplicationData>,
+    /// The local endpoint whose handshake created this entry. `None` for entries created by a
+    /// remotely initiated handshake.
+    created_by: Option<LocalEndpointId>,
 }
 
 impl SizeOf for Entry {
@@ -72,6 +75,7 @@ impl SizeOf for Entry {
             accessed,
             application_data,
             accessed_at,
+            created_by,
         } = self;
         creation_time.size()
             + peer.size()
@@ -83,8 +87,11 @@ impl SizeOf for Entry {
             + accessed.size()
             + application_data.size()
             + accessed_at.size()
+            + created_by.size()
     }
 }
+
+impl SizeOf for Option<LocalEndpointId> {}
 
 impl SizeOf for Option<ApplicationData> {
     fn size(&self) -> usize {
@@ -128,7 +135,22 @@ impl Entry {
             accessed: AtomicU8::new(0),
             accessed_at: AccessedAt(AtomicU64::new(0)),
             application_data,
+            created_by: None,
         }
+    }
+
+    pub(crate) fn with_created_by(mut self, created_by: Option<LocalEndpointId>) -> Self {
+        self.created_by = created_by;
+        self
+    }
+
+    pub(crate) fn created_by(&self) -> Option<LocalEndpointId> {
+        self.created_by
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
+        Self::fake_created_by(peer, receiver, None)
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -136,26 +158,33 @@ impl Entry {
         clippy::unwrap_used,
         reason = "test-support helper may panic to surface setup failures"
     )]
-    pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
+    pub(crate) fn fake_created_by(
+        peer: SocketAddr,
+        receiver: Option<receiver::State>,
+        created_by: Option<LocalEndpointId>,
+    ) -> Arc<Entry> {
         let receiver = receiver.unwrap_or_default();
 
         let mut secret = [0; 32];
         aws_lc_rs::rand::fill(&mut secret).unwrap();
 
-        Arc::new(Entry::new(
-            peer,
-            schedule::Secret::new(
-                schedule::Ciphersuite::AES_GCM_128_SHA256,
-                dc::SUPPORTED_VERSIONS[0],
-                s2n_quic_core::endpoint::Type::Client,
-                &secret,
-            ),
-            sender::State::new([0; control::TAG_LEN]),
-            receiver,
-            dc::testing::TEST_APPLICATION_PARAMS,
-            dc::testing::TEST_REHANDSHAKE_PERIOD,
-            None,
-        ))
+        Arc::new(
+            Entry::new(
+                peer,
+                schedule::Secret::new(
+                    schedule::Ciphersuite::AES_GCM_128_SHA256,
+                    dc::SUPPORTED_VERSIONS[0],
+                    s2n_quic_core::endpoint::Type::Client,
+                    &secret,
+                ),
+                sender::State::new([0; control::TAG_LEN]),
+                receiver,
+                dc::testing::TEST_APPLICATION_PARAMS,
+                dc::testing::TEST_REHANDSHAKE_PERIOD,
+                None,
+            )
+            .with_created_by(created_by),
+        )
     }
 
     pub fn peer(&self) -> &SocketAddr {
