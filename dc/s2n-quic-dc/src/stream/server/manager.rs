@@ -4,10 +4,19 @@
 //! dcQUIC stream server forwarding accepted streams over Unix Domain Sockets.
 //!
 //! This can be used when a single host has many application processes and wants to share the
-//! dcQUIC credential state across them. Right now, only dcQUIC streams over TCP are supported.
+//! dcQUIC credential state across them. Each manager [`Server`] forwards to one application,
+//! which accepts with [`super::application::Server`].
+//!
+//! TCP streams are handed off by passing the accepted socket. UDP streams are handed off after
+//! their first packet: the application replies from its own UDP sockets and the client follows
+//! it, so the application should bind the same IP as the manager. See [`udp`] for details.
+//!
+//! No transport is enabled by default; enable at least one with `with_tcp(true)`,
+//! `with_udp(true)` or `with_protocol`, on both the manager and the application server.
 
 use crate::{
     event,
+    socket::recv::{self, pool::Pool as Packets, router::Router as _},
     stream::{
         environment::tokio::{self as env, Environment},
         runtime::tokio as runtime,
@@ -27,9 +36,12 @@ use std::{
     io,
     net::SocketAddr,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 use tracing::Instrument as _;
+
+pub mod udp;
 
 #[derive(Clone)]
 pub struct Server<H: Handshake + Clone, S: event::Subscriber + Clone> {
@@ -102,7 +114,7 @@ impl Default for Builder {
             )]
             acceptor_addr: "[::]:4444".parse().unwrap(),
             span: None,
-            enable_udp: true,
+            enable_udp: false,
             enable_tcp: false,
             linger: None,
             accept_flavor: Default::default(),
@@ -155,17 +167,7 @@ impl Builder {
             .with_threads(1)
             .with_thread_name_prefix("mgr-dc".into());
 
-        let enable_udp_pool = true;
-
-        if self.enable_udp && enable_udp_pool {
-            // TODO UDP
-        }
-
         let env = env.build()?;
-
-        if self.enable_udp && enable_udp_pool {
-            // TODO UDP
-        }
 
         // If we've not enabled UDP support, clamp the # of threads we spawn to the TCP worker
         // count. No reason to spawn extra threads that would largely just sit idle.
@@ -343,8 +345,35 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
     }
 
     #[inline]
-    fn spawn_udp(&mut self, _socket: std::net::UdpSocket) -> io::Result<()> {
-        // TODO UDP
+    fn spawn_udp(&mut self, socket: std::net::UdpSocket) -> io::Result<()> {
+        // if this is the first socket being spawned then update the local address
+        if self.server.local_addr.port() == 0 {
+            self.server.local_addr = socket.local_addr()?;
+        }
+
+        socket.set_nonblocking(true)?;
+        let socket = Arc::new(socket);
+        let acceptor = udp::Acceptor::new(
+            self.server.env.clone(),
+            self.server.handshake.map().clone(),
+            socket.clone(),
+            self.socket_path.clone(),
+        )?;
+        let router = acceptor.with_map(self.server.handshake.map().clone());
+        let packets = Packets::new(u16::MAX, 16);
+        let socket = unsafe {
+            // SAFETY: the Arc keeps the socket alive, so its fd is stable until drop.
+            tokio::io::unix::AsyncFd::register(socket)
+        }?;
+        let task = recv::udp::non_blocking(socket, packets, router);
+
+        if self.span.is_disabled() {
+            self.server.acceptor_rt.spawn(task);
+        } else {
+            self.server
+                .acceptor_rt
+                .spawn(task.instrument(self.span.clone()));
+        }
 
         Ok(())
     }

@@ -3,9 +3,11 @@
 
 use crate::{
     clock::tokio::Clock,
+    credentials::Credentials,
     event,
+    socket::recv::descriptor,
     stream::{
-        environment::udp::Config as PoolConfig,
+        environment::udp::{Config as PoolConfig, Pooled},
         runtime::{tokio as runtime, ArcHandle},
         server::accept,
         socket,
@@ -190,6 +192,44 @@ where
     #[inline]
     pub fn pool_addr(&self) -> Option<SocketAddr> {
         self.recv_pool.as_ref().map(|v| v.local_addr())
+    }
+
+    /// Routes a packet forwarded by a manager to the stream already handed off for
+    /// `credentials`, returning `false` if there is no such stream.
+    pub(crate) fn forward_handoff(
+        &self,
+        credentials: &Credentials,
+        segment: descriptor::Filled,
+    ) -> bool {
+        self.recv_pool
+            .as_ref()
+            .is_some_and(|pool| pool.forward(credentials, segment))
+    }
+
+    /// Returns a peer for a UDP stream handed off by a manager, or `None` if `segment` belongs to
+    /// a stream that was already handed off and has been routed to it.
+    pub(crate) fn accept_handoff(
+        &self,
+        credentials: &Credentials,
+        segment: descriptor::Filled,
+    ) -> io::Result<Option<impl super::Peer<Self>>> {
+        let pool = self.recv_pool.as_ref().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Unsupported,
+                "UDP handoff requires a receive pool",
+            )
+        })?;
+        let peer_addr = segment.remote_address().get();
+        let peer = pool.handoff(credentials, segment).map(
+            |(control, stream, application_socket, worker_socket)| Pooled {
+                peer_addr,
+                control,
+                stream,
+                application_socket,
+                worker_socket,
+            },
+        );
+        Ok(peer)
     }
 }
 

@@ -5,10 +5,10 @@ use super::udp::{ApplicationSocket, RecvSocket, WorkerSocket};
 use crate::{
     credentials::Credentials,
     event,
-    socket::recv::{pool::Pool as Packets, router::Router, udp},
+    socket::recv::{descriptor, pool::Pool as Packets, router::Router, udp},
     stream::{
         environment::{tokio::Environment, udp::Config},
-        recv::dispatch::{Allocator as Queues, Control, Stream},
+        recv::dispatch::{Allocator as Queues, Control, Dispatch, Stream},
         server::{accept, udp::Acceptor},
         socket::{application::Single, fd::udp::CachedAddr, SendOnly, Tracing},
     },
@@ -30,6 +30,8 @@ pub(super) struct Pool {
     current: AtomicUsize,
     mask: usize,
     local_addr: SocketAddr,
+    // Held across the key lookup and allocation so a handed-off stream is only created once.
+    handoff: Mutex<()>,
 }
 
 struct Socket {
@@ -57,6 +59,41 @@ impl Socket {
             worker_socket,
             queue: Mutex::new(queue),
         })
+    }
+}
+
+/// Routes stream packets without a queue ID to the stream registered for their credentials.
+///
+/// Until a client sees the server's queue ID it keeps sending with none, the same as when it
+/// talks to an acceptor. Unlike an acceptor this never creates a stream.
+struct ByCredentials(Dispatch);
+
+impl Router for ByCredentials {
+    #[inline]
+    fn is_open(&self) -> bool {
+        self.0.is_open()
+    }
+
+    #[inline]
+    fn handle_stream_packet(
+        &mut self,
+        _remote_address: s2n_quic_core::inet::SocketAddress,
+        _ecn: s2n_quic_core::inet::ExplicitCongestionNotification,
+        _packet: crate::packet::stream::decoder::Packet,
+    ) {
+    }
+
+    #[inline]
+    fn dispatch_stream_packet(
+        &mut self,
+        _tag: crate::packet::stream::Tag,
+        _id: crate::packet::stream::Id,
+        credentials: Credentials,
+        segment: descriptor::Filled,
+    ) {
+        if let Some(queue_id) = self.0.queue_id_for_key(&credentials) {
+            let _ = self.0.send_stream(queue_id, segment);
+        }
     }
 }
 
@@ -132,6 +169,16 @@ impl Pool {
                 let router = queues.dispatcher().with_map(config.map.clone());
                 router.with_zero_router(acceptor)
             });
+        } else if config.route_by_credentials {
+            spawn!(|_packets: &Packets, socket: &Socket| {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "lock is only poisoned if another thread already panicked while holding it"
+                )]
+                let dispatch = socket.queue.lock().unwrap().dispatcher();
+                let zero = ByCredentials(dispatch.clone());
+                dispatch.with_map(config.map.clone()).with_zero_router(zero)
+            });
         } else {
             spawn!(|_packets: &Packets, socket: &Socket| {
                 #[expect(
@@ -148,7 +195,57 @@ impl Pool {
             current: AtomicUsize::new(0),
             mask,
             local_addr,
+            handoff: Mutex::new(()),
         })
+    }
+
+    /// Routes `segment` to the stream registered for `credentials`, returning `false` if there is
+    /// no such stream.
+    pub fn forward(&self, credentials: &Credentials, segment: descriptor::Filled) -> bool {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
+        let _guard = self.handoff.lock().unwrap();
+        self.send_to_existing(credentials, segment).is_none()
+    }
+
+    /// Routes `segment` to the stream registered for `credentials`, or allocates a new stream
+    /// for it and returns the stream's queues and sockets.
+    pub fn handoff(
+        &self,
+        credentials: &Credentials,
+        segment: descriptor::Filled,
+    ) -> Option<(Control, Stream, ApplicationSocket, WorkerSocket)> {
+        #[expect(
+            clippy::unwrap_used,
+            reason = "lock is only poisoned if another thread already panicked while holding it"
+        )]
+        let _guard = self.handoff.lock().unwrap();
+        let segment = self.send_to_existing(credentials, segment)?;
+        let (control, stream, app_socket, worker_socket) = self.alloc(Some(credentials));
+        let _ = stream.push(segment);
+        Some((control, stream, app_socket, worker_socket))
+    }
+
+    /// Sends `segment` to an existing stream, handing it back if none is registered.
+    fn send_to_existing(
+        &self,
+        credentials: &Credentials,
+        segment: descriptor::Filled,
+    ) -> Option<descriptor::Filled> {
+        for socket in self.sockets.iter() {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "lock is only poisoned if another thread already panicked while holding it"
+            )]
+            let mut dispatch = socket.queue.lock().unwrap().dispatcher();
+            if let Some(queue_id) = dispatch.queue_id_for_key(credentials) {
+                let _ = dispatch.send_stream(queue_id, segment);
+                return None;
+            }
+        }
+        Some(segment)
     }
 
     pub fn alloc(

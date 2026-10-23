@@ -30,6 +30,10 @@ pub struct Config {
     pub accept_flavor: accept::Flavor,
     pub workers: Option<usize>,
     pub map: Map,
+    /// Routes packets without a queue ID to the stream registered for their credentials, instead
+    /// of accepting new streams from them. Used by applications that receive streams handed off
+    /// by a manager.
+    pub route_by_credentials: bool,
 }
 
 impl Config {
@@ -54,6 +58,7 @@ impl Config {
 
             workers: None,
             map,
+            route_by_credentials: false,
         }
     }
 }
