@@ -806,7 +806,8 @@ impl HandshakeQueue {
         let entry2 = entry.clone();
         let entry3 = entry.clone();
 
-        let handshake = async {
+        // Construct the future lazily so the initializer closure does not reserve its stack space.
+        let handshake = || async {
             // We've de-duplicated above already so the handshaker is unique per SocketAddr, so
             // these permits will only be used for the current handshake.
             let capacity = if let Some(timeout) = self.probe_timeout {
@@ -941,7 +942,8 @@ impl HandshakeQueue {
             .get_or_init(|| async {
                 // This ensures we only log the error once, even if the handshake was de-duplicated
                 // many times.
-                if let Err(e) = handshake.await {
+                // Keep the handshake state out of the nested initializer futures.
+                if let Err(e) = Box::pin(handshake()).await {
                     // We may want to remove this in favor of only relying on the service log
                     // eventually, but keeping it for parity for now.
                     tracing::error!("handshake with {peer} failed: {e}");
