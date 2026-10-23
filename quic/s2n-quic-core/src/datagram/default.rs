@@ -15,6 +15,9 @@ use core::{
     task::{Context, Poll, Waker},
 };
 
+/// The queue capacity used for a send or receive queue that was not configured.
+pub const DEFAULT_QUEUE_CAPACITY: usize = 200;
+
 /// Handles configuring unreliable datagram support.
 ///
 /// The datagram endpoint allows users to configure their unreliable datagram
@@ -23,10 +26,19 @@ use core::{
 /// and Receiver behavior can be swapped out by implementing the respective [`Sender`](s2n-quic-core::datagram::traits::Sender) and
 /// [`Receiver`](s2n-quic-core::datagram::traits::Receiver) traits.
 ///
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Endpoint {
     send_queue_capacity: usize,
     recv_queue_capacity: usize,
+}
+
+impl Default for Endpoint {
+    fn default() -> Self {
+        Self {
+            send_queue_capacity: DEFAULT_QUEUE_CAPACITY,
+            recv_queue_capacity: DEFAULT_QUEUE_CAPACITY,
+        }
+    }
 }
 
 impl Endpoint {
@@ -37,10 +49,19 @@ impl Endpoint {
 }
 
 /// A builder for the default datagram endpoint
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EndpointBuilder {
     send_queue_capacity: usize,
     recv_queue_capacity: usize,
+}
+
+impl Default for EndpointBuilder {
+    fn default() -> Self {
+        Self {
+            send_queue_capacity: DEFAULT_QUEUE_CAPACITY,
+            recv_queue_capacity: DEFAULT_QUEUE_CAPACITY,
+        }
+    }
 }
 
 #[non_exhaustive]
@@ -63,6 +84,9 @@ impl fmt::Display for BuilderError {
 
 /// Builder for the datagram endpoint
 impl EndpointBuilder {
+    /// Sets how many datagrams the send queue holds.
+    ///
+    /// Defaults to [`DEFAULT_QUEUE_CAPACITY`] when not set. Zero is rejected.
     pub fn with_send_capacity(mut self, capacity: usize) -> Result<Self, BuilderError> {
         if capacity == 0 {
             return Err(BuilderError::ZeroCapacity);
@@ -71,6 +95,13 @@ impl EndpointBuilder {
         Ok(self)
     }
 
+    /// Sets how many datagrams the receive queue holds.
+    ///
+    /// Datagrams from the peer accumulate here until the application reads them, and the
+    /// oldest is dropped once the queue is full, so this is the bound on how much the peer
+    /// can make the connection hold.
+    ///
+    /// Defaults to [`DEFAULT_QUEUE_CAPACITY`] when not set. Zero is rejected.
     pub fn with_recv_capacity(mut self, capacity: usize) -> Result<Self, BuilderError> {
         if capacity == 0 {
             return Err(BuilderError::ZeroCapacity);
@@ -165,7 +196,7 @@ impl super::Receiver for Receiver {
         }
         // The oldest datagram on the queue is popped off if the queue is full.
         // Configure this behavior by implementing a custom Receiver for datagrams.
-        if self.queue.len() == self.capacity {
+        if self.queue.len() >= self.capacity {
             self.queue.pop_front();
         }
 
@@ -199,7 +230,7 @@ struct ReceiverBuilder {
 impl Default for ReceiverBuilder {
     fn default() -> Self {
         Self {
-            queue_capacity: 200,
+            queue_capacity: DEFAULT_QUEUE_CAPACITY,
             max_datagram_frame_size: MaxDatagramFrameSize::RECOMMENDED,
         }
     }
@@ -327,7 +358,7 @@ impl Sender {
             return Poll::Ready(Err(DatagramError::ConnectionError { error: err }));
         }
 
-        if self.queue.len() == self.capacity {
+        if self.queue.len() >= self.capacity {
             self.waker = Some(cx.waker().clone());
             return Poll::Pending;
         }
@@ -364,7 +395,7 @@ impl Sender {
 
         // Pop oldest datagram off the queue if it is at capacity
         let mut oldest = None;
-        if self.queue.len() == self.capacity {
+        if self.queue.len() >= self.capacity {
             oldest = self.queue.pop_front();
         }
 
@@ -395,7 +426,7 @@ impl Sender {
             return Err(DatagramError::ConnectionError { error: err });
         }
 
-        if self.queue.len() == self.capacity {
+        if self.queue.len() >= self.capacity {
             return Err(DatagramError::QueueAtCapacity);
         }
 
@@ -536,7 +567,7 @@ struct SenderBuilder {
 impl Default for SenderBuilder {
     fn default() -> Self {
         Self {
-            queue_capacity: 200,
+            queue_capacity: DEFAULT_QUEUE_CAPACITY,
             max_datagram_payload: 0,
         }
     }
@@ -963,6 +994,69 @@ mod tests {
                 error: connection_error
             }))
         );
+    }
+
+    /// Configuring only one side of the endpoint must leave the other side bounded.
+    #[test]
+    fn partially_configured_endpoint_test() {
+        use crate::datagram::Endpoint as _;
+
+        for mut endpoint in [
+            Endpoint::default(),
+            Endpoint::builder().build().unwrap(),
+            Endpoint::builder()
+                .with_send_capacity(10)
+                .unwrap()
+                .build()
+                .unwrap(),
+            Endpoint::builder()
+                .with_recv_capacity(10)
+                .unwrap()
+                .build()
+                .unwrap(),
+        ] {
+            let conn_info = ConnectionInfo::new(1200, noop_waker());
+            let (sender, receiver) = endpoint.create_connection(&conn_info);
+
+            assert_ne!(sender.capacity, 0);
+            assert_ne!(receiver.capacity, 0);
+
+            let mut receiver = receiver;
+            let ctx = fake_receive_context();
+            for _ in 0..receiver.capacity * 10 {
+                crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &[0; 1200]);
+            }
+            assert_eq!(receiver.queue.len(), receiver.capacity);
+        }
+    }
+
+    /// A queue holding at least its capacity must evict before accepting another entry, so
+    /// that an unexpected capacity cannot turn either queue into an unbounded one.
+    #[test]
+    fn queue_at_capacity_always_evicts_test() {
+        let conn_info = ConnectionInfo::new(100, noop_waker());
+
+        let mut receiver = Receiver::builder().with_capacity(1).build().unwrap();
+        // simulate a queue that already holds more than its capacity
+        receiver.capacity = 0;
+        let ctx = fake_receive_context();
+        for _ in 0..100 {
+            crate::datagram::Receiver::on_datagram(&mut receiver, &ctx, &[1, 2, 3]);
+        }
+        assert_eq!(receiver.queue.len(), 1);
+
+        let mut sender = Sender::builder()
+            .with_capacity(1)
+            .with_connection_info(&conn_info)
+            .build()
+            .unwrap();
+        sender.capacity = 0;
+        for _ in 0..100 {
+            assert!(sender
+                .send_datagram_forced(bytes::Bytes::from_static(&[1, 2, 3]))
+                .is_ok());
+        }
+        assert_eq!(sender.queue.len(), 1);
     }
 
     // The MockPacket mocks writing datagrams to a packet, but is not
