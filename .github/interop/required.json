@@ -80,7 +80,8 @@
       "server"
     ],
     "msquic": [
-      "client"
+      "client",
+      "server"
     ],
     "mvfst": [
       "client",
@@ -99,7 +100,8 @@
       "server"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
       "client",
@@ -113,7 +115,9 @@
       "client",
       "server"
     ],
-    "xquic": [],
+    "xquic": [
+      "server"
+    ],
     "go-x-net": [
       "client",
       "server"
@@ -364,7 +368,8 @@
       "server"
     ],
     "kwik": [
-      "client"
+      "client",
+      "server"
     ],
     "lsquic": [
       "client",
@@ -621,7 +626,9 @@
     "kwik": [
       "client"
     ],
-    "lsquic": [],
+    "lsquic": [
+      "server"
+    ],
     "msquic": [],
     "mvfst": [],
     "neqo": [
@@ -637,7 +644,10 @@
     ],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
     "s2n-quic-rustls": [
       "client",
       "server"
@@ -715,10 +725,14 @@
     "kwik": [
       "client"
     ],
-    "lsquic": [],
+    "lsquic": [
+      "server"
+    ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client"
+    ],
     "ngtcp2": [
       "client",
       "server"
@@ -727,16 +741,24 @@
       "client",
       "server"
     ],
-    "quic-go": [],
-    "quiche": [],
-    "s2n-quic": [],
-    "s2n-quic-rustls": [
+    "quic-go": [
       "client"
+    ],
+    "quiche": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
+    "s2n-quic-rustls": [
+      "client",
+      "server"
     ],
     "xquic": [],
     "quinn": [],
     "haproxy": [],
-    "nginx": []
+    "nginx": [
+      "server"
+    ]
   },
   "transfercorruption": {
     "aioquic": [
@@ -877,7 +899,8 @@
       "server"
     ],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
       "client"
@@ -1027,7 +1050,9 @@
       "server"
     ],
     "xquic": [],
-    "chrome": [],
+    "chrome": [
+      "client"
+    ],
     "haproxy": [
       "server"
     ],
