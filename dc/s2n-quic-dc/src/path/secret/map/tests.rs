@@ -84,10 +84,9 @@ fn key_id_exhaustion_requests_rehandshake() {
     use std::net::SocketAddr;
 
     let map = test_map();
-    let endpoint = map.register_local_endpoint();
     let requests = Arc::new(AtomicUsize::new(0));
     let requests_in_cb = requests.clone();
-    endpoint.set_rehandshake_callback(Arc::new(move |_peer, reason| {
+    let endpoint = map.register_local_endpoint(Arc::new(move |_peer, reason| {
         assert!(
             matches!(reason, crate::psk::io::HandshakeReason::KeyIdExhaustion),
             "expected KeyIdExhaustion, got {reason:?}"
@@ -134,10 +133,9 @@ fn recording_endpoint(
     LocalEndpoint,
     Arc<std::sync::Mutex<Vec<std::net::SocketAddr>>>,
 ) {
-    let endpoint = map.register_local_endpoint();
     let requested = Arc::new(std::sync::Mutex::new(Vec::new()));
     let requested_in_cb = requested.clone();
-    endpoint.set_rehandshake_callback(Arc::new(move |peer, _reason| {
+    let endpoint = map.register_local_endpoint(Arc::new(move |peer, _reason| {
         requested_in_cb
             .lock()
             .expect("lock is never poisoned in this test")
@@ -203,6 +201,33 @@ fn rehandshake_with_dropped_endpoint_evicts_entry() {
         "entry with a dropped endpoint is evicted"
     );
     assert!(map.store.get_by_id_untracked(entry.id()).is_none());
+}
+
+/// A dropped endpoint's id is reused by the next endpoint to register, which then re-handshakes the
+/// entries the dropped endpoint left behind.
+#[test]
+fn rehandshake_with_reused_id_goes_through_new_endpoint() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (old_endpoint, old_requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.with_local_endpoint(&old_endpoint).test_insert(peer);
+    let old_id = old_endpoint.id();
+    drop(old_endpoint);
+
+    let (new_endpoint, new_requested) = recording_endpoint(&map);
+    assert_eq!(new_endpoint.id(), old_id);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    map.store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(old_requested.lock().expect("not poisoned").is_empty());
+    assert_eq!(*new_requested.lock().expect("not poisoned"), vec![peer]);
 }
 
 /// Entries created by a remotely initiated handshake have no creating endpoint; re-handshaking them
