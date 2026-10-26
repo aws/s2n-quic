@@ -50,6 +50,7 @@ s2n-quic-core = { version = "=0.91.0", path = "../../quic/s2n-quic-core", defaul
 s2n-quic-platform = { version = "=0.91.0", path = "../../quic/s2n-quic-platform" }
 s2n-quic-dc-metrics = { version= "=0.91.0", path = "../s2n-quic-dc-metrics" }
 s2n-tls = "0.3.38"
+slab = "0.4"
 slotmap = "1"
 hashbrown = "0.17"
 thiserror = "2"

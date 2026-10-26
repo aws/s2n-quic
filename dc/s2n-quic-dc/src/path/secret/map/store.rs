@@ -83,9 +83,10 @@ pub trait Store: 'static + Send + Sync {
 
     fn rehandshake_period(&self) -> Duration;
 
-    fn register_local_endpoint(&self) -> LocalEndpointId;
-
-    fn set_rehandshake_callback(&self, id: LocalEndpointId, callback: Arc<RequestHandshake>);
+    fn register_local_endpoint(
+        &self,
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpointId;
 
     fn unregister_local_endpoint(&self, id: LocalEndpointId);
 

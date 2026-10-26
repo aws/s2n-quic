@@ -10,7 +10,10 @@ use s2n_quic::{
     provider::{event::Subscriber as Sub, tls::Provider as Prov},
     server::Name,
 };
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, OnceLock, Weak},
+};
 use tokio::runtime::Runtime;
 use tokio_util::sync::DropGuard;
 
@@ -32,7 +35,7 @@ struct State {
     map: secret::Map,
     client: io::Client,
     local_addr: SocketAddr,
-    local_endpoint: LocalEndpoint,
+    _local_endpoint: LocalEndpoint,
 }
 
 fn make_runtime() -> std::io::Result<(Arc<Runtime>, DropGuard)> {
@@ -62,11 +65,11 @@ impl State {
     >(
         addr: SocketAddr,
         map: secret::Map,
+        local_endpoint: LocalEndpoint,
         tls_materials_provider: Provider,
         subscriber: Subscriber,
         builder: Builder<Event>,
     ) -> io::Result<Self> {
-        let local_endpoint = map.register_local_endpoint();
         let map = map.with_local_endpoint(&local_endpoint);
         let (runtime, rt_guard) = make_runtime()?;
         let guard = runtime.enter();
@@ -84,7 +87,7 @@ impl State {
             runtime: Some((runtime, rt_guard)),
             local_addr: client.local_addr()?,
             client,
-            local_endpoint,
+            _local_endpoint: local_endpoint,
         })
     }
 }
@@ -107,15 +110,14 @@ impl Provider {
         builder: Builder<Event>,
         server_name: Name,
     ) -> io::Result<Self> {
-        let state = State::new_runtime(addr, map, tls_materials_provider, subscriber, builder)?;
-        let state = Arc::new(state);
-
+        // The callback is registered before the state it drives is built, so it reaches the state
+        // through this cell, filled once the state exists.
         // Avoid holding onto the state unintentionally after it's no longer needed.
-        let weak = Arc::downgrade(&state);
-        state
-            .local_endpoint
-            .set_rehandshake_callback(Arc::new(move |peer, reason| {
-                let state = weak.upgrade()?;
+        let state_cell = Arc::new(OnceLock::<Weak<State>>::new());
+        let local_endpoint = map.register_local_endpoint({
+            let state_cell = state_cell.clone();
+            Arc::new(move |peer, reason| {
+                let state = state_cell.get()?.upgrade()?;
                 let runtime = state.runtime.as_ref().map(|v| &v.0)?;
                 let client = state.client.clone();
                 let server_name = server_name.clone();
@@ -126,7 +128,19 @@ impl Provider {
                         // failure has already been logged, no further action required.
                     }
                 }))
-            }));
+            })
+        });
+
+        let state = State::new_runtime(
+            addr,
+            map,
+            local_endpoint,
+            tls_materials_provider,
+            subscriber,
+            builder,
+        )?;
+        let state = Arc::new(state);
+        let _ = state_cell.set(Arc::downgrade(&state));
 
         Ok(Self { state })
     }
