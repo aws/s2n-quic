@@ -3,21 +3,18 @@
 
 use super::store::Store;
 use crate::psk::io::HandshakeReason;
+use slab::Slab;
 use std::{
-    collections::HashMap,
     net::SocketAddr,
     num::NonZeroU32,
-    sync::{
-        atomic::{AtomicU32, Ordering},
-        Arc, RwLock,
-    },
+    sync::{Arc, RwLock},
 };
 use tokio::task::JoinHandle;
 
 pub(crate) type RequestHandshake =
     dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync;
 
-/// Identifies a local endpoint attached to a map. Never reused within a map.
+/// Identifies a local endpoint attached to a map. Reused once the endpoint is dropped.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct LocalEndpointId(NonZeroU32);
 
@@ -35,14 +32,6 @@ impl LocalEndpoint {
     pub(crate) fn id(&self) -> LocalEndpointId {
         self.id
     }
-
-    /// Sets the callback that re-handshakes entries this endpoint created.
-    ///
-    /// Set after registering: the endpoint's map handle needs the id before the endpoint is built,
-    /// while the callback needs the built endpoint.
-    pub(crate) fn set_rehandshake_callback(&self, callback: Arc<RequestHandshake>) {
-        self.store.set_rehandshake_callback(self.id, callback);
-    }
 }
 
 impl Drop for LocalEndpoint {
@@ -51,51 +40,60 @@ impl Drop for LocalEndpoint {
     }
 }
 
-/// The local endpoints currently registered with a map.
-#[derive(Default)]
+/// The local endpoints currently registered with a map, with the callback that re-handshakes the
+/// entries each one created.
 pub(super) struct LocalEndpoints {
-    next_id: AtomicU32,
-    callbacks: RwLock<HashMap<LocalEndpointId, Arc<RequestHandshake>>>,
+    callbacks: RwLock<Slab<Arc<RequestHandshake>>>,
+}
+
+impl Default for LocalEndpoints {
+    fn default() -> Self {
+        let mut callbacks = Slab::new();
+        // We reserve the 0th ID/key so that we can use it to represent `None` in an
+        // `Option<LocalEndpointId>`, which keeps the option the same size as the ID.
+        callbacks.insert(Arc::new(|_, _| None) as Arc<RequestHandshake>);
+        Self {
+            callbacks: RwLock::new(callbacks),
+        }
+    }
 }
 
 impl LocalEndpoints {
-    pub(super) fn register(&self) -> LocalEndpointId {
-        #[expect(
-            clippy::expect_used,
-            reason = "u32::MAX endpoints attached over one map's lifetime is not a realistic workload"
-        )]
-        let id = self
-            .next_id
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .ok()
-            .and_then(|id| NonZeroU32::new(id + 1))
-            .expect("local endpoint ids exhausted");
-        LocalEndpointId(id)
-    }
-
-    pub(super) fn set_rehandshake_callback(
-        &self,
-        id: LocalEndpointId,
-        callback: Arc<RequestHandshake>,
-    ) {
-        self.callbacks
+    pub(super) fn register(&self, callback: Arc<RequestHandshake>) -> LocalEndpointId {
+        let key = self
+            .callbacks
             .write()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(id, callback);
+            .insert(callback);
+        #[expect(
+            clippy::expect_used,
+            reason = "The amount of active endpoints on a single map should be limited by FD before we hit u32::MAX"
+        )]
+        let id = u32::try_from(key)
+            .ok()
+            .and_then(NonZeroU32::new)
+            .expect("too many local endpoints");
+        LocalEndpointId(id)
     }
 
     pub(super) fn unregister(&self, id: LocalEndpointId) {
         self.callbacks
             .write()
             .unwrap_or_else(|e| e.into_inner())
-            .remove(&id);
+            .try_remove(id.key());
     }
 
     pub(super) fn get(&self, id: LocalEndpointId) -> Option<Arc<RequestHandshake>> {
         self.callbacks
             .read()
             .unwrap_or_else(|e| e.into_inner())
-            .get(&id)
+            .get(id.key())
             .cloned()
+    }
+}
+
+impl LocalEndpointId {
+    fn key(self) -> usize {
+        self.0.get() as usize
     }
 }

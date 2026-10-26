@@ -279,8 +279,14 @@ impl Map {
 
     /// Registers a local endpoint with this map. Dropping the returned registration unregisters
     /// it.
-    pub(crate) fn register_local_endpoint(&self) -> LocalEndpoint {
-        LocalEndpoint::new(self.store.register_local_endpoint(), self.store.clone())
+    pub(crate) fn register_local_endpoint(
+        &self,
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpoint {
+        LocalEndpoint::new(
+            self.store.register_local_endpoint(rehandshake_callback),
+            self.store.clone(),
+        )
     }
 
     /// Returns a handle to the same map whose handshakes record `endpoint` as the creator of the
