@@ -733,9 +733,8 @@ where
             );
 
         let Some(callback) = self.local_endpoints.get(entry.created_by()?) else {
-            // The endpoint that created this entry, and its socket, are gone. Re-handshaking from
-            // any other endpoint would reach the peer from a new address and leave this entry
-            // behind on the peer, so drop it and let the next connection attempt handshake afresh.
+            // The endpoint that created this entry is gone and no later endpoint has taken its id,
+            // so drop the entry and let the next connection attempt handshake afresh.
             self.evict(entry, event::builder::EvictionReason::LocalEndpointDropped);
             return None;
         };
@@ -910,12 +909,11 @@ where
             });
     }
 
-    fn register_local_endpoint(&self) -> LocalEndpointId {
-        self.local_endpoints.register()
-    }
-
-    fn set_rehandshake_callback(&self, id: LocalEndpointId, callback: Arc<RequestHandshake>) {
-        self.local_endpoints.set_rehandshake_callback(id, callback);
+    fn register_local_endpoint(
+        &self,
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpointId {
+        self.local_endpoints.register(rehandshake_callback)
     }
 
     fn unregister_local_endpoint(&self, id: LocalEndpointId) {
