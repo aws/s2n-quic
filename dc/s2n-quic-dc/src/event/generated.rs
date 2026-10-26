@@ -2914,8 +2914,7 @@ pub mod api {
         /// A newer entry is replacing this one, so we're retiring these.
         Retiring {},
         #[non_exhaustive]
-        /// The local endpoint that created this entry was dropped, so it can no longer be
-        /// re-handshaked from the same address.
+        /// The local endpoint that created this entry was dropped.
         LocalEndpointDropped {},
     }
     impl aggregate::AsVariant for EvictionReason {
@@ -7609,8 +7608,7 @@ pub mod builder {
         UnknownPathSecret,
         /// A newer entry is replacing this one, so we're retiring these.
         Retiring,
-        /// The local endpoint that created this entry was dropped, so it can no longer be
-        /// re-handshaked from the same address.
+        /// The local endpoint that created this entry was dropped.
         LocalEndpointDropped,
     }
     impl IntoEvent<api::EvictionReason> for EvictionReason {
