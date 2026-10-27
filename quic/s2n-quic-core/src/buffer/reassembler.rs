@@ -557,7 +557,9 @@ impl Reassembler {
     #[inline]
     pub fn highest_received_offset(&self) -> u64 {
         let start = self.cursors.start_offset;
-        self.slots.back().map_or(start, |slot| slot.end().max(start))
+        self.slots
+            .back()
+            .map_or(start, |slot| slot.end().max(start))
     }
 
     /// Resets the receive buffer.
