@@ -552,6 +552,14 @@ impl Reassembler {
         offset
     }
 
+    /// Returns the highest offset (exclusive) of any data that has been received,
+    /// regardless of whether there are gaps before it.
+    #[inline]
+    pub fn highest_received_offset(&self) -> u64 {
+        let start = self.cursors.start_offset;
+        self.slots.back().map_or(start, |slot| slot.end().max(start))
+    }
+
     /// Resets the receive buffer.
     ///
     /// This will drop all previously received data.

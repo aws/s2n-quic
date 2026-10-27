@@ -635,6 +635,31 @@ impl ReceiveStream {
 
         // Reset logic is only executed if the stream is neither reset nor if all
         // data had been already received.
+        if matches!(
+            self.state,
+            ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. }
+        ) {
+            if let Some(actual_size) = actual_size {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# An endpoint MUST NOT send data on a stream at or beyond the final
+                //# size.
+                //
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# Once a final size for a stream is known, it cannot change.
+                //
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# An endpoint MUST
+                //# terminate a connection with an error of type FINAL_SIZE_ERROR if a
+                //# RESET_STREAM is received with a final size smaller than the data
+                //# already received on the stream.
+                if Into::<u64>::into(actual_size) < self.receive_buffer.highest_received_offset() {
+                    return Err(transport::Error::FINAL_SIZE_ERROR
+                        .with_reason("Final size in reset frame is smaller than received data")
+                        .with_frame_type(frame_tag.unwrap_or_default().into()));
+                }
+            }
+        }
+
         match self.state {
             ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => return Ok(()),
             ReceiveStreamState::Receiving if self.receive_buffer.final_size().is_some() => {
