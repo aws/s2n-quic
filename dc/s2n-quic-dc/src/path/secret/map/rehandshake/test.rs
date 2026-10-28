@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::path::secret::map::Entry;
 use std::{
     net::SocketAddr,
     sync::{
@@ -11,14 +12,21 @@ use std::{
     time::Duration,
 };
 
+fn fake_peers(count: u16) -> Vec<Arc<Entry>> {
+    (0..count)
+        .map(|i| Entry::fake(SocketAddr::from(([127, 0, 0, 1], 4000 + i)), None))
+        .collect()
+}
+
 #[test]
 fn test_limits_concurrency() {
     // Use a short rehandshake period so we schedule multiple handshakes per minute
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     // Add 10 peers
-    for i in 0..10 {
-        state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
+    let peers = fake_peers(10);
+    for peer in &peers {
+        state.push(peer);
     }
     state.adjust_post_refill();
 
@@ -51,8 +59,9 @@ fn test_limits_concurrency_for_fast_handshakes() {
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
     // Add 10 peers
-    for i in 0..10 {
-        state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
+    let peers = fake_peers(10);
+    for peer in &peers {
+        state.push(peer);
     }
     state.adjust_post_refill();
 
@@ -85,8 +94,9 @@ fn test_waits_for_completion() {
     // Use a short rehandshake period so we schedule multiple handshakes per minute
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
-    for i in 0..5 {
-        state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
+    let peers = fake_peers(5);
+    for peer in &peers {
+        state.push(peer);
     }
     state.adjust_post_refill();
 
@@ -112,8 +122,9 @@ fn test_respects_60_second_deadline() {
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(120)).unwrap();
 
     // Add many peers
-    for i in 0..100 {
-        state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
+    let peers = fake_peers(100);
+    for peer in &peers {
+        state.push(peer);
     }
     state.adjust_post_refill();
 
@@ -146,8 +157,9 @@ fn test_keeps_unscheduled_in_queue() {
     // Use a short rehandshake period
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
-    for i in 0..20 {
-        state.push(SocketAddr::from(([127, 0, 0, 1], 4000 + i)));
+    let peers = fake_peers(20);
+    for peer in &peers {
+        state.push(peer);
     }
     state.adjust_post_refill();
 
@@ -176,7 +188,8 @@ fn test_keeps_unscheduled_in_queue() {
 fn test_cancelled_task_does_not_panic() {
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
 
-    state.push(SocketAddr::from(([127, 0, 0, 1], 4000)));
+    let peers = fake_peers(1);
+    state.push(&peers[0]);
 
     // Return a handle to a task that we immediately abort, simulating runtime shutdown
     let handle = state.runtime.handle().clone();
@@ -195,7 +208,8 @@ fn test_tail_handshake_scheduling() {
     let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(3600)).unwrap();
 
     // Single peer - should use tail handshake logic
-    state.push(SocketAddr::from(([127, 0, 0, 1], 4000)));
+    let peers = fake_peers(1);
+    state.push(&peers[0]);
 
     let scheduled = Arc::new(AtomicUsize::new(0));
     let handle = state.runtime.handle().clone();
@@ -219,4 +233,53 @@ fn test_tail_handshake_scheduling() {
         scheduled.load(Ordering::Relaxed) > 0,
         "should schedule at least one tail handshake"
     );
+}
+
+#[test]
+fn test_skips_dropped_and_retired_entries() {
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
+
+    let mut peers = fake_peers(3);
+    for peer in &peers {
+        state.push(peer);
+    }
+    state.adjust_post_refill();
+
+    let live = peers.pop().unwrap();
+    peers[0].retire(crate::path::secret::map::Epoch(1));
+    peers.truncate(1);
+
+    let requested = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let handle = state.runtime.handle().clone();
+    state.next_rehandshake_batch(3, |entry| {
+        requested.lock().unwrap().push(*entry.peer());
+        Some(handle.spawn(async {}))
+    });
+
+    assert_eq!(*requested.lock().unwrap(), vec![*live.peer()]);
+}
+
+#[test]
+fn test_prune_drops_dead_entries() {
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
+
+    let mut peers = fake_peers(3);
+    for peer in &peers {
+        state.push(peer);
+    }
+    peers.truncate(1);
+    state.prune();
+
+    assert_eq!(state.queue.len(), 1);
+}
+
+#[test]
+fn test_push_skips_retired_entries() {
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
+
+    let peers = fake_peers(1);
+    peers[0].retire(crate::path::secret::map::Epoch(1));
+    state.push(&peers[0]);
+
+    assert!(state.queue.is_empty());
 }
