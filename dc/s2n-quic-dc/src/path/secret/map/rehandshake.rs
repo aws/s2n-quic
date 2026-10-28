@@ -1,15 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use s2n_quic_core::inet::{SocketAddress, SocketAddressV6};
+use super::Entry;
+use s2n_quic_core::inet::SocketAddress;
 use std::{
-    collections::hash_map::RandomState, hash::BuildHasher, mem::ManuallyDrop, net::SocketAddr,
-    sync::Arc, time::Duration,
+    collections::hash_map::RandomState,
+    hash::BuildHasher,
+    mem::ManuallyDrop,
+    sync::{Arc, Weak},
+    time::Duration,
 };
 use tokio::{runtime::Runtime, sync::Semaphore, task::JoinHandle, time::Instant};
 
 pub(super) struct RehandshakeState {
-    queue: Vec<SocketAddressV6>,
+    queue: Vec<Weak<Entry>>,
     handshake_at: Option<Instant>,
     schedule_handshake_at: Instant,
 
@@ -65,17 +69,29 @@ impl RehandshakeState {
         self.rehandshake_period
     }
 
-    pub(super) fn push(&mut self, peer: SocketAddr) {
-        self.queue.push(SocketAddress::from(peer).to_ipv6_mapped());
+    pub(super) fn push(&mut self, entry: &Arc<Entry>) {
+        // A retired entry has already been replaced by a newer one for the same peer.
+        if entry.retired_at().is_some() {
+            return;
+        }
+        self.queue.push(Arc::downgrade(entry));
     }
 
     pub(super) fn adjust_post_refill(&mut self) {
-        // Sort by hash, and if hashes are the same, by the SocketAddr. We need to include both in
-        // the comparison key to ensure that we find duplicate entries correctly (just by hash
-        // might have different addresses interleave).
-        self.queue
-            .sort_unstable_by_key(|peer| (self.hasher.hash_one(peer), *peer));
-        self.queue.dedup();
+        // Sort by a hash of each entry's peer address, computed once per entry rather than per
+        // comparison. Entries already gone sort first, so they're popped last.
+        self.queue.sort_by_cached_key(|entry| {
+            entry.upgrade().map(|entry| {
+                self.hasher
+                    .hash_one(SocketAddress::from(*entry.peer()).to_ipv6_mapped())
+            })
+        });
+    }
+
+    /// Drops queued entries that no longer exist, so the queue doesn't keep their allocations
+    /// alive until their turn comes.
+    pub(super) fn prune(&mut self) {
+        self.queue.retain(|entry| entry.strong_count() > 0);
     }
 
     pub(super) fn reserve(&mut self, capacity: usize) {
@@ -86,7 +102,7 @@ impl RehandshakeState {
     pub(super) fn next_rehandshake_batch(
         &mut self,
         peer_count: usize,
-        mut request_handshake: impl FnMut(SocketAddr) -> Option<JoinHandle<()>>,
+        mut request_handshake: impl FnMut(&Arc<Entry>) -> Option<JoinHandle<()>>,
     ) -> usize {
         let _guard = self.runtime.enter();
         let start = Instant::now();
@@ -129,12 +145,18 @@ impl RehandshakeState {
                 break;
             }
 
-            to_select -= 1;
-
             let Some(entry) = self.queue.pop() else {
                 to_select = 0;
                 break;
             };
+
+            // Skip entries that have since been dropped or replaced, without spending this
+            // batch's budget on them.
+            let Some(entry) = entry.upgrade().filter(|entry| entry.retired_at().is_none()) else {
+                continue;
+            };
+
+            to_select -= 1;
 
             // Pace handshakes by waiting 100ms since the last spawn. If a handshake is slow this
             // is a no-op but otherwise this effectively limits concurrency to 1.
@@ -152,7 +174,7 @@ impl RehandshakeState {
                 .block_on(self.semaphore.clone().acquire_owned())
                 .unwrap();
 
-            if let Some(handle) = request_handshake(entry.unmap().into()) {
+            if let Some(handle) = request_handshake(&entry) {
                 let wrapped = self.runtime.spawn(async move {
                     if let Err(err) = handle.await {
                         if let Ok(panic) = err.try_into_panic() {
