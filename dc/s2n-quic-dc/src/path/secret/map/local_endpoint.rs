@@ -83,11 +83,24 @@ impl LocalEndpoints {
             .try_remove(id.key());
     }
 
+    /// Returns the callback that re-handshakes the entries `id` created.
+    ///
+    /// If `id` is no longer registered, its socket is gone, and with it the address the peer knows
+    /// those entries by. Any registered endpoint reaches the same peer and is then as good as the
+    /// original, so this falls back to one of them.
+    ///
+    /// The fallback endpoint handshakes with its own configuration, which may differ from the
+    /// original's. Today there's no known use case for differences here.
     pub(super) fn get(&self, id: LocalEndpointId) -> Option<Arc<RequestHandshake>> {
-        self.callbacks
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
+        let callbacks = self.callbacks.read().unwrap_or_else(|e| e.into_inner());
+        callbacks
             .get(id.key())
+            .or_else(|| {
+                callbacks
+                    .iter()
+                    .find(|(key, _)| *key != 0)
+                    .map(|(_, callback)| callback)
+            })
             .cloned()
     }
 }
