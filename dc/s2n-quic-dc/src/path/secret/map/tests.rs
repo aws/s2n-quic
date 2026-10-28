@@ -174,9 +174,36 @@ fn rehandshake_goes_through_the_creating_endpoint() {
     assert_eq!(*requested_b.lock().expect("not poisoned"), vec![peer_b]);
 }
 
-/// Once the creating endpoint is gone its socket is too, so the entry can't be re-handshaked from
-/// the same address. A secret that needs replacing is evicted instead, so the next connection
-/// attempt handshakes afresh.
+/// Once the creating endpoint is gone, a remaining endpoint on the map re-handshakes its entries.
+#[test]
+fn rehandshake_with_dropped_endpoint_goes_through_remaining_endpoint() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (dropped, dropped_requested) = recording_endpoint(&map);
+    let (remaining, remaining_requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.with_local_endpoint(&dropped).test_insert(peer);
+    drop(dropped);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    map.store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(dropped_requested.lock().expect("not poisoned").is_empty());
+    assert_eq!(
+        *remaining_requested.lock().expect("not poisoned"),
+        vec![peer]
+    );
+    assert!(map.contains(&peer), "entry is kept");
+    drop(remaining);
+}
+
+/// With no endpoint left on the map, a secret that needs replacing is evicted instead, so the next
+/// connection attempt handshakes afresh.
 #[test]
 fn rehandshake_with_dropped_endpoint_evicts_entry() {
     use std::net::SocketAddr;
@@ -204,8 +231,7 @@ fn rehandshake_with_dropped_endpoint_evicts_entry() {
     assert!(map.store.get_by_id_untracked(entry.id()).is_none());
 }
 
-/// A periodic refresh of an entry whose creating endpoint is gone is skipped: the secret still
-/// works, so the entry stays usable by other endpoints sharing the map.
+/// With no endpoint left on the map, a periodic refresh is skipped and the entry is not evicted.
 #[test]
 fn periodic_rehandshake_with_dropped_endpoint_keeps_entry() {
     use std::net::SocketAddr;
