@@ -734,8 +734,12 @@ where
 
         let Some(callback) = self.local_endpoints.get(entry.created_by()?) else {
             // The endpoint that created this entry is gone and no later endpoint has taken its id,
-            // so drop the entry and let the next connection attempt handshake afresh.
-            self.evict(entry, event::builder::EvictionReason::LocalEndpointDropped);
+            // so nothing can re-handshake it from the same address. A periodic refresh is skipped
+            // since the secret still works. Otherwise the secret needs replacing, so drop the entry
+            // and let the next connection attempt handshake afresh.
+            if !matches!(reason, event::builder::HandshakeReason::Periodic) {
+                self.evict(entry, event::builder::EvictionReason::LocalEndpointDropped);
+            }
             return None;
         };
 
