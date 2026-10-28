@@ -668,7 +668,7 @@ impl ReceiveStream {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                 //# Once a final size for a stream is known, it cannot change.
                 //
-                //= https://www.rfc-editor.org/info/rfc9000/#section-20.1
+                //= https://www.rfc-editor.org/rfc/rfc9000/#section-20.1
                 //# (2) an endpoint received a STREAM frame or a
                 //# RESET_STREAM frame containing a final size
                 //# that was lower than the size of stream data
