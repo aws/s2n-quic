@@ -175,9 +175,39 @@ fn rehandshake_goes_through_the_creating_endpoint() {
 }
 
 /// Once the creating endpoint is gone its socket is too, so the entry can't be re-handshaked from
-/// the same address. It is evicted instead, so the next connection attempt handshakes afresh.
+/// the same address. A secret that needs replacing is evicted instead, so the next connection
+/// attempt handshakes afresh.
 #[test]
 fn rehandshake_with_dropped_endpoint_evicts_entry() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (endpoint, requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.with_local_endpoint(&endpoint).test_insert(peer);
+    drop(endpoint);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    let handle = map
+        .store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Remote);
+
+    assert!(handle.is_none());
+    assert!(requested.lock().expect("not poisoned").is_empty());
+    assert!(
+        !map.contains(&peer),
+        "entry with a dropped endpoint is evicted"
+    );
+    assert!(map.store.get_by_id_untracked(entry.id()).is_none());
+}
+
+/// A periodic refresh of an entry whose creating endpoint is gone is skipped: the secret still
+/// works, so the entry stays usable by other endpoints sharing the map.
+#[test]
+fn periodic_rehandshake_with_dropped_endpoint_keeps_entry() {
     use std::net::SocketAddr;
 
     let map = test_map();
@@ -196,11 +226,7 @@ fn rehandshake_with_dropped_endpoint_evicts_entry() {
 
     assert!(handle.is_none());
     assert!(requested.lock().expect("not poisoned").is_empty());
-    assert!(
-        !map.contains(&peer),
-        "entry with a dropped endpoint is evicted"
-    );
-    assert!(map.store.get_by_id_untracked(entry.id()).is_none());
+    assert!(map.contains(&peer), "entry with a dropped endpoint is kept");
 }
 
 /// A dropped endpoint's id is reused by the next endpoint to register, which then re-handshakes the
