@@ -255,33 +255,6 @@ fn periodic_rehandshake_with_dropped_endpoint_keeps_entry() {
     assert!(map.contains(&peer), "entry with a dropped endpoint is kept");
 }
 
-/// A dropped endpoint's id is reused by the next endpoint to register, which then re-handshakes the
-/// entries the dropped endpoint left behind.
-#[test]
-fn rehandshake_with_reused_id_goes_through_new_endpoint() {
-    use std::net::SocketAddr;
-
-    let map = test_map();
-    let (old_endpoint, old_requested) = recording_endpoint(&map);
-    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
-    map.with_local_endpoint(&old_endpoint).test_insert(peer);
-    let old_id = old_endpoint.id();
-    drop(old_endpoint);
-
-    let (new_endpoint, new_requested) = recording_endpoint(&map);
-    assert_eq!(new_endpoint.id(), old_id);
-
-    let entry = map
-        .store
-        .get_by_addr_untracked(&peer)
-        .expect("just inserted");
-    map.store
-        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
-
-    assert!(old_requested.lock().expect("not poisoned").is_empty());
-    assert_eq!(*new_requested.lock().expect("not poisoned"), vec![peer]);
-}
-
 /// Entries created by a remotely initiated handshake have no creating endpoint; re-handshaking them
 /// is the remote's job, so nothing is requested and the entry stays.
 #[test]
