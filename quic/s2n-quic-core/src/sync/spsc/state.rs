@@ -363,20 +363,23 @@ impl<T> State<T> {
             Side::Receiver => self.sender.wake(),
         }
 
-        let was_open = self.open.swap(false, Ordering::SeqCst);
+        self.open.store(false, Ordering::SeqCst);
 
-        // make sure the peer is notified before fully dropping the contents
+        // wake again in case the peer registered after the first wake but before the store
         match side {
             Side::Sender => self.receiver.wake(),
             Side::Receiver => self.sender.wake(),
         }
 
-        if !was_open {
-            unsafe {
-                // Safety: we synchronization closing between the two peers through atomic
-                // variables. At this point both sides have agreed on its final state.
-                self.drop_contents();
-            }
+        // Once the count drops, the peer may free the header.
+        if self.ref_count.fetch_sub(1, Ordering::AcqRel) != 1 {
+            return;
+        }
+
+        unsafe {
+            // Safety: both sides have released their reference, so nothing else can access the
+            // header
+            self.drop_contents();
         }
     }
 
@@ -453,7 +456,7 @@ impl<T> State<T> {
     ///
     /// # Safety
     ///
-    /// Each side must have synchronized and agreed on the final state before calling this
+    /// Must only be called by the side that released the last `ref_count` reference
     #[inline]
     unsafe fn drop_contents(&mut self) {
         // refresh the cursor from the shared state
@@ -487,6 +490,8 @@ pub struct Header<T> {
     open: CachePadded<AtomicBool>,
     pub receiver: AtomicWaker,
     pub sender: AtomicWaker,
+    /// Number of `Sender`/`Receiver` handles still referencing this allocation. The one that drops it to zero frees the header.
+    ref_count: AtomicUsize,
     data: PhantomData<T>,
 }
 
@@ -526,6 +531,8 @@ impl<T> Header<T> {
             sender: AtomicWaker::new(),
             receiver: AtomicWaker::new(),
             open: CachePadded::new(AtomicBool::new(true)),
+            // one for the `Sender` and one for the `Receiver`
+            ref_count: AtomicUsize::new(2),
             data: PhantomData,
         }
     }
