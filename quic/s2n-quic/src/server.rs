@@ -47,7 +47,7 @@ impl Server {
     /// #    Ok(())
     /// # }
     /// ```
-    pub fn builder() -> Builder<impl ServerProviders> {
+    pub fn builder() -> Builder<impl ServerProviders<Tls = tls::Default>> {
         Builder::default()
     }
 
