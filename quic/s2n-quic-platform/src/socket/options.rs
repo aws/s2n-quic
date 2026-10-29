@@ -33,6 +33,7 @@ pub struct Options {
     pub recv_buffer: Option<usize>,
     pub backlog: usize,
     pub only_v6: bool,
+    pub bind_to_device: Option<Vec<u8>>,
 }
 
 impl Default for Options {
@@ -49,6 +50,7 @@ impl Default for Options {
             delay: false,
             backlog: 4096,
             only_v6: false,
+            bind_to_device: None,
         }
     }
 }
@@ -108,6 +110,10 @@ impl Options {
             let _ = socket.set_recv_buffer_size(recv_buffer);
         }
 
+        if let Some(interface) = self.bind_to_device.as_deref() {
+            set_bind_to_device(socket, interface)?;
+        }
+
         if let ReusePort::BeforeBind = self.reuse_port {
             assert_ne!(self.addr.port(), 0);
             set_reuse_port(socket)?;
@@ -134,4 +140,17 @@ fn set_reuse_port(_socket: &socket2::Socket) -> io::Result<()> {
 #[cfg(not(windows))]
 fn set_reuse_port(socket: &socket2::Socket) -> io::Result<()> {
     socket.set_reuse_port(true)
+}
+
+#[cfg(not(any(target_os = "android", target_os = "fuchsia", target_os = "linux")))]
+fn set_bind_to_device(_socket: &socket2::Socket, _interface: &[u8]) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "bind_to_device is not supported on the current platform",
+    ))
+}
+
+#[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+fn set_bind_to_device(socket: &socket2::Socket, interface: &[u8]) -> io::Result<()> {
+    socket.bind_device(Some(interface))
 }
