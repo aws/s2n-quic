@@ -1337,6 +1337,7 @@ where
         entry: &Entry,
         key_id: s2n_quic_core::varint::VarInt,
         queue_id: Option<VarInt>,
+        send_control: bool,
     ) -> crypto::open::Result {
         let creds = &Credentials {
             id: *entry.id(),
@@ -1360,7 +1361,9 @@ where
                 Ok(())
             }
             Err(receiver::Error::AlreadyExists) => {
-                self.send_control_error(entry, creds, queue_id, receiver::Error::AlreadyExists);
+                if send_control {
+                    self.send_control_error(entry, creds, queue_id, receiver::Error::AlreadyExists);
+                }
 
                 self.subscriber().on_replay_definitely_detected(
                     event::builder::ReplayDefinitelyDetected {
@@ -1372,7 +1375,9 @@ where
                 Err(crypto::open::Error::ReplayDefinitelyDetected)
             }
             Err(receiver::Error::Unknown) => {
-                self.send_control_error(entry, creds, queue_id, receiver::Error::Unknown);
+                if send_control {
+                    self.send_control_error(entry, creds, queue_id, receiver::Error::Unknown);
+                }
 
                 let gap = (*entry.receiver().minimum_unseen_key_id())
                     // This should never be negative, but saturate anyway to avoid

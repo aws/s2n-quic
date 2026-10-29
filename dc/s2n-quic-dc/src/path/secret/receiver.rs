@@ -80,6 +80,32 @@ impl State {
         Ok(())
     }
 
+    /// Rejects seen or old handoff keys without claiming unseen keys.
+    ///
+    /// Authentication and [`Self::post_authentication`] must still succeed before a handoff.
+    #[expect(
+        clippy::unwrap_used,
+        clippy::unwrap_in_result,
+        reason = "lock is only poisoned if another thread already panicked while holding it"
+    )]
+    pub fn pre_authentication_for_handoff(&self, identity: &Credentials) -> Result<(), Error> {
+        self.pre_authentication(identity)?;
+
+        let seen = self.seen.lock().unwrap();
+        let maximum = self.max_seen_key_id.load(Ordering::Relaxed);
+        let key_id = *identity.key_id;
+        if maximum == u64::MAX || key_id > maximum {
+            return Ok(());
+        }
+
+        let index = usize::try_from(maximum - key_id).map_err(|_| Error::Unknown)?;
+        match seen.get(index).map(|bit| *bit) {
+            Some(true) => Err(Error::AlreadyExists),
+            Some(_) => Ok(()),
+            None => Err(Error::Unknown),
+        }
+    }
+
     pub fn minimum_unseen_key_id(&self) -> KeyId {
         KeyId::try_from(
             self.max_seen_key_id

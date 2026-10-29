@@ -38,6 +38,9 @@ pub mod testing;
 mod event_tests;
 
 #[cfg(test)]
+mod handoff_tests;
+
+#[cfg(test)]
 mod tests;
 
 pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
@@ -397,6 +400,39 @@ impl Map {
             keys,
             params,
             application_data,
+        ))
+    }
+
+    /// Returns candidate UDP handoff material.
+    /// The opener authenticates and atomically claims each key at most once.
+    ///
+    /// Seen or old keys are rejected silently so packets can still reach existing streams.
+    /// Failed authentication leaves the key unclaimed. Missing secrets write an
+    /// `UnknownPathSecret` response to `control_out`.
+    pub fn secret_for_handoff(
+        &self,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
+    ) -> Option<(
+        ExportSecret,
+        Ciphersuite,
+        entry::Bidirectional,
+        dc::ApplicationParams,
+        Option<entry::ApplicationData>,
+    )> {
+        let entry =
+            self.store
+                .pre_authentication_for_handoff(credentials, queue_id, control_out)?;
+        let keys = entry.bidi_remote_for_handoff(self.clone(), credentials, queue_id);
+        let secret = entry.secret();
+
+        Some((
+            *secret.export_secret(),
+            *secret.ciphersuite(),
+            keys,
+            entry.parameters(),
+            entry.application_data().clone(),
         ))
     }
 
