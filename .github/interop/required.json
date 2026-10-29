@@ -29,8 +29,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -80,7 +79,8 @@
       "server"
     ],
     "msquic": [
-      "client"
+      "client",
+      "server"
     ],
     "mvfst": [
       "client",
@@ -95,11 +95,11 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
-      "client"
+      "client",
+      "server"
     ],
     "quiche": [
       "client",
@@ -113,7 +113,9 @@
       "client",
       "server"
     ],
-    "xquic": [],
+    "xquic": [
+      "server"
+    ],
     "go-x-net": [
       "client",
       "server"
@@ -159,8 +161,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -224,8 +225,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -324,8 +324,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -364,7 +363,8 @@
       "server"
     ],
     "kwik": [
-      "client"
+      "client",
+      "server"
     ],
     "lsquic": [
       "client",
@@ -384,8 +384,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -445,8 +444,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -531,8 +529,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [],
     "quiche": [],
@@ -579,8 +576,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -621,7 +617,9 @@
     "kwik": [
       "client"
     ],
-    "lsquic": [],
+    "lsquic": [
+      "server"
+    ],
     "msquic": [],
     "mvfst": [],
     "neqo": [
@@ -632,12 +630,14 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [],
     "quiche": [],
-    "s2n-quic": [],
+    "s2n-quic": [
+      "client",
+      "server"
+    ],
     "s2n-quic-rustls": [
       "client",
       "server"
@@ -675,8 +675,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -715,23 +714,32 @@
     "kwik": [
       "client"
     ],
-    "lsquic": [],
+    "lsquic": [
+      "server"
+    ],
     "msquic": [],
     "mvfst": [],
-    "neqo": [],
+    "neqo": [
+      "client"
+    ],
     "ngtcp2": [
       "client",
       "server"
     ],
     "picoquic": [
+      "client"
+    ],
+    "quic-go": [
+      "client"
+    ],
+    "quiche": [],
+    "s2n-quic": [
       "client",
       "server"
     ],
-    "quic-go": [],
-    "quiche": [],
-    "s2n-quic": [],
     "s2n-quic-rustls": [
-      "client"
+      "client",
+      "server"
     ],
     "xquic": [],
     "quinn": [],
@@ -768,8 +776,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -830,8 +837,7 @@
       "client"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -877,14 +883,14 @@
       "server"
     ],
     "neqo": [
-      "client"
+      "client",
+      "server"
     ],
     "ngtcp2": [
       "client"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -954,8 +960,7 @@
       "server"
     ],
     "picoquic": [
-      "client",
-      "server"
+      "client"
     ],
     "quic-go": [
       "client",
@@ -1027,7 +1032,9 @@
       "server"
     ],
     "xquic": [],
-    "chrome": [],
+    "chrome": [
+      "client"
+    ],
     "haproxy": [
       "server"
     ],
