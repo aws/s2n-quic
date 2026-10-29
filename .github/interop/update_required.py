@@ -59,7 +59,7 @@ def fetch_results(n_commits: int, out_dir: str) -> None:
     (logs/attempt-1 .. logs/attempt-MAX_ATTEMPTS) so retried runs contribute
     one sample per attempt. Commits that predate per-attempt uploads are
     skipped: logs/latest only holds the final attempt, so any failure a retry
-    recovered from has been overwritten and the data cannot be trusted.
+    recovered from has been overwritten.
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -160,7 +160,13 @@ def collect_stats(
                 logger.debug("Skipping invalid JSON: %s", filename)
                 continue
 
-        commit, label = filename[: -len(".json")].split(".", 1)
+        # Only per-attempt files count; a plain <sha>.json is a final-attempt
+        # result cached by an older version of this script.
+        parts = filename[: -len(".json")].split(".", 1)
+        if len(parts) != 2 or not parts[1].startswith("attempt-"):
+            logger.debug("Skipping non-attempt result file: %s", filename)
+            continue
+        commit, label = parts
         by_commit[commit].append((label, _parse_report(report)))
 
     stats: dict[Tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
