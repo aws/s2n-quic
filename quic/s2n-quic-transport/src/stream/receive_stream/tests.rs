@@ -558,6 +558,61 @@ fn reset_errors_if_final_size_contradicts_fin_size() {
 }
 
 #[test]
+fn reset_has_no_impact_if_all_data_had_been_received() {
+    for data_is_consumed in &[false, true] {
+        let mut test_env = setup_receive_only_test_env();
+
+        let mut events = StreamEvents::new();
+        assert!(test_env
+            .stream
+            .on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u8(0),
+                    &[0, 1, 2, 3],
+                    true
+                ),
+                &mut events
+            )
+            .is_ok());
+
+        if *data_is_consumed {
+            test_env.assert_receive_data(&[0, 1, 2, 3]);
+            test_env.assert_end_of_stream();
+            assert_eq!(
+                stream_interests(&["fin"]),
+                test_env.stream.get_stream_interests()
+            );
+        }
+
+        let reset_frame = ResetStream {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: VarInt::from_u8(0),
+            // the final size matches the FIN, regardless of whether data was consumed
+            final_size: VarInt::from_u8(4),
+        };
+        let mut events = StreamEvents::new();
+        assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
+
+        // If the data hasn't been consumed yet, it should still be available
+        // after the reset.
+        if !*data_is_consumed {
+            test_env.assert_receive_data(&[0, 1, 2, 3]);
+            assert_eq!(
+                stream_interests(&["fin"]),
+                test_env.stream.get_stream_interests()
+            );
+        }
+
+        test_env.assert_end_of_stream();
+        assert_eq!(
+            stream_interests(&["fin"]),
+            test_env.stream.get_stream_interests()
+        );
+    }
+}
+
+#[test]
 fn reset_errors_if_final_size_is_smaller_than_received_data() {
     for final_size in &[0, 1, 399, 799] {
         let mut test_env = setup_receive_only_test_env();
@@ -1845,6 +1900,78 @@ fn resend_flow_control_update_if_lost() {
         stream_interests(&[]),
         test_env.stream.get_stream_interests()
     );
+}
+
+#[test]
+fn do_not_send_flow_control_update_if_stream_is_reset_or_eof() {
+    for test_eof in &[true, false] {
+        let mut test_env = setup_receive_only_test_env();
+
+        // Write the full flow control window - this is the easiest way to force an update
+        let to_write: u64 = test_env
+            .stream
+            .receive_stream
+            .flow_controller
+            .current_stream_receive_window()
+            .into();
+        test_env.feed_data(VarInt::from_u32(0), to_write as usize);
+        assert_eq!(to_write as usize, test_env.consume_all_data());
+
+        assert_eq!(
+            stream_interests(&["tx"]),
+            test_env.stream.get_stream_interests()
+        );
+
+        assert_eq!(
+            to_write
+                + u64::from(
+                    test_env
+                        .stream
+                        .receive_stream
+                        .flow_controller
+                        .desired_flow_control_window
+                ),
+            Into::<u64>::into(
+                test_env
+                    .stream
+                    .receive_stream
+                    .flow_controller
+                    .current_stream_receive_window()
+            )
+        );
+
+        if *test_eof {
+            let mut events = StreamEvents::new();
+            assert!(test_env
+                .stream
+                .on_data(
+                    &stream_data(
+                        test_env.stream.stream_id,
+                        VarInt::from_u32(to_write as u32),
+                        &[],
+                        true
+                    ),
+                    &mut events
+                )
+                .is_ok());
+        } else {
+            let reset_frame = ResetStream {
+                stream_id: test_env.stream.stream_id.into(),
+                application_error_code: VarInt::from_u8(0),
+                // The final size must cover all data that was already received
+                final_size: VarInt::new(to_write).unwrap(),
+            };
+            let mut events = StreamEvents::new();
+            assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
+        }
+
+        // Expect no window update
+        assert_eq!(
+            stream_interests(&[]),
+            test_env.stream.get_stream_interests()
+        );
+        test_env.assert_write_frames(0);
+    }
 }
 
 #[test]
