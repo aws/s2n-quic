@@ -89,13 +89,18 @@ pub(super) enum ReceiveStreamState {
 pub(super) struct MissingData {
     start: u64,
     end: u64,
+    /// The highest offset (exclusive) of any data received on the stream, including
+    /// data that arrived out of order after a gap. Used to validate RESET_STREAM's
+    /// final size, since the receive buffer has been cleared in the `Stopping` state.
+    highest: u64,
 }
 
 impl MissingData {
-    fn new(start: u64) -> Self {
+    fn new(start: u64, highest: u64) -> Self {
         Self {
             start,
             end: u64::MAX,
+            highest: highest.max(start),
         }
     }
 
@@ -109,6 +114,8 @@ impl MissingData {
         let frame_start = *frame.offset;
         let frame_end = *(frame.offset + frame.data.len());
         let frame_range = frame_start..frame_end;
+
+        self.highest = self.highest.max(frame_end);
 
         // update the start if it overlaps the offset of the frame
         if frame_range.contains(&self.start) {
@@ -345,6 +352,11 @@ pub struct ReceiveStream {
     pub(super) read_waiter: Option<(Waker, usize)>,
     /// Whether the final state had already been observed by the application
     final_state_observed: bool,
+    /// The final size of the stream, once known from a FIN or RESET_STREAM.
+    ///
+    /// The receive buffer is cleared in the terminal states, so the size is kept here
+    /// to detect conflicting RESET_STREAM frames after the stream has finished.
+    known_final_size: Option<u64>,
     /// Marks the stream as detached from the application
     detached: bool,
 }
@@ -375,6 +387,7 @@ impl ReceiveStream {
             stop_sending_sync: OnceSync::new(),
             read_waiter: None,
             final_state_observed: is_closed,
+            known_final_size: None,
             detached: is_closed,
         };
 
@@ -400,6 +413,9 @@ impl ReceiveStream {
                 // would actually have fitted within our flow-control window and
                 // into the end-of-stream signal. We could add these checks, but
                 // the main outcome would be to send connection errors.
+                //
+                // The exception is the final size, which must not change once known.
+                self.validate_final_size_of_ignored_frame(frame)?;
             }
             ReceiveStreamState::Stopping {
                 ref mut missing_data,
@@ -410,17 +426,59 @@ impl ReceiveStream {
                 //# account for all bytes sent on the stream in its connection level flow
                 //# controller.
 
+                // The receive buffer was cleared when entering `Stopping`, so it can no
+                // longer detect a conflicting FIN. Validate against `known_final_size`
+                // before acquiring any flow control credits, and remember the size
+                // if this is the first FIN.
+                //
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# Once a final size for a stream is known, it cannot change.  If a
+                //# RESET_STREAM or STREAM frame is received indicating a change in the
+                //# final size for the stream, an endpoint SHOULD respond with an error
+                //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
+                //# handling.
+                let data_end = frame
+                    .offset
+                    .checked_add_usize(frame.data.len())
+                    .ok_or_else(|| {
+                        transport::Error::FLOW_CONTROL_ERROR
+                            .with_reason("data size overflow")
+                            .with_frame_type(frame.tag().into())
+                    })?;
+                let frame_end = Into::<u64>::into(data_end);
+
+                // Flow control was already acquired up to the final size if it was known
+                // before this frame. This has to be captured before a FIN in this frame
+                // records the size, since that FIN's data still needs to be acquired.
+                let final_size_was_known = self.known_final_size.is_some();
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# A receiver SHOULD treat receipt of data at or beyond the
+                //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
+                //# is closed.
+                if let Some(known) = self.known_final_size {
+                    // A FIN must restate the same size, and no frame may extend past it
+                    if (frame.is_fin && frame_end != known) || frame_end > known {
+                        return Err(transport::Error::FINAL_SIZE_ERROR
+                            .with_reason("Stream frame did not match previous final size")
+                            .with_frame_type(frame.tag().into()));
+                    }
+                } else if frame.is_fin {
+                    // A first FIN can't claim a size smaller than data already received
+                    if frame_end < missing_data.highest {
+                        return Err(transport::Error::FINAL_SIZE_ERROR
+                            .with_reason("Final size in stream frame is smaller than received data")
+                            .with_frame_type(frame.tag().into()));
+                    }
+                    self.known_final_size = Some(frame_end);
+                }
+
                 // If we don't know the final size then try acquiring flow control
                 // for any data that arrived before the peer processed STOP_SENDING.
-                if self.receive_buffer.final_size().is_none() {
-                    let data_end = frame
-                        .offset
-                        .checked_add_usize(frame.data.len())
-                        .ok_or_else(|| {
-                            transport::Error::FLOW_CONTROL_ERROR
-                                .with_reason("data size overflow")
-                                .with_frame_type(frame.tag().into())
-                        })?;
+                //
+                // `receive_buffer.final_size()` can't be used here: the buffer is cleared
+                // when entering `Stopping`, so it is always `None`.
+                if !final_size_was_known {
                     self.flow_controller
                         .acquire_window_up_to(data_end, frame.tag().into())?;
                 }
@@ -438,6 +496,9 @@ impl ReceiveStream {
                 // We also ignore the data in this case. We could validate whether
                 // it actually fitted into previously announced window, but
                 // don't get any benefit from this.
+                //
+                // The exception is the final size, which must not change once known.
+                self.validate_final_size_of_ignored_frame(frame)?;
             }
             ReceiveStreamState::Receiving => {
                 // In this function errors are returned, but the Stream is left
@@ -540,6 +601,8 @@ impl ReceiveStream {
                 }
 
                 if let Some(total_size) = self.receive_buffer.final_size() {
+                    self.known_final_size = Some(total_size);
+
                     // If we already have received all the data, there is no point
                     // in transmitting STOP_SENDING anymore.
                     // Note that this might not happen in the same frame where we
@@ -594,6 +657,38 @@ impl ReceiveStream {
         self.wake(events);
     }
 
+    /// Validates a STREAM frame against the known final size for streams in a
+    /// terminal state (`Reset` or `DataRead`), where the frame's data is otherwise ignored.
+    ///
+    /// If no final size is known yet, a FIN records it so later frames can be checked.
+    fn validate_final_size_of_ignored_frame(
+        &mut self,
+        frame: &StreamRef,
+    ) -> Result<(), transport::Error> {
+        // An overflowing frame can't be validated here; it's ignored like any other data
+        let Some(frame_end) = frame.offset.checked_add_usize(frame.data.len()) else {
+            return Ok(());
+        };
+        let frame_end = Into::<u64>::into(frame_end);
+
+        //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+        //# A receiver SHOULD treat receipt of data at or beyond the
+        //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
+        //# is closed.
+        match self.known_final_size {
+            Some(known) if (frame.is_fin && frame_end != known) || frame_end > known => {
+                Err(transport::Error::FINAL_SIZE_ERROR
+                    .with_reason("Stream frame did not match previous final size")
+                    .with_frame_type(frame.tag().into()))
+            }
+            None if frame.is_fin => {
+                self.known_final_size = Some(frame_end);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// This is called when a `RESET_STREAM` frame had been received for
     /// this stream
     pub fn on_reset(
@@ -610,6 +705,8 @@ impl ReceiveStream {
 
         let error = StreamError::stream_reset(frame.application_error_code.into());
         self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
+        self.known_final_size
+            .get_or_insert(Into::<u64>::into(frame.final_size));
 
         // We don't have to send `STOP_SENDING` anymore since the stream was reset by the peer
         self.stop_sending_sync.stop_sync();
@@ -633,10 +730,73 @@ impl ReceiveStream {
         //# interrupt delivery of stream data, discard any data that was not
         //# consumed, and signal the receipt of the RESET_STREAM.
 
-        // Reset logic is only executed if the stream is neither reset nor if all
-        // data had been already received.
+        // Make a best effort to error if we receive a reset frame with a final
+        // size that is smaller than the amount of stream data received.
+        if matches!(
+            self.state,
+            ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. }
+        ) {
+            if let Some(actual_size) = actual_size {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# An endpoint MUST NOT send data on a stream at or beyond the final
+                //# size.
+                //
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# Once a final size for a stream is known, it cannot change.
+                //
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
+                //# (2) an endpoint received a STREAM frame or a
+                //# RESET_STREAM frame containing a final size
+                //# that was lower than the size of stream data
+                //# that was already received,
+                //
+                // In the `Stopping` state the receive buffer has been cleared, so the
+                // high-water mark tracked by `missing_data` is used instead.
+                let highest = match &self.state {
+                    ReceiveStreamState::Stopping { missing_data, .. } => missing_data.highest,
+                    _ => self.receive_buffer.highest_received_offset(),
+                };
+                //
+                // The final size also cannot change once known. The receive buffer is
+                // cleared in the `Stopping` state, so `known_final_size` is consulted to
+                // reject a mismatch before any flow control credits are acquired.
+                if let Some(known) = self.known_final_size {
+                    if Into::<u64>::into(actual_size) != known {
+                        return Err(transport::Error::FINAL_SIZE_ERROR
+                            .with_reason(
+                                "Final size in reset frame did not match previous final size",
+                            )
+                            .with_frame_type(frame_tag.unwrap_or_default().into()));
+                    }
+                }
+                if Into::<u64>::into(actual_size) < highest {
+                    return Err(transport::Error::FINAL_SIZE_ERROR
+                        .with_reason("Final size in reset frame is smaller than received data")
+                        .with_frame_type(frame_tag.unwrap_or_default().into()));
+                }
+            }
+        }
+
         match self.state {
-            ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => return Ok(()),
+            ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# A receiver SHOULD treat receipt of data at or beyond the
+                //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
+                //# is closed.
+                //
+                // The reset is otherwise ignored, but it must not change a final size
+                // that is already known.
+                if let (Some(actual_size), Some(known)) = (actual_size, self.known_final_size) {
+                    if Into::<u64>::into(actual_size) != known {
+                        return Err(transport::Error::FINAL_SIZE_ERROR
+                            .with_reason(
+                                "Final size in reset frame did not match previous final size",
+                            )
+                            .with_frame_type(frame_tag.unwrap_or_default().into()));
+                    }
+                }
+                return Ok(());
+            }
             ReceiveStreamState::Receiving if self.receive_buffer.final_size().is_some() => {
                 let total_size = self.receive_buffer.final_size().unwrap();
                 if let Some(actual_size) = actual_size {
@@ -801,7 +961,8 @@ impl ReceiveStream {
                     self.stop_sending_sync.request_delivery(error_code);
 
                     let received_len = self.receive_buffer.total_received_len();
-                    let missing_data = MissingData::new(received_len);
+                    let highest = self.receive_buffer.highest_received_offset();
+                    let missing_data = MissingData::new(received_len, highest);
                     // transition to the Stopping state so we can start shutting down
                     self.state = ReceiveStreamState::Stopping {
                         error,
