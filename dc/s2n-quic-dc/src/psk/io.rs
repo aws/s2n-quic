@@ -376,7 +376,7 @@ impl Client {
 
         let client = s2n_quic::Client::builder().with_io(io)?;
 
-        let connection_limits = s2n_quic::provider::limits::Limits::new()
+        let mut connection_limits = s2n_quic::provider::limits::Limits::new()
             .with_max_idle_timeout(builder.max_idle_timeout)?
             .with_data_window(builder.data_window)?
             .with_bidirectional_local_data_window(builder.data_window)?
@@ -388,6 +388,10 @@ impl Client {
             // This is primarily needed with large ServerHellos (e.g., with PQ), but should be
             // harmless even without it.
             .with_packet_buffer_size(DEFAULT_MTU as u32)?;
+
+        if let Some(duration) = builder.max_handshake_duration {
+            connection_limits = connection_limits.with_max_handshake_duration(duration)?;
+        }
 
         let event = ((ConfirmComplete, MtuConfirmComplete), subscriber);
 
@@ -1455,6 +1459,51 @@ mod tests {
 
         handshake.abort();
         let _ = handshake.await;
+    }
+
+    #[tokio::test]
+    async fn max_handshake_duration_bounds_unresponsive_peer() {
+        let max_handshake_duration = Duration::from_millis(500);
+        let client_builder = crate::psk::client::Builder::default()
+            .with_success_jitter(Duration::ZERO)
+            .with_error_jitter(Duration::ZERO)
+            .with_handshake_start_limit(1)
+            .with_max_handshake_duration(max_handshake_duration);
+        let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
+            None,
+            crate::psk::server::Builder::default(),
+            client_builder,
+        )
+        .await;
+
+        // Held open but never serviced, so the handshake gets no response or ICMP error.
+        let sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let sink_addr = sink.local_addr().unwrap();
+
+        let start = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            setup
+                .client
+                .connect(sink_addr, HandshakeReason::User, "localhost".into()),
+        )
+        .await
+        .expect("handshake was not bounded by the configured max handshake duration");
+        let elapsed = start.elapsed();
+
+        assert!(result.is_err());
+        assert!(elapsed >= max_handshake_duration, "{elapsed:?}");
+
+        // The released start permit lets a handshake with a responsive peer proceed.
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            setup
+                .client
+                .connect(setup.server_addr, HandshakeReason::User, "localhost".into()),
+        )
+        .await
+        .expect("responsive handshake did not complete")
+        .unwrap();
     }
 
     #[tokio::test]
