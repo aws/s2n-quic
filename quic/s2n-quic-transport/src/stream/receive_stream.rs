@@ -78,6 +78,7 @@ pub(super) enum ReceiveStreamState {
     Stopping {
         error: StreamError,
         missing_data: MissingData,
+        highest_received: u64,
     },
     /// The connection was reset. The flag indicates whether the reset status
     /// had already been observed by the user.
@@ -347,6 +348,11 @@ pub struct ReceiveStream {
     final_state_observed: bool,
     /// Marks the stream as detached from the application
     detached: bool,
+    /// The final size of the stream, once known from a FIN or RESET_STREAM.
+    ///
+    /// The receive buffer is cleared in the terminal states, so the size is kept here
+    /// to detect conflicting RESET_STREAM frames after the stream has finished.
+    known_final_size: Option<u64>,
 }
 
 impl ReceiveStream {
@@ -375,6 +381,7 @@ impl ReceiveStream {
             stop_sending_sync: OnceSync::new(),
             read_waiter: None,
             final_state_observed: is_closed,
+            known_final_size: None,
             detached: is_closed,
         };
 
@@ -540,6 +547,8 @@ impl ReceiveStream {
                 }
 
                 if let Some(total_size) = self.receive_buffer.final_size() {
+                    self.known_final_size = Some(total_size);
+
                     // If we already have received all the data, there is no point
                     // in transmitting STOP_SENDING anymore.
                     // Note that this might not happen in the same frame where we
@@ -610,6 +619,8 @@ impl ReceiveStream {
 
         let error = StreamError::stream_reset(frame.application_error_code.into());
         self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
+        self.known_final_size
+            .get_or_insert(Into::<u64>::into(frame.final_size));
 
         // We don't have to send `STOP_SENDING` anymore since the stream was reset by the peer
         self.stop_sending_sync.stop_sync();
@@ -633,35 +644,39 @@ impl ReceiveStream {
         //# interrupt delivery of stream data, discard any data that was not
         //# consumed, and signal the receipt of the RESET_STREAM.
 
-        // Reset logic is only executed if the stream is neither reset nor if all
-        // data had been already received.
+        // A reset frame contains a size field. We need to go through each
+        // state and make sure that the indicated size matches what we expect.
         match self.state {
-            ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => return Ok(()),
+            ReceiveStreamState::Reset(_) => {
+                // Already know final size. Assert equal to final size in reset.
+                assert_actual_size_matches_known_size(
+                    actual_size,
+                    self.known_final_size,
+                    frame_tag,
+                )?;
+
+                return Ok(());
+            }
+            ReceiveStreamState::DataRead => {
+                // Already know final size. Assert equal to final size in reset.
+                assert_actual_size_matches_known_size(
+                    actual_size,
+                    self.known_final_size,
+                    frame_tag,
+                )?;
+                return Ok(());
+            }
+            // Already know final size. Assert equal to final size in reset.
             ReceiveStreamState::Receiving if self.receive_buffer.final_size().is_some() => {
-                let total_size = self.receive_buffer.final_size().unwrap();
-                if let Some(actual_size) = actual_size {
-                    // If the stream size which is indicated through the reset
-                    // diverges from the stream size which had been communicated
-                    // before this is an error
+                assert_actual_size_matches_known_size(
+                    actual_size,
+                    self.receive_buffer.final_size(),
+                    frame_tag,
+                )?;
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
-                    //# Once a final size for a stream is known, it cannot change.  If a
-                    //# RESET_STREAM or STREAM frame is received indicating a change in the
-                    //# final size for the stream, an endpoint SHOULD respond with an error
-                    //# of type FINAL_SIZE_ERROR; see Section 11 for details on error
-                    //# handling.  A receiver SHOULD treat receipt of data at or beyond the
-                    //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
-                    //# is closed.
-                    if Into::<u64>::into(actual_size) != total_size {
-                        return Err(transport::Error::FINAL_SIZE_ERROR
-                            .with_reason(
-                                "Final size in reset frame did not match previous final size",
-                            )
-                            .with_frame_type(frame_tag.unwrap_or_default().into()));
-                    }
-                }
-
-                if self.receive_buffer.total_received_len() == total_size {
+                if self.receive_buffer.total_received_len()
+                    == self.receive_buffer.final_size().unwrap()
+                {
                     // This equals the DataRecvd state from the specification.
                     // We have received all data up to offset total_size and are
                     // just waiting for the user to read it.
@@ -670,16 +685,34 @@ impl ReceiveStream {
                     return Ok(());
                 }
             }
-            ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. } => {
-                if let Some(actual_size) = actual_size {
-                    // We have to acquire the flow control credits up to the
-                    // offset which the peer indicates as the end of the Stream.
-                    // This is necessary since the peer will have reserved credits
-                    // up to this offset, and we need to send the necessary
-                    // flow control updates.
-                    self.flow_controller
-                        .acquire_window_up_to(actual_size, frame_tag)?;
-                }
+            // Did not already know final size. Assert reset size gte received data.
+            ReceiveStreamState::Receiving => {
+                assert_actual_size_gte_received_data(
+                    actual_size,
+                    self.receive_buffer.highest_received_offset(),
+                    frame_tag,
+                )?;
+            }
+            // Did not already know final size. Assert reset size gte received data.
+            ReceiveStreamState::Stopping {
+                ref highest_received,
+                ..
+            } => {
+                assert_actual_size_gte_received_data(actual_size, *highest_received, frame_tag)?;
+            }
+        }
+
+        if matches!(self.state, ReceiveStreamState::Receiving)
+            | matches!(self.state, ReceiveStreamState::Stopping { .. })
+        {
+            if let Some(actual_size) = actual_size {
+                // We have to acquire the flow control credits up to the
+                // offset which the peer indicates as the end of the Stream.
+                // This is necessary since the peer will have reserved credits
+                // up to this offset, and we need to send the necessary
+                // flow control updates.
+                self.flow_controller
+                    .acquire_window_up_to(actual_size, frame_tag)?;
             }
         }
 
@@ -802,10 +835,12 @@ impl ReceiveStream {
 
                     let received_len = self.receive_buffer.total_received_len();
                     let missing_data = MissingData::new(received_len);
+                    let highest_received = self.receive_buffer.highest_received_offset();
                     // transition to the Stopping state so we can start shutting down
                     self.state = ReceiveStreamState::Stopping {
                         error,
                         missing_data,
+                        highest_received,
                     };
 
                     response.status = ops::Status::Reset(error);
@@ -980,6 +1015,51 @@ impl ReceiveStream {
             _ => {}
         }
     }
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+//# Once a final size for a stream is known, it cannot change.  If a
+//# RESET_STREAM or STREAM frame is received indicating a change in the
+//# final size for the stream, an endpoint SHOULD respond with an error
+//# of type FINAL_SIZE_ERROR; see Section 11 for details on error
+//# handling.  A receiver SHOULD treat receipt of data at or beyond the
+//# final size as an error of type FINAL_SIZE_ERROR, even after a stream
+//# is closed.
+fn assert_actual_size_matches_known_size(
+    actual_size: Option<VarInt>,
+    known_final_size: Option<u64>,
+    frame_tag: Option<u8>,
+) -> Result<(), transport::Error> {
+    if let Some(actual_size) = actual_size {
+        if let Some(known_final_size) = known_final_size {
+            if actual_size != known_final_size {
+                return Err(transport::Error::FINAL_SIZE_ERROR
+                    .with_reason("Final size in reset frame did not match previous final size")
+                    .with_frame_type(frame_tag.unwrap_or_default().into()));
+            }
+        }
+    }
+    Ok(())
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
+//# (2) an endpoint received a STREAM frame or a
+//# RESET_STREAM frame containing a final size
+//# that was lower than the size of stream data
+//# that was already received,
+fn assert_actual_size_gte_received_data(
+    actual_size: Option<VarInt>,
+    recieved_data: u64,
+    frame_tag: Option<u8>,
+) -> Result<(), transport::Error> {
+    if let Some(actual_size) = actual_size {
+        if Into::<u64>::into(actual_size) < recieved_data {
+            return Err(transport::Error::FINAL_SIZE_ERROR
+                .with_reason("Final size in reset is smaller than amount of received data")
+                .with_frame_type(frame_tag.unwrap_or_default().into()));
+        }
+    }
+    Ok(())
 }
 
 impl StreamInterestProvider for ReceiveStream {
