@@ -371,7 +371,18 @@ impl<T> State<T> {
             Side::Receiver => self.sender.wake(),
         }
 
-        // Once the count drops, the peer may free the header.
+        // Only the last open handle may free the header.
+        //
+        // Ordering requirements:
+        //
+        // Release: our accesses to the header above (the wakes and the `open` store) must complete
+        // before the decrement is visible, so the peer can't free the header while we still use it.
+        //
+        // Acquire: if this decrement reaches zero, we must see all of the peer's header accesses
+        // before freeing, so our free can't overlap the peer's last access.
+        //
+        // We don't know which side is last until `fetch_sub` returns, so both sides need both
+        // guarantees, hence `AcqRel`.
         if self.ref_count.fetch_sub(1, Ordering::AcqRel) != 1 {
             return;
         }
