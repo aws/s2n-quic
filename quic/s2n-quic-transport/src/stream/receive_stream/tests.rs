@@ -1099,6 +1099,41 @@ fn final_size_from_reset_after_internal_reset_is_enforced() {
 }
 
 #[test]
+fn first_fin_in_stopping_state_acquires_connection_flow_control_window() {
+    let test_env_config = conn_flow_control_test_env_config();
+    let mut test_env = setup_stream_test_env_with_config(test_env_config);
+    let no_data: &[u8] = &[];
+
+    test_env.feed_data(VarInt::from_u32(0), 2000);
+    assert!(test_env.stop_sending(ApplicationErrorCode::UNKNOWN).is_ok());
+    assert!(matches!(
+        test_env.stream.receive_stream.state,
+        ReceiveStreamState::Stopping { .. }
+    ));
+
+    // The final size becomes known through this FIN, so it must still be accounted for
+    // in the connection flow control window, even though it records `known_final_size`.
+    let mut events = StreamEvents::new();
+    assert_is_transport_error(
+        test_env.stream.on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                // STOP_SENDING released the 2000 acquired bytes, so the connection can
+                // take another full window on top of them
+                VarInt::new(
+                    2000 + test_env_config.initial_connection_receive_window_size as u64 + 1,
+                )
+                .unwrap(),
+                no_data,
+                true,
+            ),
+            &mut events,
+        ),
+        TransportError::FLOW_CONTROL_ERROR,
+    );
+}
+
+#[test]
 fn reset_has_no_impact_if_all_data_had_been_received() {
     for data_is_consumed in &[false, true] {
         let mut test_env = setup_receive_only_test_env();

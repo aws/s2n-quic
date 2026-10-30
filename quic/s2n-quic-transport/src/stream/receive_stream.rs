@@ -447,6 +447,11 @@ impl ReceiveStream {
                     })?;
                 let frame_end = Into::<u64>::into(data_end);
 
+                // Flow control was already acquired up to the final size if it was known
+                // before this frame. This has to be captured before a FIN in this frame
+                // records the size, since that FIN's data still needs to be acquired.
+                let final_size_was_known = self.known_final_size.is_some();
+
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
                 //# A receiver SHOULD treat receipt of data at or beyond the
                 //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
@@ -470,7 +475,10 @@ impl ReceiveStream {
 
                 // If we don't know the final size then try acquiring flow control
                 // for any data that arrived before the peer processed STOP_SENDING.
-                if self.receive_buffer.final_size().is_none() {
+                //
+                // `receive_buffer.final_size()` can't be used here: the buffer is cleared
+                // when entering `Stopping`, so it is always `None`.
+                if !final_size_was_known {
                     self.flow_controller
                         .acquire_window_up_to(data_end, frame.tag().into())?;
                 }
