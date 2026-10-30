@@ -10,19 +10,18 @@ use crate::{
         schedule::{Ciphersuite, ExportSecret},
         seal, stateless_reset,
     },
-    psk::io::HandshakeReason,
     stream::TransportFeatures,
 };
 use core::fmt;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::task::JoinHandle;
 
 mod cleaner;
 mod disk;
 mod entry;
 pub mod handshake;
+mod local_endpoint;
 mod peer;
 mod proactive_unknown_path_secret;
 mod rehandshake;
@@ -51,6 +50,7 @@ pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
 pub use handshake::HandshakingPath;
+pub(crate) use local_endpoint::{LocalEndpoint, LocalEndpointId, RequestHandshake};
 pub use peer::Peer;
 
 pub(crate) use size_of::SizeOf;
@@ -92,6 +92,8 @@ fn encode_unknown_path_secret(
 #[derive(Clone)]
 pub struct Map {
     store: Arc<dyn Store>,
+    /// Recorded on entries created by handshakes through this handle.
+    local_endpoint: Option<LocalEndpointId>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,6 +164,7 @@ where
     pub fn build(self) -> Result<Map, MapBuilderError> {
         Ok(Map {
             store: self.inner.build().map_err(MapBuilderError)?,
+            local_endpoint: None,
         })
     }
 }
@@ -274,11 +277,25 @@ impl Map {
         self.store.contains(peer)
     }
 
-    pub fn register_request_handshake(
+    /// Registers a local endpoint with this map. Dropping the returned registration unregisters
+    /// it.
+    pub(crate) fn register_local_endpoint(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
-    ) {
-        self.store.register_request_handshake(cb);
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpoint {
+        LocalEndpoint::new(
+            self.store.register_local_endpoint(rehandshake_callback),
+            self.store.clone(),
+        )
+    }
+
+    /// Returns a handle to the same map whose handshakes record `endpoint` as the creator of the
+    /// entries they create.
+    pub(crate) fn with_local_endpoint(&self, endpoint: &LocalEndpoint) -> Self {
+        Self {
+            store: self.store.clone(),
+            local_endpoint: Some(endpoint.id()),
+        }
     }
 
     /// Gets the [`Peer`] entry for the given address
@@ -312,10 +329,8 @@ impl Map {
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let entry = self.store.get_by_id_tracked(&id)?;
         let Some((sealer, credentials)) = entry.uni_sealer() else {
-            self.store.request_handshake(
-                *entry.peer(),
-                event::builder::HandshakeReason::KeyIdExhaustion,
-            );
+            self.store
+                .request_handshake(&entry, event::builder::HandshakeReason::KeyIdExhaustion);
             return None;
         };
         Some((sealer, credentials, entry.parameters()))
@@ -555,7 +570,7 @@ impl Map {
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
         let receiver = super::receiver::State::new();
-        let entry = Entry::fake(peer, Some(receiver));
+        let entry = Entry::fake_created_by(peer, Some(receiver), self.local_endpoint);
         self.store.test_insert(entry);
     }
 

@@ -258,9 +258,7 @@ impl Cleaner {
             }
 
             if refill_rehandshakes {
-                // We'll dedup after we fill, we preallocate for the max capacity so this shouldn't
-                // allocate in practice.
-                rehandshake.push(*entry.peer());
+                rehandshake.push(&entry);
             }
 
             let retained = if let Some(retired_at) = entry.retired_at() {
@@ -294,13 +292,15 @@ impl Cleaner {
 
         if refill_rehandshakes {
             rehandshake.adjust_post_refill();
+        } else {
+            rehandshake.prune();
         }
 
         let mut handshake_requests = 0;
         let handshake_requests_skipped =
-            rehandshake.next_rehandshake_batch(state.peers.len(), |peer| {
+            rehandshake.next_rehandshake_batch(state.peers.len(), |entry| {
                 handshake_requests += 1;
-                state.request_handshake(peer, event::builder::HandshakeReason::Periodic)
+                state.request_handshake(entry, event::builder::HandshakeReason::Periodic)
             });
 
         drop(rehandshake);
