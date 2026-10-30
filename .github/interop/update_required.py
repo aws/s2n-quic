@@ -57,8 +57,9 @@ def fetch_results(n_commits: int, out_dir: str) -> None:
 
     For each commit this fetches every per-attempt report that exists
     (logs/attempt-1 .. logs/attempt-MAX_ATTEMPTS) so retried runs contribute
-    one sample per attempt. Commits that predate per-attempt uploads only have
-    logs/latest, which is the final attempt; that is used as a single sample.
+    one sample per attempt. Commits that predate per-attempt uploads are
+    skipped: logs/latest only holds the final attempt, so any failure a retry
+    recovered from has been overwritten.
     """
     os.makedirs(out_dir, exist_ok=True)
 
@@ -68,27 +69,11 @@ def fetch_results(n_commits: int, out_dir: str) -> None:
     ).strip().split("\n")
 
     for commit in commits:
-        attempts_found = 0
         for attempt in range(1, MAX_ATTEMPTS + 1):
             path = os.path.join(out_dir, f"{commit}.attempt-{attempt}.json")
             if not os.path.exists(path):
                 url = f"{CDN}/{commit}/interop/logs/attempt-{attempt}/result.json"
                 _fetch(url, path)
-            # An attempt that failed before interop-report ran has no
-            # result.json; skip just that slot, a later attempt may have one.
-            if os.path.getsize(path) == 0:
-                continue
-            attempts_found += 1
-
-        path = os.path.join(out_dir, f"{commit}.json")
-        if attempts_found:
-            # Don't double count a previously cached final result
-            if os.path.exists(path):
-                os.remove(path)
-            continue
-
-        if not os.path.exists(path):
-            _fetch(f"{CDN}/{commit}/interop/logs/latest/result.json", path)
 
 
 Tuple = tuple[str, str, str]
@@ -113,6 +98,12 @@ def _parse_report(report: dict[str, Any]) -> dict[Tuple, bool]:
             idx += 1
 
             if client != S2N_QUIC and server != S2N_QUIC:
+                continue
+
+            # A pair where every test failed did not run (the peer's container
+            # or the matrix job broke). Counting it would charge one infra
+            # event as a failure of every test for that peer, so skip the pair.
+            if result and all(test["result"] != "succeeded" for test in result):
                 continue
 
             for test in result:
@@ -169,8 +160,13 @@ def collect_stats(
                 logger.debug("Skipping invalid JSON: %s", filename)
                 continue
 
-        commit = filename.split(".")[0]
-        label = filename[len(commit) + 1 : -len(".json")] or "latest"
+        # Only per-attempt files count; a plain <sha>.json is a final-attempt
+        # result cached by an older version of this script.
+        parts = filename[: -len(".json")].split(".", 1)
+        if len(parts) != 2 or not parts[1].startswith("attempt-"):
+            logger.debug("Skipping non-attempt result file: %s", filename)
+            continue
+        commit, label = parts
         by_commit[commit].append((label, _parse_report(report)))
 
     stats: dict[Tuple, list[int]] = defaultdict(lambda: [0, 0, 0])
