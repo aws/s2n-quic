@@ -1120,10 +1120,8 @@ fn first_fin_in_stopping_state_acquires_connection_flow_control_window() {
                 test_env.stream.stream_id,
                 // STOP_SENDING released the 2000 acquired bytes, so the connection can
                 // take another full window on top of them
-                VarInt::new(
-                    2000 + test_env_config.initial_connection_receive_window_size + 1,
-                )
-                .unwrap(),
+                VarInt::new(2000 + test_env_config.initial_connection_receive_window_size + 1)
+                    .unwrap(),
                 no_data,
                 true,
             ),
