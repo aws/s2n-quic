@@ -786,6 +786,319 @@ fn reset_errors_if_final_size_contradicts_fin_size_in_stopping_state() {
 }
 
 #[test]
+fn fin_errors_if_final_size_contradicts_previous_fin_in_stopping_state() {
+    for second_fin_offset in &[0u32, 400, 799, 801, 1000] {
+        let mut test_env = setup_receive_only_test_env();
+        let no_data: &[u8] = &[];
+
+        // Data with a gap at [0, 100) and a FIN at 800 while still `Receiving`
+        test_env.feed_data(VarInt::from_u32(100), 700);
+        let mut events = StreamEvents::new();
+        assert!(test_env
+            .stream
+            .on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(800),
+                    no_data,
+                    true
+                ),
+                &mut events
+            )
+            .is_ok());
+
+        // This clears the receive buffer, so it can't detect a second FIN anymore
+        assert!(test_env
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+            .is_ok());
+        assert!(matches!(
+            test_env.stream.receive_stream.state,
+            ReceiveStreamState::Stopping { .. }
+        ));
+
+        let mut events = StreamEvents::new();
+        assert_is_transport_error(
+            test_env.stream.on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(*second_fin_offset),
+                    no_data,
+                    true,
+                ),
+                &mut events,
+            ),
+            TransportError::FINAL_SIZE_ERROR,
+        );
+    }
+}
+
+#[test]
+fn fin_matching_previous_fin_is_accepted_in_stopping_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+
+    test_env.feed_data(VarInt::from_u32(100), 700);
+    let fin = stream_data(
+        test_env.stream.stream_id,
+        VarInt::from_u32(800),
+        no_data,
+        true,
+    );
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+
+    assert!(test_env
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+        .is_ok());
+
+    // A retransmitted FIN with the same final size is not an error
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+}
+
+#[test]
+fn data_beyond_known_final_size_errors_in_stopping_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+
+    // Gap at [0, 100) and a FIN at 800 while still `Receiving`
+    test_env.feed_data(VarInt::from_u32(100), 700);
+    let mut events = StreamEvents::new();
+    assert!(test_env
+        .stream
+        .on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(800),
+                no_data,
+                true
+            ),
+            &mut events
+        )
+        .is_ok());
+
+    assert!(test_env
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+        .is_ok());
+
+    // Data that ends within the final size is fine, including the missing gap
+    let mut events = StreamEvents::new();
+    assert!(test_env
+        .stream
+        .on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(0),
+                &[0u8; 50][..],
+                false
+            ),
+            &mut events
+        )
+        .is_ok());
+
+    // Data that crosses or sits beyond the final size is an error
+    for (offset, len) in &[(790u32, 11usize), (799, 2), (800, 1), (900, 10)] {
+        let data = vec![0u8; *len];
+        let mut events = StreamEvents::new();
+        assert_is_transport_error(
+            test_env.stream.on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(*offset),
+                    &data[..],
+                    false,
+                ),
+                &mut events,
+            ),
+            TransportError::FINAL_SIZE_ERROR,
+        );
+    }
+}
+
+#[test]
+fn first_fin_smaller_than_received_data_errors_in_stopping_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+
+    // No FIN yet; data received up to 800 (with a gap)
+    test_env.feed_data(VarInt::from_u32(100), 700);
+    assert!(test_env
+        .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+        .is_ok());
+
+    let mut events = StreamEvents::new();
+    assert_is_transport_error(
+        test_env.stream.on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(500),
+                no_data,
+                true,
+            ),
+            &mut events,
+        ),
+        TransportError::FINAL_SIZE_ERROR,
+    );
+}
+
+#[test]
+fn stream_frames_are_checked_against_final_size_in_data_read_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+
+    test_env.feed_data(VarInt::from_u32(0), 800);
+    let fin = stream_data(
+        test_env.stream.stream_id,
+        VarInt::from_u32(800),
+        no_data,
+        true,
+    );
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+    assert_eq!(800, test_env.consume_all_data());
+    assert_eq!(
+        test_env.stream.receive_stream.state,
+        ReceiveStreamState::DataRead
+    );
+
+    // Retransmissions within the final size, and a repeated FIN, are fine
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+    assert!(test_env
+        .stream
+        .on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(0),
+                &[0u8; 100][..],
+                false
+            ),
+            &mut events
+        )
+        .is_ok());
+
+    // Data beyond the final size, or a FIN that changes it, is an error
+    for (offset, len, is_fin) in &[
+        (790u32, 11usize, false),
+        (800, 1, false),
+        (900, 10, false),
+        (0, 0, true),
+        (799, 0, true),
+        (801, 0, true),
+    ] {
+        let data = vec![0u8; *len];
+        let mut events = StreamEvents::new();
+        assert_is_transport_error(
+            test_env.stream.on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(*offset),
+                    &data[..],
+                    *is_fin,
+                ),
+                &mut events,
+            ),
+            TransportError::FINAL_SIZE_ERROR,
+        );
+    }
+}
+
+#[test]
+fn stream_frames_are_checked_against_final_size_in_reset_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+
+    // The final size becomes known through a FIN, then the peer resets the stream
+    test_env.feed_data(VarInt::from_u32(100), 700);
+    let fin = stream_data(
+        test_env.stream.stream_id,
+        VarInt::from_u32(800),
+        no_data,
+        true,
+    );
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+    let reset_frame = ResetStream {
+        stream_id: test_env.stream.stream_id.into(),
+        application_error_code: VarInt::from_u8(0),
+        final_size: VarInt::from_u32(800),
+    };
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
+    assert!(matches!(
+        test_env.stream.receive_stream.state,
+        ReceiveStreamState::Reset(_)
+    ));
+
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+
+    for (offset, len, is_fin) in &[(799u32, 2usize, false), (900, 1, false), (801, 0, true)] {
+        let data = vec![0u8; *len];
+        let mut events = StreamEvents::new();
+        assert_is_transport_error(
+            test_env.stream.on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(*offset),
+                    &data[..],
+                    *is_fin,
+                ),
+                &mut events,
+            ),
+            TransportError::FINAL_SIZE_ERROR,
+        );
+    }
+}
+
+#[test]
+fn final_size_from_reset_after_internal_reset_is_enforced() {
+    let mut test_env = setup_receive_only_test_env();
+
+    // An internal reset carries no final size
+    let mut events = StreamEvents::new();
+    test_env.stream.on_internal_reset(
+        StreamError::stream_reset(ApplicationErrorCode::UNKNOWN),
+        &mut events,
+    );
+    assert!(matches!(
+        test_env.stream.receive_stream.state,
+        ReceiveStreamState::Reset(_)
+    ));
+
+    let reset = |test_env: &mut TestEnvironment, final_size: u32| {
+        let reset_frame = ResetStream {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: VarInt::from_u8(0),
+            final_size: VarInt::from_u32(final_size),
+        };
+        let mut events = StreamEvents::new();
+        test_env.stream.on_reset(&reset_frame, &mut events)
+    };
+
+    // The first peer RESET_STREAM has nothing to be checked against, so it's recorded
+    assert!(reset(&mut test_env, 800).is_ok());
+    assert_is_transport_error(reset(&mut test_env, 801), TransportError::FINAL_SIZE_ERROR);
+    assert_is_transport_error(reset(&mut test_env, 799), TransportError::FINAL_SIZE_ERROR);
+    assert!(reset(&mut test_env, 800).is_ok());
+
+    // ... and later stream frames are checked against it
+    let mut events = StreamEvents::new();
+    assert_is_transport_error(
+        test_env.stream.on_data(
+            &stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(800),
+                &[0u8][..],
+                false,
+            ),
+            &mut events,
+        ),
+        TransportError::FINAL_SIZE_ERROR,
+    );
+}
+
+#[test]
 fn reset_has_no_impact_if_all_data_had_been_received() {
     for data_is_consumed in &[false, true] {
         let mut test_env = setup_receive_only_test_env();
