@@ -16,11 +16,6 @@ type ReceiverChan = mpsc::Receiver<recv::Message>;
 type Key = (credentials::Id, VarInt);
 type HashMap = flurry::HashMap<Key, Sender>;
 
-pub enum Outcome {
-    Forwarded,
-    Created { receiver: Receiver },
-}
-
 pub struct Map {
     inner: Arc<HashMap>,
     next: Option<(Sender, ReceiverChan)>,
@@ -39,8 +34,61 @@ impl Default for Map {
 }
 
 impl Map {
+    /// Hands `msg` to the stream that already owns `packet`'s credentials, if there is one.
+    ///
+    /// Returns `true` if the credentials were already claimed, meaning `msg` has been consumed -
+    /// forwarded to the owning stream, or dropped if its channel was full or closed.
+    ///
+    /// Call this before [`Self::claim`], so only packets claiming a vacant slot get authenticated.
+    /// The acceptor must not authenticate a packet belonging to an existing stream: that stream
+    /// authenticates it itself, and running the replay check twice for one `key_id` would reject
+    /// the peer's own packet.
     #[inline]
-    pub fn handle(&mut self, packet: &super::InitialPacket, msg: &mut recv::Message) -> Outcome {
+    pub(crate) fn try_forward(
+        &mut self,
+        packet: &super::InitialPacket,
+        msg: &mut recv::Message,
+    ) -> bool {
+        let key = (packet.credentials.id, packet.credentials.key_id);
+
+        let guard = self.inner.guard();
+        let Some(sender) = self.inner.get(&key, &guard) else {
+            return false;
+        };
+
+        tracing::trace!(action = "forward", credentials = ?&key);
+        if let Err(err) = sender.try_send(msg.take()) {
+            match err {
+                mpsc::error::TrySendError::Closed(_) => {
+                    // remove the channel from the map since we're closed
+                    self.inner.remove(&key, &guard);
+                    tracing::debug!(credentials = ?key, error = "channel_closed");
+                }
+                mpsc::error::TrySendError::Full(_) => {
+                    // drop the packet
+                    let _ = msg;
+                    tracing::debug!(credentials = ?key, error = "channel_full");
+                }
+            }
+        }
+
+        // `msg` was taken either way, so the caller must not try to reuse it
+        true
+    }
+
+    /// Claims the routing slot for `packet`'s credentials, returning the receiving half of the new
+    /// stream's forwarding channel.
+    ///
+    /// Only call this once `packet` has authenticated: the slot routes the credentials' future
+    /// packets, and whoever holds it also fixes the stream's peer address.
+    ///
+    /// Returns `None` if the slot is already taken, which no caller can observe today - each
+    /// acceptor owns its map and inserts only from its own task, and the only other writer is
+    /// [`Receiver::drop`], which removes. If it ever does happen the packet must be dropped rather
+    /// than forwarded, since it was authenticated against this caller's keys and the holder's
+    /// replay check would reject it.
+    #[inline]
+    pub(crate) fn claim(&mut self, packet: &super::InitialPacket) -> Option<Receiver> {
         let (sender, receiver) = self
             .next
             .take()
@@ -59,29 +107,13 @@ impl Map {
                     key,
                     channel: receiver,
                 };
-                let receiver = Receiver(Box::new(receiver));
-                Outcome::Created { receiver }
+                Some(Receiver(Box::new(receiver)))
             }
             Err(err) => {
+                // recycle the channel we didn't end up needing
                 self.next = Some((err.not_inserted, receiver));
-
-                tracing::trace!(action = "forward", credentials = ?&key);
-                if let Err(err) = err.current.try_send(msg.take()) {
-                    match err {
-                        mpsc::error::TrySendError::Closed(_) => {
-                            // remove the channel from the map since we're closed
-                            self.inner.remove(&key, &guard);
-                            tracing::debug!(credentials = ?key, error = "channel_closed");
-                        }
-                        mpsc::error::TrySendError::Full(_) => {
-                            // drop the packet
-                            let _ = msg;
-                            tracing::debug!(credentials = ?key, error = "channel_full");
-                        }
-                    }
-                }
-
-                Outcome::Forwarded
+                tracing::debug!(credentials = ?key, error = "slot_already_claimed");
+                None
             }
         }
     }
