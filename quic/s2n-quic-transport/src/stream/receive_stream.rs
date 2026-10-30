@@ -442,6 +442,13 @@ impl ReceiveStream {
                 // will not be consumed by the application on this stream.
                 self.flow_controller.release_outstanding_window();
 
+                // Remember the final size announced by a FIN so a conflicting
+                // RESET_STREAM can be detected later.
+                if frame.is_fin {
+                    let frame_end = *frame.offset + frame.data.len() as u64;
+                    self.known_final_size.get_or_insert(frame_end);
+                }
+
                 if missing_data.on_data(frame).is_ready() {
                     self.stop_sending_sync.stop_sync();
                     self.final_state_observed = true;
@@ -651,11 +658,7 @@ impl ReceiveStream {
         //# consumed, and signal the receipt of the RESET_STREAM.
 
         // Make a best effort to error if we receive a reset frame with a final
-        // size that is smaller than the amount of stream data received. There
-        // are some cases that we can't catch, for example a reset frame received
-        // for a stream the manager has already dropped. Fixing that would require
-        // us to store memory for dropped streams, which is undesirable. Catching
-        // this case isn't worth the extra memory stored.
+        // size that is smaller than the amount of stream data received.
         if matches!(
             self.state,
             ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. }
@@ -680,6 +683,19 @@ impl ReceiveStream {
                     ReceiveStreamState::Stopping { missing_data, .. } => missing_data.highest,
                     _ => self.receive_buffer.highest_received_offset(),
                 };
+                //
+                // The final size also cannot change once known. The receive buffer is
+                // cleared in the `Stopping` state, so `known_final_size` is consulted to
+                // reject a mismatch before any flow control credits are acquired.
+                if let Some(known) = self.known_final_size {
+                    if Into::<u64>::into(actual_size) != known {
+                        return Err(transport::Error::FINAL_SIZE_ERROR
+                            .with_reason(
+                                "Final size in reset frame did not match previous final size",
+                            )
+                            .with_frame_type(frame_tag.unwrap_or_default().into()));
+                    }
+                }
                 if Into::<u64>::into(actual_size) < highest {
                     return Err(transport::Error::FINAL_SIZE_ERROR
                         .with_reason("Final size in reset frame is smaller than received data")
