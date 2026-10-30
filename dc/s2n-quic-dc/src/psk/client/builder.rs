@@ -23,6 +23,7 @@ pub struct Builder<
     pub(crate) data_window: u64,
     pub(crate) mtu: Option<u16>,
     pub(crate) max_idle_timeout: Duration,
+    pub(crate) max_handshake_duration: Option<Duration>,
     pub(crate) pto_jitter_percentage: u8,
     pub(crate) handshake_queue: HandshakeQueueConfig,
 }
@@ -34,6 +35,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             data_window: DEFAULT_MAX_DATA,
             mtu: None,
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
+            max_handshake_duration: None,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             handshake_queue: Default::default(),
         }
@@ -51,6 +53,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             data_window: self.data_window,
             mtu: self.mtu,
             max_idle_timeout: self.max_idle_timeout,
+            max_handshake_duration: self.max_handshake_duration,
             pto_jitter_percentage: self.pto_jitter_percentage,
             handshake_queue: self.handshake_queue,
         }
@@ -82,6 +85,19 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// timeout.
     pub fn with_max_idle_timeout(mut self, timeout: Duration) -> Self {
         self.max_idle_timeout = timeout;
+        self
+    }
+
+    /// Sets the maximum amount of time a handshake may take before it fails
+    ///
+    /// A handshake with a peer that never responds holds a handshake start permit (see
+    /// [`Self::with_handshake_start_limit`]) for this entire duration, delaying handshakes with
+    /// other peers. Lowering it bounds that delay, but values close to the expected handshake
+    /// latency under load will cause handshakes with slow but healthy peers to fail.
+    ///
+    /// The default value is 10s.
+    pub fn with_max_handshake_duration(mut self, duration: Duration) -> Self {
+        self.max_handshake_duration = Some(duration);
         self
     }
 
