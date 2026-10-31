@@ -410,6 +410,7 @@ impl ReceiveStream {
             }
             ReceiveStreamState::Stopping {
                 ref mut missing_data,
+                ref mut highest_received,
                 ..
             } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
@@ -430,6 +431,9 @@ impl ReceiveStream {
                         })?;
                     self.flow_controller
                         .acquire_window_up_to(data_end, frame.tag().into())?;
+
+                    // Update snapshot of highest offset if we received data in stopping state
+                    *highest_received = (*highest_received).max(data_end.as_u64());
                 }
 
                 // Release any outstanding credits immediately since the data
