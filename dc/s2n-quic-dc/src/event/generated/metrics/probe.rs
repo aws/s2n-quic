@@ -74,6 +74,13 @@ mod id {
         ACCEPTOR_UDP_PACKET_DROPPED,
         ACCEPTOR_UDP_PACKET_DROPPED__REASON,
         ACCEPTOR_UDP_STREAM_ENQUEUED,
+        ACCEPTOR_UDP_STREAM_HANDED_OFF,
+        ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN,
+        ACCEPTOR_UDP_PACKET_FORWARDED,
+        ACCEPTOR_UDP_STREAM_RECEIVED,
+        ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME,
+        ACCEPTOR_UDP_APPLICATION_DATA_DROPPED,
+        ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON,
         ACCEPTOR_UDP_IO_ERROR,
         ACCEPTOR_STREAM_PRUNED,
         ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME,
@@ -467,6 +474,18 @@ mod id {
     pub const ACCEPTOR_UDP_PACKET_DROPPED__REASON: usize =
         InfoId::ACCEPTOR_UDP_PACKET_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_STREAM_ENQUEUED: usize = InfoId::ACCEPTOR_UDP_STREAM_ENQUEUED as usize;
+    pub const ACCEPTOR_UDP_STREAM_HANDED_OFF: usize =
+        InfoId::ACCEPTOR_UDP_STREAM_HANDED_OFF as usize;
+    pub const ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN: usize =
+        InfoId::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN as usize;
+    pub const ACCEPTOR_UDP_PACKET_FORWARDED: usize = InfoId::ACCEPTOR_UDP_PACKET_FORWARDED as usize;
+    pub const ACCEPTOR_UDP_STREAM_RECEIVED: usize = InfoId::ACCEPTOR_UDP_STREAM_RECEIVED as usize;
+    pub const ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME: usize =
+        InfoId::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME as usize;
+    pub const ACCEPTOR_UDP_APPLICATION_DATA_DROPPED: usize =
+        InfoId::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED as usize;
+    pub const ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON: usize =
+        InfoId::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON as usize;
     pub const ACCEPTOR_UDP_IO_ERROR: usize = InfoId::ACCEPTOR_UDP_IO_ERROR as usize;
     pub const ACCEPTOR_STREAM_PRUNED: usize = InfoId::ACCEPTOR_STREAM_PRUNED as usize;
     pub const ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME: usize =
@@ -999,6 +1018,12 @@ mod counter {
                 id::ACCEPTOR_UDP_PACKET_RECEIVED => Self(acceptor_udp_packet_received),
                 id::ACCEPTOR_UDP_PACKET_DROPPED => Self(acceptor_udp_packet_dropped),
                 id::ACCEPTOR_UDP_STREAM_ENQUEUED => Self(acceptor_udp_stream_enqueued),
+                id::ACCEPTOR_UDP_STREAM_HANDED_OFF => Self(acceptor_udp_stream_handed_off),
+                id::ACCEPTOR_UDP_PACKET_FORWARDED => Self(acceptor_udp_packet_forwarded),
+                id::ACCEPTOR_UDP_STREAM_RECEIVED => Self(acceptor_udp_stream_received),
+                id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED => {
+                    Self(acceptor_udp_application_data_dropped)
+                }
                 id::ACCEPTOR_UDP_IO_ERROR => Self(acceptor_udp_io_error),
                 id::ACCEPTOR_STREAM_PRUNED => Self(acceptor_stream_pruned),
                 id::ACCEPTOR_STREAM_DEQUEUED => Self(acceptor_stream_dequeued),
@@ -1215,6 +1240,18 @@ mod counter {
             #[link_name =
         s2n_quic_dc__event__counter__acceptor_udp_stream_enqueued]
             fn acceptor_udp_stream_enqueued(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_stream_handed_off]
+            fn acceptor_udp_stream_handed_off(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_packet_forwarded]
+            fn acceptor_udp_packet_forwarded(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_stream_received]
+            fn acceptor_udp_stream_received(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__acceptor_udp_application_data_dropped]
+            fn acceptor_udp_application_data_dropped(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__acceptor_udp_io_error]
             fn acceptor_udp_io_error(value: u64);
@@ -1667,6 +1704,9 @@ mod counter {
                     id::ACCEPTOR_UDP_PACKET_DROPPED__REASON => {
                         Self(acceptor_udp_packet_dropped__reason)
                     }
+                    id::ACCEPTOR_UDP_APPLICATION_DATA_DROPPED__REASON => {
+                        Self(acceptor_udp_application_data_dropped__reason)
+                    }
                     id::ACCEPTOR_STREAM_PRUNED__REASON => Self(acceptor_stream_pruned__reason),
                     id::STREAM_CONNECT__TCP => Self(stream_connect__tcp),
                     id::STREAM_CONNECT__HANDSHAKE => Self(stream_connect__handshake),
@@ -1812,6 +1852,13 @@ mod counter {
                 #[link_name =
             s2n_quic_dc__event__counter__nominal__acceptor_udp_packet_dropped__reason]
                 fn acceptor_udp_packet_dropped__reason(
+                    value: u64,
+                    variant: u64,
+                    variant_name: &info::Str,
+                );
+                #[link_name =
+            s2n_quic_dc__event__counter__nominal__acceptor_udp_application_data_dropped__reason]
+                fn acceptor_udp_application_data_dropped__reason(
                     value: u64,
                     variant: u64,
                     variant_name: &info::Str,
@@ -2105,6 +2152,9 @@ mod measure {
                 }
                 id::ACCEPTOR_UDP_PACKET_RECEIVED__PAYLOAD_LEN => {
                     Self(acceptor_udp_packet_received__payload_len)
+                }
+                id::ACCEPTOR_UDP_STREAM_HANDED_OFF__PAYLOAD_LEN => {
+                    Self(acceptor_udp_stream_handed_off__payload_len)
                 }
                 id::STREAM_WRITE_FLUSHED__CONN => Self(stream_write_flushed__conn),
                 id::STREAM_WRITE_FLUSHED__PROVIDED => Self(stream_write_flushed__provided),
@@ -2464,6 +2514,9 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__acceptor_udp_packet_received__payload_len]
             fn acceptor_udp_packet_received__payload_len(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__acceptor_udp_stream_handed_off__payload_len]
+            fn acceptor_udp_stream_handed_off__payload_len(value: u64);
             #[link_name =
         s2n_quic_dc__event__measure__stream_write_flushed__conn]
             fn stream_write_flushed__conn(value: u64);
@@ -2890,6 +2943,9 @@ mod timer {
                 id::ACCEPTOR_TCP_SOCKET_RECEIVED__TRANSFER_TIME => {
                     Self(acceptor_tcp_socket_received__transfer_time)
                 }
+                id::ACCEPTOR_UDP_STREAM_RECEIVED__TRANSFER_TIME => {
+                    Self(acceptor_udp_stream_received__transfer_time)
+                }
                 id::ACCEPTOR_STREAM_PRUNED__SOJOURN_TIME => {
                     Self(acceptor_stream_pruned__sojourn_time)
                 }
@@ -2961,6 +3017,9 @@ mod timer {
             #[link_name =
         s2n_quic_dc__event__timer__acceptor_tcp_socket_received__transfer_time]
             fn acceptor_tcp_socket_received__transfer_time(value: core::time::Duration);
+            #[link_name =
+        s2n_quic_dc__event__timer__acceptor_udp_stream_received__transfer_time]
+            fn acceptor_udp_stream_received__transfer_time(value: core::time::Duration);
             #[link_name = s2n_quic_dc__event__timer__acceptor_stream_pruned__sojourn_time]
             fn acceptor_stream_pruned__sojourn_time(value: core::time::Duration);
             #[link_name =

@@ -19,6 +19,7 @@ mod restart;
 mod rpc;
 mod runtime_rebind;
 mod shared_cache;
+mod udp_manager;
 mod uds_application_data;
 
 /// Shows an endpoint doesn't need an application tokio runtime to be created
