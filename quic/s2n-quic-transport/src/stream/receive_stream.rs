@@ -1053,11 +1053,11 @@ fn assert_actual_size_matches_known_size(
 //# that was already received,
 fn assert_actual_size_gte_received_data(
     actual_size: Option<VarInt>,
-    recieved_data: u64,
+    received_data: u64,
     frame_tag: Option<u8>,
 ) -> Result<(), transport::Error> {
     if let Some(actual_size) = actual_size {
-        if Into::<u64>::into(actual_size) < recieved_data {
+        if Into::<u64>::into(actual_size) < received_data {
             return Err(transport::Error::FINAL_SIZE_ERROR
                 .with_reason("Final size in reset is smaller than amount of received data")
                 .with_frame_type(frame_tag.unwrap_or_default().into()));
