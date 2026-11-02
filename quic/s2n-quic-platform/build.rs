@@ -102,6 +102,11 @@ fn main() -> Result<(), Error> {
                 features.insert(SocketMessage);
             }
 
+            // Apple platforms have no `IP_MTU_DISCOVER`, but `IP_DONTFRAG` /
+            // `IPV6_DONTFRAG` are enough to keep the IP layer from fragmenting.
+            // They were only implemented in macOS 11 (Big Sur), so the sockopt
+            // may still be rejected at runtime.
+            features.insert(MtuDiscovery);
             features.insert(PacketInfo);
             features.insert(TypeOfService);
         }
