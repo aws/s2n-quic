@@ -435,6 +435,11 @@ impl ReceiveStream {
                     // Update snapshot of highest offset if we received data in stopping state
                     *highest_received = (*highest_received).max(data_end.as_u64());
                     if frame.is_fin {
+                        assert_actual_size_matches_known_size(
+                            Some(data_end),
+                            self.known_final_size,
+                            Some(frame.tag()),
+                        )?;
                         self.known_final_size.get_or_insert(data_end.as_u64());
                     }
                 }

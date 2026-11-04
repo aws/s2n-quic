@@ -1031,6 +1031,82 @@ fn fin_matching_previous_fin_is_accepted_in_stopping_state() {
     assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
 }
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+//= type=test
+//# If a RESET_STREAM or STREAM frame is received indicating a change in
+//# the final size for the stream, an endpoint SHOULD respond with an
+//# error of type FINAL_SIZE_ERROR; see Section 11 for details on error
+//# handling.
+#[test]
+fn fin_contradicting_previous_fin_errors_in_stopping_state() {
+    let no_data: &[u8] = &[];
+    let data: &[u8] = &[0u8; 100];
+
+    // (offset, data) pairs for FIN frames which end at a size other than 800
+    let conflicting_fins: &[(u32, &[u8])] = &[
+        // An empty FIN with a larger final size
+        (900, no_data),
+        // An empty FIN with a smaller final size
+        (799, no_data),
+        // A FIN carrying data [800, 900)
+        (800, data),
+    ];
+
+    // Whether the first FIN arrives in `Receiving` or after entering `Stopping`
+    for fin_before_stopping in &[true, false] {
+        for &(offset, payload) in conflicting_fins {
+            let mut test_env = setup_receive_only_test_env();
+
+            // [0, 100) is missing, so the stream can't finish and STOP_SENDING
+            // will transition to `Stopping`
+            test_env.feed_data(VarInt::from_u32(100), 700);
+
+            let first_fin = stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(800),
+                no_data,
+                true,
+            );
+
+            if *fin_before_stopping {
+                let mut events = StreamEvents::new();
+                assert!(test_env.stream.on_data(&first_fin, &mut events).is_ok());
+            }
+
+            assert!(test_env
+                .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+                .is_ok());
+            assert!(matches!(
+                test_env.stream.receive_stream.state,
+                ReceiveStreamState::Stopping { .. }
+            ));
+
+            if !*fin_before_stopping {
+                let mut events = StreamEvents::new();
+                assert!(test_env.stream.on_data(&first_fin, &mut events).is_ok());
+            }
+
+            // Either way, the final size of 800 is now known
+            assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+
+            let conflicting_fin = stream_data(
+                test_env.stream.stream_id,
+                VarInt::from_u32(offset),
+                payload,
+                true,
+            );
+            let mut events = StreamEvents::new();
+            assert_is_transport_error(
+                test_env.stream.on_data(&conflicting_fin, &mut events),
+                TransportError::FINAL_SIZE_ERROR,
+            );
+
+            // The conflicting FIN must not have replaced the known final size
+            assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+        }
+    }
+}
+
 #[test]
 fn first_fin_in_stopping_state_acquires_connection_flow_control_window() {
     let test_env_config = conn_flow_control_test_env_config();
