@@ -42,7 +42,8 @@ where
     debug_assert!(!segments.is_empty());
 
     let fd = fd.as_raw_fd();
-    let flags = Flags::default();
+    // Return an error for a disconnected peer without raising SIGPIPE.
+    let flags = libc::MSG_NOSIGNAL;
 
     // if we only have a single segment then use send, which should be slightly cheaper than sendmsg
     libc_call(|| if segments.len() == 1 {
