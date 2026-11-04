@@ -637,6 +637,66 @@ fn reset_is_accepted_if_final_size_covers_data_received_after_entering_stopping_
 }
 
 #[test]
+fn reset_with_larger_final_size_is_accepted_after_non_fin_data_in_stopping_state() {
+    // The largest value is the initial stream receive window; anything beyond that
+    // would be a flow control error
+    for final_size in &[
+        201u32,
+        300,
+        TestEnvironment::DEFAULT_INITIAL_RECEIVE_WINDOW as u32,
+    ] {
+        let mut test_env = setup_receive_only_test_env();
+
+        test_env.feed_data(VarInt::from_u32(0), 100);
+        assert!(test_env
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+            .is_ok());
+        assert!(matches!(
+            test_env.stream.receive_stream.state,
+            ReceiveStreamState::Stopping { .. }
+        ));
+
+        // [100, 200) without FIN was sent before the peer saw STOP_SENDING
+        let mut events = StreamEvents::new();
+        assert!(test_env
+            .stream
+            .on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(100),
+                    &[0u8; 100][..],
+                    false,
+                ),
+                &mut events,
+            )
+            .is_ok());
+
+        // Data without FIN does not establish a final size
+        assert_eq!(None, test_env.stream.receive_stream.known_final_size);
+
+        // The peer may have sent more data which is still in flight, so a final size
+        // beyond the highest received offset is valid
+        let reset_frame = ResetStream {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: VarInt::from_u8(0),
+            final_size: VarInt::from_u32(*final_size),
+        };
+        let mut events = StreamEvents::new();
+        assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
+        assert!(matches!(
+            test_env.stream.receive_stream.state,
+            ReceiveStreamState::Reset(_)
+        ));
+
+        // The final size is now established by the RESET_STREAM
+        assert_eq!(
+            Some(*final_size as u64),
+            test_env.stream.receive_stream.known_final_size
+        );
+    }
+}
+
+#[test]
 fn reset_has_no_impact_if_all_data_had_been_received() {
     for data_is_consumed in &[false, true] {
         let mut test_env = setup_receive_only_test_env();
@@ -866,6 +926,85 @@ fn reset_errors_if_final_size_changes_after_previous_reset() {
 
     // A duplicate reset with the same final size is still accepted
     assert!(reset(&mut test_env, 800).is_ok());
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+//= type=test
+//# Once a final size for a stream is known, it cannot change.
+#[test]
+fn reset_errors_if_final_size_differs_from_fin_received_before_entering_stopping_state() {
+    let no_data: &[u8] = &[];
+
+    // Sizes that differ from the FIN size of 800. The larger values pass the
+    // "final size >= highest received offset" check, so only the known final size
+    // can reject them.
+    for final_size in &[799u32, 801, 1000, 10_000] {
+        let mut test_env = setup_receive_only_test_env();
+
+        // [0, 100) is missing, so the stream can't finish and STOP_SENDING
+        // will transition to `Stopping`
+        test_env.feed_data(VarInt::from_u32(100), 700);
+
+        // The FIN establishes a final size of 800 while in `Receiving`
+        let mut events = StreamEvents::new();
+        assert!(test_env
+            .stream
+            .on_data(
+                &stream_data(
+                    test_env.stream.stream_id,
+                    VarInt::from_u32(800),
+                    no_data,
+                    true
+                ),
+                &mut events
+            )
+            .is_ok());
+        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+
+        // STOP_SENDING clears the receive buffer, but the known final size must survive
+        assert!(test_env
+            .stop_sending(ApplicationErrorCode::new(0x1234_5678).unwrap())
+            .is_ok());
+        assert!(matches!(
+            test_env.stream.receive_stream.state,
+            ReceiveStreamState::Stopping { .. }
+        ));
+        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+
+        // The peer replies to STOP_SENDING with a RESET_STREAM claiming a different size
+        let reset_frame = ResetStream {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: VarInt::from_u8(0),
+            final_size: VarInt::from_u32(*final_size),
+        };
+        let mut events = StreamEvents::new();
+        assert_is_transport_error(
+            test_env.stream.on_reset(&reset_frame, &mut events),
+            TransportError::FINAL_SIZE_ERROR,
+        );
+
+        // The rejected reset must not have moved the stream to `Reset` or
+        // overwritten the known final size
+        assert!(matches!(
+            test_env.stream.receive_stream.state,
+            ReceiveStreamState::Stopping { .. }
+        ));
+        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+
+        // A RESET_STREAM that matches the FIN size is still accepted
+        let reset_frame = ResetStream {
+            stream_id: test_env.stream.stream_id.into(),
+            application_error_code: VarInt::from_u8(0),
+            final_size: VarInt::from_u32(800),
+        };
+        let mut events = StreamEvents::new();
+        assert!(test_env.stream.on_reset(&reset_frame, &mut events).is_ok());
+        assert!(matches!(
+            test_env.stream.receive_stream.state,
+            ReceiveStreamState::Reset(_)
+        ));
+        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+    }
 }
 
 #[test]

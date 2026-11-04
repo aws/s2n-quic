@@ -434,6 +434,9 @@ impl ReceiveStream {
 
                     // Update snapshot of highest offset if we received data in stopping state
                     *highest_received = (*highest_received).max(data_end.as_u64());
+                    if frame.is_fin {
+                        self.known_final_size.get_or_insert(data_end.as_u64());
+                    }
                 }
 
                 // Release any outstanding credits immediately since the data
@@ -652,7 +655,6 @@ impl ReceiveStream {
         // state and make sure that the indicated size matches what we expect.
         match self.state {
             ReceiveStreamState::Reset(_) => {
-                // Already know final size. Assert equal to final size in reset.
                 assert_actual_size_matches_known_size(
                     actual_size,
                     self.known_final_size,
@@ -662,7 +664,6 @@ impl ReceiveStream {
                 return Ok(());
             }
             ReceiveStreamState::DataRead => {
-                // Already know final size. Assert equal to final size in reset.
                 assert_actual_size_matches_known_size(
                     actual_size,
                     self.known_final_size,
@@ -670,39 +671,39 @@ impl ReceiveStream {
                 )?;
                 return Ok(());
             }
-            // Already know final size. Assert equal to final size in reset.
-            ReceiveStreamState::Receiving if self.receive_buffer.final_size().is_some() => {
-                assert_actual_size_matches_known_size(
-                    actual_size,
-                    self.receive_buffer.final_size(),
-                    frame_tag,
-                )?;
-
-                if self.receive_buffer.total_received_len()
-                    == self.receive_buffer.final_size().unwrap()
-                {
-                    // This equals the DataRecvd state from the specification.
-                    // We have received all data up to offset total_size and are
-                    // just waiting for the user to read it.
-                    // In this case we ignore the reset, since we don't require
-                    // any information from the peer anymore.
-                    return Ok(());
-                }
-            }
-            // Did not already know final size. Assert reset size gte received data.
             ReceiveStreamState::Receiving => {
                 assert_actual_size_gte_received_data(
                     actual_size,
                     self.receive_buffer.highest_received_offset(),
                     frame_tag,
                 )?;
+                assert_actual_size_matches_known_size(
+                    actual_size,
+                    self.receive_buffer.final_size(),
+                    frame_tag,
+                )?;
+
+                if let Some(final_size) = self.receive_buffer.final_size() {
+                    if self.receive_buffer.total_received_len() == final_size {
+                        // This equals the DataRecvd state from the specification.
+                        // We have received all data up to offset total_size and are
+                        // just waiting for the user to read it.
+                        // In this case we ignore the reset, since we don't require
+                        // any information from the peer anymore.
+                        return Ok(());
+                    }
+                }
             }
-            // Did not already know final size. Assert reset size gte received data.
             ReceiveStreamState::Stopping {
                 ref highest_received,
                 ..
             } => {
                 assert_actual_size_gte_received_data(actual_size, *highest_received, frame_tag)?;
+                assert_actual_size_matches_known_size(
+                    actual_size,
+                    self.known_final_size,
+                    frame_tag,
+                )?;
             }
         }
 
