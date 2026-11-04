@@ -65,7 +65,7 @@ impl<Path: path::Handle> Dispatch<Path> {
         };
         Self {
             transmissions: VecDeque::with_capacity(capacity),
-            max_peers,
+            max_peers: capacity,
         }
     }
 
@@ -291,5 +291,24 @@ mod tests {
                 "connection close packets should not be queued past max_peers"
             );
         }
+    }
+
+    #[test]
+    fn client_test() {
+        let mut dispatch = Dispatch::<RemoteAddress>::new(2, endpoint::Type::Client);
+        let local_connection_id = connection::LocalId::try_from_bytes(&[3u8; 16]).unwrap();
+        let mut buffer = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
+        let packet = protected_initial(&mut buffer);
+
+        dispatch.queue::<Key>(
+            RemoteAddress::from(SocketAddress::default()),
+            &packet,
+            local_connection_id,
+        );
+
+        assert!(
+            dispatch.transmissions.is_empty(),
+            "clients should not queue connection close packets"
+        );
     }
 }
