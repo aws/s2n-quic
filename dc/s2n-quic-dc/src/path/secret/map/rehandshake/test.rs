@@ -283,3 +283,18 @@ fn test_push_skips_retired_entries() {
 
     assert!(state.queue.is_empty());
 }
+
+#[test]
+fn test_dedups_entries_for_the_same_peer() {
+    let mut state = RehandshakeState::new_with_paused_time(Duration::from_secs(60)).unwrap();
+
+    let peer = SocketAddr::from(([127, 0, 0, 1], 5000));
+    let entries = [Entry::fake(peer, None), Entry::fake(peer, None)];
+    let other = fake_peers(1);
+    for entry in entries.iter().chain(&other) {
+        state.push(entry);
+    }
+    state.adjust_post_refill();
+
+    assert_eq!(state.queue.len(), 2);
+}
