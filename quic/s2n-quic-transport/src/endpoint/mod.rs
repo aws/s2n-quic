@@ -1423,4 +1423,40 @@ pub mod testing {
             endpoint::limits::Outcome::allow()
         }
     }
+
+    /// Encodes an unencrypted client Initial packet into `buffer` and decodes it back as a
+    /// `ProtectedInitial`, the form the endpoint dispatchers receive.
+    ///
+    /// No packet or header protection is applied, so this is only suitable for tests that read
+    /// the packet's header fields without decrypting its payload.
+    pub fn protected_initial(buffer: &mut [u8]) -> ProtectedInitial<'_> {
+        use s2n_codec::{Encoder, EncoderBuffer};
+        use s2n_quic_core::{
+            inet::SocketAddress,
+            packet::{initial::Initial, number::PacketNumberSpace},
+            varint::VarInt,
+        };
+
+        let packet_number = PacketNumberSpace::Initial.new_packet_number(VarInt::default());
+        let mut encoder = EncoderBuffer::new(buffer);
+        encoder.encode(&Initial {
+            version: 1,
+            destination_connection_id: &[1u8; 8][..],
+            source_connection_id: &[2u8; 8][..],
+            token: &[0u8; 0][..],
+            packet_number: packet_number.truncate(packet_number).unwrap(),
+            payload: &[0u8; 32][..],
+        });
+        let len = encoder.len();
+
+        let remote_address = SocketAddress::default();
+        let connection_info = ConnectionInfo::new(&remote_address);
+        let decoder = DecoderBufferMut::new(&mut buffer[..len]);
+        // The connection ID validator only applies to short header packets, so it is unused here
+        let (packet, _remaining) = ProtectedPacket::decode(decoder, &connection_info, &8).unwrap();
+        match packet {
+            ProtectedPacket::Initial(packet) => packet,
+            _ => panic!("expected an Initial packet"),
+        }
+    }
 }
