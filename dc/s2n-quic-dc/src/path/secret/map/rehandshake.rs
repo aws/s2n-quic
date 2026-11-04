@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::Entry;
-use s2n_quic_core::inet::SocketAddress;
+use s2n_quic_core::inet::{SocketAddress, SocketAddressV6};
 use std::{
     collections::hash_map::RandomState,
     hash::BuildHasher,
@@ -13,7 +13,7 @@ use std::{
 use tokio::{runtime::Runtime, sync::Semaphore, task::JoinHandle, time::Instant};
 
 pub(super) struct RehandshakeState {
-    queue: Vec<Weak<Entry>>,
+    queue: Vec<(u64, Weak<Entry>)>,
     handshake_at: Option<Instant>,
     schedule_handshake_at: Instant,
 
@@ -74,24 +74,23 @@ impl RehandshakeState {
         if entry.retired_at().is_some() {
             return;
         }
-        self.queue.push(Arc::downgrade(entry));
+        let hash = self.hasher.hash_one(peer_address(entry));
+        self.queue.push((hash, Arc::downgrade(entry)));
     }
 
     pub(super) fn adjust_post_refill(&mut self) {
-        // Sort by a hash of each entry's peer address, computed once per entry rather than per
-        // comparison. Entries already gone sort first, so they're popped last.
-        self.queue.sort_by_cached_key(|entry| {
-            entry.upgrade().map(|entry| {
-                self.hasher
-                    .hash_one(SocketAddress::from(*entry.peer()).to_ipv6_mapped())
-            })
+        let peer = |entry: &Weak<Entry>| entry.upgrade().map(|entry| peer_address(&entry));
+        self.queue.sort_unstable_by(|(a_hash, a), (b_hash, b)| {
+            a_hash.cmp(b_hash).then_with(|| peer(a).cmp(&peer(b)))
         });
+        self.queue
+            .dedup_by(|(a_hash, a), (b_hash, b)| a_hash == b_hash && peer(a) == peer(b));
     }
 
     /// Drops queued entries that no longer exist, so the queue doesn't keep their allocations
     /// alive until their turn comes.
     pub(super) fn prune(&mut self) {
-        self.queue.retain(|entry| entry.strong_count() > 0);
+        self.queue.retain(|(_, entry)| entry.strong_count() > 0);
     }
 
     pub(super) fn reserve(&mut self, capacity: usize) {
@@ -145,7 +144,7 @@ impl RehandshakeState {
                 break;
             }
 
-            let Some(entry) = self.queue.pop() else {
+            let Some((_, entry)) = self.queue.pop() else {
                 to_select = 0;
                 break;
             };
@@ -200,6 +199,10 @@ impl RehandshakeState {
 
         to_select
     }
+}
+
+fn peer_address(entry: &Entry) -> SocketAddressV6 {
+    SocketAddress::from(*entry.peer()).to_ipv6_mapped()
 }
 
 impl Drop for RehandshakeState {
