@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
-    ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
+    cleaner::Cleaner,
+    collector::EntryConsumer,
+    disk,
+    persist::{InsertPersistedError, RestoreParams},
+    proactive_unknown_path_secret, stateless_reset, ApplicationData, ApplicationDataError,
+    DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -67,6 +71,14 @@ where
     clock: Option<C>,
     subscriber: Option<S>,
     serializer: Option<disk::Serializer>,
+    entry_consumer: Option<Arc<dyn EntryConsumer>>,
+    /// Entries to pre-populate the map with, in ascending age order (oldest first). Empty unless the
+    /// embedding application restored them from persistence. See `with_entries`.
+    entries: Vec<Arc<Entry>>,
+    /// Whether to spawn the background cleaner thread on `build`. Always true except in tests and
+    /// benchmarks that drive the cleaner themselves. Never exposed except under `testing`, so a
+    /// production map always has its cleaner.
+    spawn_cleaner: bool,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -82,6 +94,9 @@ where
             clock: None,
             subscriber: None,
             serializer: None,
+            entry_consumer: None,
+            entries: Vec::new(),
+            spawn_cleaner: true,
         }
     }
 
@@ -111,6 +126,9 @@ where
             signer: self.signer,
             capacity: self.capacity,
             serializer: self.serializer,
+            entry_consumer: self.entry_consumer,
+            entries: self.entries,
+            spawn_cleaner: self.spawn_cleaner,
         }
     }
 
@@ -122,6 +140,9 @@ where
             signer: self.signer,
             capacity: self.capacity,
             serializer: self.serializer,
+            entry_consumer: self.entry_consumer,
+            entries: self.entries,
+            spawn_cleaner: self.spawn_cleaner,
         }
     }
 
@@ -132,6 +153,54 @@ where
     /// cleaner serializes the map periodically (jittered within the period).
     pub fn with_serializer(mut self, serializer: disk::Serializer) -> Self {
         self.serializer = Some(serializer);
+        self
+    }
+
+    /// Registers an [`EntryConsumer`], which receives live entries gathered by the cleaner.
+    ///
+    /// The cleaner asks the collector what it wants once per cycle, then hands over a batch after
+    /// releasing the eviction queue mutex. A second call replaces the first.
+    pub fn with_entry_consumer(mut self, consumer: Arc<dyn EntryConsumer>) -> Self {
+        self.entry_consumer = Some(consumer);
+        self
+    }
+
+    /// Pre-populates the map with entries restored from persistence.
+    ///
+    /// The entries must be in **ascending age order (oldest first)**: they are pushed onto the
+    /// eviction queue in the order given, and the queue evicts from the front, so this is the order
+    /// that decides who leaves first. For a loader replaying files that is simply encounter order
+    /// (snapshot, then journals).
+    ///
+    /// The caller owns two invariants that the map cannot cheaply re-establish here:
+    ///
+    /// - **Credential ids are unique.** The map requires it, and a loader that stages entries before
+    ///   building already has the index needed to enforce it. A duplicate is a caller bug; it is
+    ///   `debug_assert`ed and otherwise resolved last-one-wins.
+    /// - **At most `capacity` entries.** Anything beyond capacity could only be immediately evicted,
+    ///   so a caller should trim rather than hand over entries it knows will be dropped. If more are
+    ///   passed, the *oldest* excess is discarded (matching what the eviction queue would have done)
+    ///   without publishing eviction events.
+    ///
+    /// Population happens before the cleaner thread starts and before
+    /// `path_secret_map:initialized`, so the map is never observable in a partially-restored state.
+    /// No per-entry insert/ready events are published: a restored entry is not a new path secret,
+    /// and the embedding application reports the restore in its own summary.
+    ///
+    /// A second call replaces the first. See [`Entry::restore`] for producing them.
+    pub fn with_entries(mut self, entries: Vec<Arc<Entry>>) -> Self {
+        self.entries = entries;
+        self
+    }
+
+    /// Builds the map without spawning the background cleaner thread.
+    ///
+    /// For tests and benchmarks that drive the cleaner synchronously (via `run_cleaner_once`): the
+    /// thread is never started, rather than started and immediately stopped, so there is no window
+    /// in which a background cycle can race the test. A production map always runs its cleaner.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn without_cleaner_thread(mut self) -> Self {
+        self.spawn_cleaner = false;
         self
     }
 
@@ -150,6 +219,9 @@ where
             clock,
             subscriber,
             self.serializer,
+            self.entry_consumer,
+            self.entries,
+            self.spawn_cleaner,
         )
         .map_err(StateBuilderError::Io)
     }
@@ -371,6 +443,24 @@ impl IdMap {
         entry.to_hash()
     }
 
+    /// Event-free id insert, mirroring [`PeerMap::insert_no_events`].
+    ///
+    /// Used when populating a map with restored entries at build time, before the map is live and
+    /// before any subscriber could meaningfully observe per-entry writes.
+    pub(crate) fn insert_no_events(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.hash(&entry);
+        let mut map = self.0.write();
+        match map.entry(hash, |other| other.id() == entry.id(), |e| self.hash(e)) {
+            hashbrown::hash_table::Entry::Occupied(mut o) => {
+                Some(std::mem::replace(o.get_mut(), entry))
+            }
+            hashbrown::hash_table::Entry::Vacant(v) => {
+                v.insert(entry);
+                None
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn contains_key(&self, id: &Id) -> bool {
         let hash = self.hash_key(id);
@@ -445,6 +535,11 @@ where
     // (via `serialize_to_disk`) and, when the serializer has background serialization enabled,
     // periodic serialization driven by the cleaner.
     pub(super) serializer: Option<disk::Serializer>,
+
+    // If set, receives live entries from the cleaner once per cycle. Consulted before the eviction
+    // queue lock is taken and handed the batch after it is released, so it never extends the time
+    // that lock is held.
+    pub(super) entry_consumer: Option<Arc<dyn EntryConsumer>>,
 
     // Avoids allocating/deallocating on each cleaner run.
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
@@ -553,6 +648,9 @@ where
         clock: C,
         subscriber: S,
         serializer: Option<disk::Serializer>,
+        entry_consumer: Option<Arc<dyn EntryConsumer>>,
+        entries: Vec<Arc<Entry>>,
+        spawn_cleaner: bool,
     ) -> std::io::Result<Arc<Self>> {
         let control_socket = control_socket();
 
@@ -572,6 +670,7 @@ where
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
             serializer,
+            entry_consumer,
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
             )?),
@@ -606,13 +705,61 @@ where
 
         let state = Arc::new(state);
 
-        state.cleaner.spawn_thread(state.clone())?;
+        // Install restored entries before the cleaner can run and before we announce
+        // initialization, so the map is never observable partially restored.
+        state.populate_restored(entries);
+
+        if spawn_cleaner {
+            state.cleaner.spawn_thread(state.clone())?;
+        }
 
         state
             .subscriber()
             .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
         Ok(state)
+    }
+
+    /// Inserts entries restored from persistence into a not-yet-live map.
+    ///
+    /// Does the same three index operations as `insert_persisted`, minus everything that only makes
+    /// sense for a live map: no decode (the caller already rebuilt the entries), no duplicate check
+    /// (the caller's staging index guaranteed uniqueness), no capacity eviction (trimmed up front
+    /// rather than inserted-then-evicted), and no events.
+    ///
+    /// Ordering matches `insert_persisted` deliberately: the address index is written **last**, so
+    /// when a rehandshaked peer appears more than once across the files the later-encountered entry
+    /// wins the address index. Displaced entries are not retired -- both are legitimately restored,
+    /// and the address index alone cannot say which is newer.
+    fn populate_restored(&self, mut entries: Vec<Arc<Entry>>) {
+        if entries.is_empty() {
+            return;
+        }
+
+        // Beyond capacity the eviction queue would evict from the front, so drop the oldest excess
+        // instead of inserting it only to evict it (which would also publish eviction events for
+        // entries that were never live). A caller that trims first never hits this.
+        if entries.len() > self.max_capacity {
+            let excess = entries.len() - self.max_capacity;
+            entries.drain(..excess);
+        }
+
+        let mut queue = self
+            .eviction_queue
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        for entry in entries {
+            queue.push_back(Arc::downgrade(&entry));
+
+            let same = self.ids.insert_no_events(entry.clone());
+            debug_assert!(
+                same.is_none(),
+                "restored entries must have unique credential ids"
+            );
+
+            let _prev = self.peers.insert_no_events(entry);
+        }
     }
 
     /// Serializes the current map to disk using the configured [`disk::Serializer`].
@@ -925,6 +1072,70 @@ where
                 peer_address: SocketAddress::from(peer).into_event(),
                 credential_id: id.into_event(),
             });
+    }
+
+    fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<Entry>, InsertPersistedError> {
+        // Decode the blob and rebuild the entry, applying the sender/receiver/created_at restore
+        // transforms. A malformed blob or bad field (invalid endpoint or ciphersuite byte, the
+        // receiver sentinel, or a counter that would overflow) fails here without touching the map.
+        let entry = Arc::new(Entry::restore(bytes, application_data, params)?);
+        let id = *entry.id();
+
+        // The credential id is derived from the export secret, so a duplicate here means the same
+        // secret was inserted twice (an entry present in both a snapshot and a journal, say). Detect
+        // it *before* mutating either index, so a rejected duplicate leaves the map untouched --
+        // unlike `on_new_path_secrets`, which panics. Loading is single-threaded and precedes the
+        // map going live, so this check-then-insert races nothing.
+        if self.ids.get(id).is_some() {
+            return Err(InsertPersistedError::DuplicateCredentialId);
+        }
+
+        // Insert into the id index. This is the only place other than `on_new_path_secrets` that
+        // inserts into it.
+        let same = self.ids().insert(entry.clone());
+        debug_assert!(
+            same.is_none(),
+            "duplicate credential id slipped past the pre-check"
+        );
+
+        // Push onto the eviction queue and honour capacity exactly as `on_new_path_secrets` does, so
+        // a restore that overfills the map evicts oldest-first (the loader trims to capacity itself,
+        // but this keeps the invariant if it does not).
+        {
+            let mut queue = self
+                .eviction_queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+
+            queue.push_back(Arc::downgrade(&entry));
+
+            if queue.len() > self.max_capacity {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "queue is non-empty here because its length was just checked to exceed max_capacity"
+                )]
+                let element = queue.pop_front().unwrap();
+                drop(queue);
+
+                if let Some(evicted) = element.upgrade() {
+                    self.evict(&evicted, event::builder::EvictionReason::Capacity);
+                }
+            }
+        }
+
+        // Insert into the address index last. A rehandshaked peer can appear twice across the files
+        // with distinct credential ids; inserting in encounter order makes the later one win the
+        // address index, which is the property the loader relies on (see the collector's ordering
+        // guarantee). We do not retire the displaced entry here: both are legitimately restored, and
+        // which is "newer" cannot be told apart from the address index alone.
+        let _prev = self.peers().insert(entry.clone());
+
+        Ok(entry)
     }
 
     fn register_request_handshake(
@@ -1392,9 +1603,14 @@ where
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     fn test_stop_cleaner(&self) {
         self.cleaner.stop();
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn run_cleaner_once(&self) {
+        self.cleaner.clean(self, super::cleaner::EVICTION_CYCLES);
     }
 
     fn application_data(

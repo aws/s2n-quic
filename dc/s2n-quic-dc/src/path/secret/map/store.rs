@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
+    persist::{InsertPersistedError, RestoreParams},
     ApplicationData, ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats,
 };
 use crate::{
@@ -30,6 +31,22 @@ pub trait Store: 'static + Send + Sync {
     fn on_new_path_secrets(&self, entry: Arc<Entry>);
 
     fn on_handshake_complete(&self, entry: Arc<Entry>);
+
+    /// Restores an entry from a persisted blob, inserting it into both indexes and the eviction
+    /// queue, and returns the live entry.
+    ///
+    /// `bytes` is a blob produced by `Entry::to_persisted_bytes`; `application_data` is the value
+    /// the embedding application resolved for this entry (the map does not persist it); `params`
+    /// carries the caller's tunable restore advance. Unlike [`Store::on_new_path_secrets`] and
+    /// [`Store::on_handshake_complete`], this must not panic on a duplicate credential id or a
+    /// malformed blob: a corrupt or overlapping file must be survivable, so those are returned as
+    /// errors and startup continues.
+    fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<Entry>, InsertPersistedError>;
 
     fn contains(&self, peer: &SocketAddr) -> bool;
 
@@ -113,8 +130,13 @@ pub trait Store: 'static + Send + Sync {
         self.on_handshake_complete(entry);
     }
 
-    /// Stops the cleaner thread
-    #[cfg(test)]
+    /// Runs a single cleaner pass synchronously. For tests and the validation harness: stop the
+    /// background thread first with [`Store::test_stop_cleaner`] so the pass runs in isolation.
+    #[cfg(any(test, feature = "testing"))]
+    fn run_cleaner_once(&self);
+
+    /// Stops the cleaner thread.
+    #[cfg(any(test, feature = "testing"))]
     fn test_stop_cleaner(&self);
 
     #[inline]

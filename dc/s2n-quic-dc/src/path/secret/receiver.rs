@@ -61,12 +61,82 @@ pub enum Error {
     Unknown,
 }
 
+/// Why restoring a [`State`] from a persisted maximum-seen key id failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum RestoreError {
+    /// The persisted value was the `u64::MAX` sentinel that denotes "nothing seen yet". A
+    /// well-formed file records that state as an absent maximum, not as the sentinel, so seeing it
+    /// here means the record is corrupt.
+    #[error("restored receiver key id was the reserved sentinel value")]
+    Sentinel,
+
+    /// Advancing the persisted maximum by the replay-window width would overflow `u64`. Practically
+    /// unreachable, but rejected rather than wrapped so a restored receiver can never end up with a
+    /// maximum below an id it had already accepted.
+    #[error("restored receiver key id would overflow")]
+    Overflow,
+}
+
 impl State {
     pub fn new() -> State {
         State {
             max_seen_key_id: AtomicU64::new(u64::MAX),
             seen: Default::default(),
         }
+    }
+
+    /// The highest key id this receiver has accepted, or `None` if it has accepted none.
+    ///
+    /// The internal representation uses `u64::MAX` as the "nothing seen yet" sentinel (a freshly
+    /// constructed receiver via [`State::new`]). That sentinel is mapped to `None` here rather than
+    /// exposed, so a caller persisting the value never mistakes it for a real, astronomically large
+    /// key id.
+    pub fn max_seen_key_id(&self) -> Option<u64> {
+        match self.max_seen_key_id.load(Ordering::Relaxed) {
+            u64::MAX => None,
+            seen => Some(seen),
+        }
+    }
+
+    /// Rebuilds a receiver from a persisted maximum-seen key id, advanced by `advance` so no prior
+    /// id is accepted again.
+    ///
+    /// The replay bitmap is indexed *relative* to the maximum (`idx = new_max - key_id`), so a
+    /// receiver restored with a maximum at or below one it had already reached would treat an
+    /// already-accepted key id as unseen and accept the replay. Advancing past the persisted maximum
+    /// with an empty bitmap puts every id at or below that maximum well outside the bitmap, where it
+    /// is rejected as too old -- the safe answer for a packet the pre-restart instance may already
+    /// have accepted.
+    ///
+    /// `advance` is applied verbatim and must cover the ids accepted but not persisted (a stale file
+    /// may have accepted many more than it recorded). `WINDOW`, the bitmap width, is nowhere near
+    /// enough. A caller restoring a receiver that will authenticate applies the `MIN_RESTORE_ADVANCE`
+    /// minimum the persistence codec defines; only inspection of what a file holds passes less.
+    ///
+    /// The cost is that the first few genuine packets from a peer, whose ids sit just above the old
+    /// maximum but below the advanced one, are also rejected until the peer resynchronises. This is
+    /// addressed by the reactive StaleKey recovery mechanism.
+    ///
+    /// `persisted_max_seen` is the value returned by [`State::max_seen_key_id`].
+    pub fn restore(persisted_max_seen: u64, advance: u64) -> Result<State, RestoreError> {
+        // `u64::MAX` is the sentinel `new()` uses for "nothing seen". A persisted file should carry
+        // `None` for that state and never reach here, so treat an explicit sentinel as corrupt
+        // rather than advancing it (which would wrap).
+        if persisted_max_seen == u64::MAX {
+            return Err(RestoreError::Sentinel);
+        }
+
+        let advanced = persisted_max_seen
+            .checked_add(advance)
+            // Leave the sentinel value itself unreachable, so a restored receiver is never confused
+            // for a fresh one.
+            .filter(|max| *max != u64::MAX)
+            .ok_or(RestoreError::Overflow)?;
+
+        Ok(State {
+            max_seen_key_id: AtomicU64::new(advanced),
+            seen: Default::default(),
+        })
     }
 
     pub fn pre_authentication(&self, identity: &Credentials) -> Result<(), Error> {

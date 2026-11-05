@@ -171,6 +171,180 @@ fn serialize_to_disk_without_serializer_is_noop() {
     map.serialize_to_disk().unwrap();
 }
 
+/// Builds a map pre-populated with `entries`, cleaner stopped, and returns it with the subscriber so
+/// a caller can assert on events. Capacity is explicit because most of these tests are about it.
+fn restored_map(
+    capacity: usize,
+    entries: Vec<Arc<Entry>>,
+) -> (
+    Arc<State<Clock, Arc<testing::Subscriber>>>,
+    Arc<testing::Subscriber>,
+) {
+    let subscriber = Arc::new(testing::Subscriber::no_snapshot());
+    let map = State::builder()
+        .with_signer(stateless_reset::Signer::new(b"secret"))
+        .with_capacity(capacity)
+        .with_clock(Clock)
+        .with_subscriber(subscriber.clone())
+        .with_entries(entries)
+        .build()
+        .unwrap();
+    map.cleaner.stop();
+    (map, subscriber)
+}
+
+#[test]
+fn with_entries_populates_both_indexes() {
+    let first = fake_entry(1);
+    let second = fake_entry(2);
+
+    let (map, _subscriber) = restored_map(50, vec![first.clone(), second.clone()]);
+
+    assert!(map.ids.contains_key(first.id()));
+    assert!(map.ids.contains_key(second.id()));
+    assert!(map.peers.contains_key(first.peer()));
+    assert!(map.peers.contains_key(second.peer()));
+    assert_eq!(map.ids.len(), 2);
+    assert_eq!(map.peers.len(), 2);
+}
+
+#[test]
+fn with_entries_empty_is_noop() {
+    let (map, _subscriber) = restored_map(50, vec![]);
+
+    assert_eq!(map.ids.len(), 0);
+    assert_eq!(map.peers.len(), 0);
+
+    // The map is fully functional afterwards.
+    let entry = fake_entry(1);
+    map.test_insert(entry.clone());
+    assert!(map.ids.contains_key(entry.id()));
+}
+
+/// Restored entries must occupy the eviction queue in the order given, so the oldest restored entry
+/// is the first to go when a *live* insert later pushes the map over capacity.
+#[test]
+fn with_entries_preserves_oldest_first_eviction_order() {
+    let oldest = fake_entry(1);
+    let newest = fake_entry(2);
+
+    let (map, _subscriber) = restored_map(2, vec![oldest.clone(), newest.clone()]);
+
+    // At capacity; one more entry must evict the oldest restored entry, not the newest.
+    let live = fake_entry(3);
+    map.test_insert(live.clone());
+
+    assert!(
+        !map.ids.contains_key(oldest.id()),
+        "oldest restored entry should have been evicted first"
+    );
+    assert!(map.ids.contains_key(newest.id()));
+    assert!(map.ids.contains_key(live.id()));
+}
+
+/// Handing over more entries than capacity drops the *oldest* excess -- the same entries the eviction
+/// queue would have discarded -- and does so without publishing eviction events, because those
+/// entries were never live.
+#[test]
+fn with_entries_over_capacity_trims_oldest_without_events() {
+    use std::sync::atomic::Ordering;
+
+    let oldest = fake_entry(1);
+    let middle = fake_entry(2);
+    let newest = fake_entry(3);
+
+    let (map, subscriber) = restored_map(2, vec![oldest.clone(), middle.clone(), newest.clone()]);
+
+    assert_eq!(map.ids.len(), 2);
+    assert!(
+        !map.ids.contains_key(oldest.id()),
+        "the oldest excess entry should have been dropped"
+    );
+    assert!(map.ids.contains_key(middle.id()));
+    assert!(map.ids.contains_key(newest.id()));
+
+    assert_eq!(
+        subscriber
+            .path_secret_map_id_entry_evicted
+            .load(Ordering::Relaxed),
+        0,
+        "entries that were never live must not be reported as evicted"
+    );
+    assert_eq!(
+        subscriber
+            .path_secret_map_address_entry_evicted
+            .load(Ordering::Relaxed),
+        0
+    );
+}
+
+/// Same asymmetry as `insert_persisted`: a rehandshaked peer can appear twice across the files with
+/// distinct credential ids, and the later-encountered entry wins the address index while both stay
+/// reachable by id. The displaced entry is not retired.
+#[test]
+fn with_entries_later_entry_wins_address_index() {
+    let earlier = fake_entry(1);
+    let later = fake_entry(1);
+    assert_eq!(earlier.peer(), later.peer(), "same peer address by design");
+    assert_ne!(
+        earlier.id(),
+        later.id(),
+        "distinct credential ids by design"
+    );
+
+    let (map, _subscriber) = restored_map(50, vec![earlier.clone(), later.clone()]);
+
+    let by_addr = map.peers.get(*later.peer()).expect("peer is present");
+    assert_eq!(
+        by_addr.id(),
+        later.id(),
+        "the later-encountered entry should win the address index"
+    );
+
+    assert!(map.ids.contains_key(earlier.id()));
+    assert!(map.ids.contains_key(later.id()));
+    assert!(
+        earlier.retired_at().is_none(),
+        "a displaced restored entry must not be retired"
+    );
+}
+
+/// A restored entry is not a new path secret: population must be silent so the embedding
+/// application's restore summary is the single record of the load. Initialization is still announced.
+#[test]
+fn with_entries_publishes_no_per_entry_events() {
+    use std::sync::atomic::Ordering;
+
+    let (map, subscriber) = restored_map(50, vec![fake_entry(1), fake_entry(2)]);
+    let _ = &map;
+
+    assert_eq!(
+        subscriber
+            .path_secret_map_entry_inserted
+            .load(Ordering::Relaxed),
+        0
+    );
+    assert_eq!(
+        subscriber
+            .path_secret_map_entry_ready
+            .load(Ordering::Relaxed),
+        0
+    );
+    assert_eq!(
+        subscriber
+            .path_secret_map_entry_replaced
+            .load(Ordering::Relaxed),
+        0
+    );
+    assert_eq!(
+        subscriber
+            .path_secret_map_initialized
+            .load(Ordering::Relaxed),
+        1,
+        "initialization is still announced once, after restore completes"
+    );
+}
+
 #[derive(Debug, Default)]
 struct Model {
     invariants: HashSet<Invariant>,
