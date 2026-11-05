@@ -771,6 +771,17 @@ pub mod server {
             self
         }
 
+        /// Selects between the two UDP acceptors.
+        ///
+        /// `true` (the default) uses the pooled acceptor in [`crate::stream::server::udp`], which
+        /// shares a socket pool and routes on credentials. `false` uses the owned-socket acceptor
+        /// in [`crate::stream::server::tokio::udp`], which forwards from a single handshake socket.
+        /// Has no effect on TCP.
+        pub fn pooled(mut self, pooled: bool) -> Self {
+            self.pooled = pooled;
+            self
+        }
+
         pub fn linger(mut self, linger: Duration) -> Self {
             self.linger = Some(linger);
             self
