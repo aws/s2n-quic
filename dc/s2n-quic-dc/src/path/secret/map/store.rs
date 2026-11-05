@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    ApplicationData, ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats,
+    ApplicationData, ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome,
+    LocalEndpointId, RequestHandshake, SendStats,
 };
 use crate::{
     credentials::{Credentials, Id},
     event,
     packet::{secret_control as control, Packet},
     path::secret::{receiver, stateless_reset},
-    psk::io::HandshakeReason,
 };
 use core::time::Duration;
 use s2n_quic_core::varint::VarInt;
@@ -83,15 +83,18 @@ pub trait Store: 'static + Send + Sync {
 
     fn rehandshake_period(&self) -> Duration;
 
-    fn register_request_handshake(
+    fn register_local_endpoint(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
-    );
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpointId;
 
-    /// Requests a background re-handshake with `peer`, replacing its path secret.
+    fn unregister_local_endpoint(&self, id: LocalEndpointId);
+
+    /// Requests a background re-handshake replacing `entry`'s path secret, through the endpoint
+    /// that created `entry`.
     fn request_handshake(
         &self,
-        peer: SocketAddr,
+        entry: &Arc<Entry>,
         reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>>;
 

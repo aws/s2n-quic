@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
-    ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
+    cleaner::Cleaner, disk, local_endpoint::LocalEndpoints, proactive_unknown_path_secret,
+    stateless_reset, ApplicationData, ApplicationDataError, DiskEntry, Entry,
+    HandshakeProbeOutcome, LocalEndpointId, RequestHandshake, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -434,12 +435,9 @@ where
     // FIXME: This will get replaced with sending on a handshake socket associated with the map.
     pub(super) control_socket: Option<Arc<std::net::UdpSocket>>,
 
-    #[allow(clippy::type_complexity)]
-    pub(super) request_handshake: RwLock<
-        Option<Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>>,
-    >,
-
     cleaner: Cleaner,
+
+    local_endpoints: LocalEndpoints,
 
     // If set, configures on-disk serialization of the map. Used both for ad-hoc serialization
     // (via `serialize_to_disk`) and, when the serializer has background serialization enabled,
@@ -580,7 +578,7 @@ where
             init_time,
             clock,
             subscriber,
-            request_handshake: RwLock::new(None),
+            local_endpoints: Default::default(),
             mk_application_data: RwLock::new(None),
             application_data_serializer: RwLock::new(None),
         };
@@ -722,9 +720,10 @@ where
 
     pub fn request_handshake(
         &self,
-        peer: SocketAddr,
+        entry: &Arc<Entry>,
         reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>> {
+        let peer = *entry.peer();
         self.subscriber()
             .on_path_secret_map_background_handshake_requested(
                 event::builder::PathSecretMapBackgroundHandshakeRequested {
@@ -733,33 +732,18 @@ where
                 },
             );
 
-        // Normally we'd expect callers to use the Subscriber to register interest in this, but the
-        // Map is typically created *before* the s2n_quic::Client with the dc provider registered.
-        //
-        // Users of the state tracker typically register the callback when creating a new s2n-quic
-        // client to handshake into this map.
-        if let Some(callback) = self
-            .request_handshake
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_deref()
-        {
-            // The callback feeds the handshake queue, which also counts user-initiated
-            // handshakes, so widen to the full set here.
-            return (callback)(peer, HandshakeReason::from(reason));
-        }
-        None
-    }
+        let Some(callback) = self.local_endpoints.get(entry.created_by()?) else {
+            // No endpoints are registered: evict, unless this is a periodic refresh of a still-valid
+            // secret.
+            if !matches!(reason, event::builder::HandshakeReason::Periodic) {
+                self.evict(entry, event::builder::EvictionReason::LocalEndpointDropped);
+            }
+            return None;
+        };
 
-    fn register_request_handshake(
-        &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
-    ) {
-        // FIXME: Maybe panic if already initialized?
-        *self
-            .request_handshake
-            .write()
-            .unwrap_or_else(|e| e.into_inner()) = Some(cb);
+        // The callback feeds the handshake queue, which also counts user-initiated handshakes, so
+        // widen to the full set here.
+        (callback)(peer, HandshakeReason::from(reason))
     }
 
     pub fn cleaner(&self) -> &Cleaner {
@@ -927,20 +911,24 @@ where
             });
     }
 
-    fn register_request_handshake(
+    fn register_local_endpoint(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
-    ) {
-        self.register_request_handshake(cb);
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpointId {
+        self.local_endpoints.register(rehandshake_callback)
+    }
+
+    fn unregister_local_endpoint(&self, id: LocalEndpointId) {
+        self.local_endpoints.unregister(id);
     }
 
     fn request_handshake(
         &self,
-        peer: SocketAddr,
+        entry: &Arc<Entry>,
         reason: event::builder::HandshakeReason,
     ) -> Option<JoinHandle<()>> {
         // Resolves to the inherent method on `State`, which the cleaner also uses.
-        State::request_handshake(self, peer, reason)
+        State::request_handshake(self, entry, reason)
     }
 
     #[allow(clippy::type_complexity)]
@@ -1117,7 +1105,7 @@ where
             // FIXME: Adjust our tests to backdate/forward date entries instead?
             && (cfg!(test) || entry.age() > Duration::from_secs(10));
         let scheduled_handshake = self
-            .request_handshake(*entry.peer(), event::builder::HandshakeReason::Remote)
+            .request_handshake(&entry, event::builder::HandshakeReason::Remote)
             .is_some();
 
         self.subscriber().on_unknown_path_secret_packet_accepted(
@@ -1241,7 +1229,7 @@ where
         //
         // Handshaking will be rate limited per destination peer (and at least
         // de-duplicated).
-        self.request_handshake(*entry.peer(), event::builder::HandshakeReason::Remote);
+        self.request_handshake(&entry, event::builder::HandshakeReason::Remote);
 
         Some(packet)
     }
