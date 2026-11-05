@@ -198,7 +198,9 @@ impl Registry {
                 "TokioRuntime:WorkerUnparkCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta(read(&weak, move |m| m.worker_park_count(worker))),
+                // The park/unpark count goes up on every park and every unpark, so half of it
+                // (rounded down) is the unpark count. Reading one counter keeps this monotonic.
+                delta(read(&weak, move |m| m.worker_park_unpark_count(worker) / 2)),
             );
             self.register_pruning_list_callback(
                 "TokioRuntime:WorkerNoopCount".into(),
