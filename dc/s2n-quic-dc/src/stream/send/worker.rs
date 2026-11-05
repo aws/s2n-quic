@@ -218,17 +218,7 @@ where
 
         self.poll_once(cx);
 
-        // check if the application sent us any more messages
-        if !self
-            .shared
-            .sender
-            .worker_waker
-            .on_worker_sleep()
-            .is_working()
-        {
-            // yield to the runtime
-            cx.waker().wake_by_ref();
-        }
+        self.shared.sender.worker_waker.on_worker_sleep();
 
         let current = self.snapshot();
 
