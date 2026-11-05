@@ -9,8 +9,10 @@ enum Feature {
     ControlMessage,
     SocketMessage,
     SocketMultiMessage,
+    SocketWsaMessage,
     MtuDiscovery,
     GenericSegmentationOffload,
+    SegmentationOffload,
     GenericReceiveOffload,
     PacketInfo,
     TypeOfService,
@@ -22,8 +24,10 @@ impl Feature {
             ControlMessage => "cmsg",
             SocketMessage => "socket_msg",
             SocketMultiMessage => "socket_mmsg",
+            SocketWsaMessage => "socket_wsamsg",
             MtuDiscovery => "mtu_disc",
             GenericSegmentationOffload => "gso",
+            SegmentationOffload => "segment_offload",
             GenericReceiveOffload => "gro",
             PacketInfo => "pktinfo",
             TypeOfService => "tos",
@@ -43,12 +47,14 @@ impl From<&str> for Feature {
     }
 }
 
-const ALL_FEATURES: [Feature; 8] = [
+const ALL_FEATURES: [Feature; 10] = [
     ControlMessage,
     SocketMessage,
     SocketMultiMessage,
+    SocketWsaMessage,
     MtuDiscovery,
     GenericSegmentationOffload,
+    SegmentationOffload,
     GenericReceiveOffload,
     PacketInfo,
     TypeOfService,
@@ -105,6 +111,18 @@ fn main() -> Result<(), Error> {
             features.insert(PacketInfo);
             features.insert(TypeOfService);
         }
+        "windows" => {
+            // miri doesn't support the way we detect syscall support so override it
+            if is_miri {
+                features.insert(SocketWsaMessage);
+            }
+
+            // The DF / `IP_PMTUDISC_PROBE` sockopts are only applied by the
+            // `WSASendMsg` IO provider, so this tracks it.
+            if features.supports(SocketWsaMessage) {
+                features.insert(MtuDiscovery);
+            }
+        }
         "android" => {
             features.insert(MtuDiscovery);
             features.insert(PacketInfo);
@@ -152,6 +170,12 @@ impl Features {
         let newly_inserted = self.features.insert(feature);
         if newly_inserted {
             println!("cargo:rustc-cfg=s2n_quic_platform_{}", feature.name());
+        }
+
+        // Both Linux GSO and Windows USO allow packing more than one packet into a single ring
+        // entry, even though the segment size is communicated to the kernel in different ways.
+        if matches!(feature, GenericSegmentationOffload | SocketWsaMessage) {
+            self.insert(SegmentationOffload);
         }
     }
 

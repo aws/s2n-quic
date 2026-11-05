@@ -11,6 +11,10 @@ pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
 pub mod msg;
 pub mod simple;
+#[cfg(s2n_quic_platform_socket_wsamsg)]
+pub mod wsacmsg;
+#[cfg(s2n_quic_platform_socket_wsamsg)]
+pub mod wsamsg;
 
 pub mod default {
     cfg_if::cfg_if! {
@@ -18,6 +22,8 @@ pub mod default {
             pub use super::mmsg::*;
         } else if #[cfg(s2n_quic_platform_socket_msg)] {
             pub use super::msg::*;
+        } else if #[cfg(s2n_quic_platform_socket_wsamsg)] {
+            pub use super::wsamsg::*;
         } else {
             pub use super::simple::*;
         }
