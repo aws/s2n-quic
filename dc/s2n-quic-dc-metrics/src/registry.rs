@@ -70,6 +70,10 @@ impl RegistryInner {
             }
         }
 
+        // Pruning callback lists can empty out; drop them so their keys don't accumulate.
+        self.metrics
+            .retain(|_, value| !matches!(value, MetricValue::ValueList(list) if list.is_empty()));
+
         Some(output)
     }
 }
@@ -205,6 +209,43 @@ impl Registry {
         D: std::fmt::Display,
         F: FnMut() -> D + 'static + Send,
     {
+        self.register_value_list(metric, aggregation, unit, callback);
+    }
+
+    /// Like [`Self::register_list_callback`], but the callback is unregistered the first time it
+    /// returns `None`. Use this when the callback reads from something that can go away, so the
+    /// registry doesn't keep it (or what it captures) alive forever.
+    #[track_caller]
+    #[cfg_attr(not(tokio_unstable), allow(dead_code))] // only `instrument_runtime` uses this
+    pub(crate) fn register_pruning_list_callback<D, F>(
+        &self,
+        metric: String,
+        aggregation: Option<String>,
+        unit: Unit,
+        callback: F,
+    ) where
+        D: std::fmt::Display,
+        F: FnMut() -> Option<D> + 'static + Send,
+    {
+        self.register_value_list(
+            metric,
+            aggregation,
+            unit,
+            crate::callback::Pruning(callback),
+        );
+    }
+
+    #[track_caller]
+    fn register_value_list<C>(
+        &self,
+        metric: String,
+        aggregation: Option<String>,
+        unit: Unit,
+        callback: C,
+    ) where
+        C: 'static,
+        (Vec<C>, Unit): crate::callback::ValueList + Send,
+    {
         let mut inner = self.inner.lock().unwrap();
 
         let entry = inner.metrics.entry(MetricKey {
@@ -218,7 +259,7 @@ impl Registry {
             }
             std::collections::btree_map::Entry::Occupied(mut o) => {
                 if let MetricValue::ValueList(previous) = o.get_mut() {
-                    if let Some(previous) = previous.as_any().downcast_mut::<(Vec<F>, Unit)>() {
+                    if let Some(previous) = previous.as_any().downcast_mut::<(Vec<C>, Unit)>() {
                         assert_eq!(previous.1, unit);
                         previous.0.push(callback);
                     } else {
