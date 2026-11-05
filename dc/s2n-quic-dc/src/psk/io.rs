@@ -1086,6 +1086,7 @@ mod tests {
     use super::*;
     use crate::{
         path::secret::{stateless_reset::Signer, Map},
+        psk::server::ShutdownGuard,
         testing::{init_tracing, NoopSubscriber, TestTlsProvider},
     };
     use s2n_quic::provider::{
@@ -1094,7 +1095,6 @@ mod tests {
     };
     use s2n_quic_core::time::StdClock;
     use std::time::Instant;
-    use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately
     #[derive(Default)]
@@ -1168,7 +1168,7 @@ mod tests {
     struct TestSetup {
         client: Client,
         server_addr: SocketAddr,
-        _server_guard: DropGuard,
+        _server_guard: ShutdownGuard,
     }
 
     impl TestSetup {
