@@ -50,6 +50,11 @@ impl Client {
     /// #    Ok(())
     /// # }
     /// ```
+    #[cfg(any(
+        feature = "provider-tls-default",
+        feature = "provider-tls-s2n",
+        feature = "provider-tls-rustls"
+    ))]
     pub fn bind<T>(socket: T) -> Result<Self, StartError>
     where
         T: io::TryInto,
@@ -80,7 +85,7 @@ impl Client {
     /// #    Ok(())
     /// # }
     /// ```
-    pub fn builder() -> Builder<impl ClientProviders> {
+    pub fn builder() -> Builder<impl ClientProviders<Tls = tls::Default>> {
         Builder::default()
     }
 
