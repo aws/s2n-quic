@@ -13,6 +13,11 @@ pub(crate) trait ValueList {
 
     /// Returns any for the self type, used to cast back when registering equally-named metrics.
     fn as_any(&mut self) -> &mut dyn Any;
+
+    /// Returns true once the list has no callbacks left, so the registry can drop its entry.
+    fn is_empty(&self) -> bool {
+        false
+    }
 }
 
 impl<D, F> ValueList for (Vec<F>, Unit)
@@ -79,5 +84,9 @@ where
 
     fn as_any(&mut self) -> &mut dyn Any {
         self
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }

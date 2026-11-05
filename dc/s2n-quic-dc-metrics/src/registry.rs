@@ -70,6 +70,10 @@ impl RegistryInner {
             }
         }
 
+        // Pruning callback lists can empty out; drop them so their keys don't accumulate.
+        self.metrics
+            .retain(|_, value| !matches!(value, MetricValue::ValueList(list) if list.is_empty()));
+
         Some(output)
     }
 }
