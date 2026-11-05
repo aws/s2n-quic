@@ -23,7 +23,7 @@ where
 {
     pub packet: &'a mut stream::decoder::Packet<'p>,
     pub payload_cursor: usize,
-    pub is_decrypted_in_place: bool,
+    pub decryption: Decryption,
     pub ecn: ExplicitCongestionNotification,
     pub clock: &'a C,
     pub opener: &'a D,
@@ -31,6 +31,34 @@ where
     pub receiver: &'a mut Receiver,
     pub copied_len: usize,
     pub publisher: &'a Pub,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Decryption {
+    Pending,
+    InPlace,
+    /// Plaintext is in the destination; the packet payload remains ciphertext.
+    Copied,
+}
+
+impl<D, K, C: Clock + ?Sized, Pub> Packet<'_, '_, D, K, C, Pub>
+where
+    D: crypto::open::Application,
+    K: crypto::open::control::Stream,
+    Pub: event::ConnectionPublisher,
+{
+    /// Opens unread ciphertext without consuming payload bytes.
+    #[inline]
+    pub fn authenticate(&mut self) -> Result<(), Error> {
+        if self.decryption != Decryption::Pending {
+            return Ok(());
+        }
+
+        self.packet.decrypt_in_place(self.opener, self.control)?;
+        self.decryption = Decryption::InPlace;
+        self.receiver
+            .on_cleartext_stream_packet(self.packet, self.ecn, self.clock, self.publisher)
+    }
 }
 
 impl<D, K, C: Clock, Pub> reader::Storage for Packet<'_, '_, D, K, C, Pub>
@@ -49,16 +77,9 @@ where
 
     #[inline]
     fn read_chunk(&mut self, watermark: usize) -> Result<reader::storage::Chunk<'_>, Self::Error> {
-        if !self.is_decrypted_in_place {
-            self.receiver.on_stream_packet_in_place(
-                self.opener,
-                self.control,
-                self.packet,
-                self.ecn,
-                self.clock,
-                self.publisher,
-            )?;
-            self.is_decrypted_in_place = true;
+        self.authenticate()?;
+        if self.decryption == Decryption::Copied {
+            return Ok(Default::default());
         }
 
         let payload = &self.packet.payload()[self.payload_cursor..];
@@ -80,7 +101,7 @@ where
         let mut should_read_chunk = false;
 
         // we've already decrypted the payload
-        should_read_chunk |= self.is_decrypted_in_place;
+        should_read_chunk |= self.decryption != Decryption::Pending;
 
         // we've already started reading the payload
         should_read_chunk |= self.payload_cursor > 0;
@@ -96,12 +117,11 @@ where
         }
 
         let did_write = dest.put_uninit_slice(self.packet.payload().len(), |dest| {
-            self.receiver.on_stream_packet_copy(
-                self.opener,
-                self.control,
+            self.packet.decrypt(self.opener, self.control, dest)?;
+            self.decryption = Decryption::Copied;
+            self.receiver.on_cleartext_stream_packet(
                 self.packet,
                 self.ecn,
-                dest,
                 self.clock,
                 self.publisher,
             )
@@ -135,6 +155,11 @@ where
     #[inline]
     fn skip_until(&mut self, offset: VarInt) -> Result<(), Self::Error> {
         ensure!(offset > self.current_offset(), Ok(()));
+
+        // Reassembly may skip buffered data without reading any payload. Authenticate before
+        // advancing so a forged FIN is rejected while the reassembler can roll back its cursors.
+        self.authenticate()?;
+
         let remaining = offset - self.current_offset();
         let remaining = remaining.as_u64() as usize;
         self.payload_cursor = (self.payload_cursor + remaining).min(self.packet.payload().len());
