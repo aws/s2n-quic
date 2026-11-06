@@ -79,6 +79,9 @@ pub struct ApplicationSpace<Config: endpoint::Config> {
     /// Keeps track of if the TLS session still exists. If it does, we buffer
     /// the crypto frames received. If not there's no chance that these messages will be read.
     pub buffer_crypto_frames: bool,
+    /// Whether the next packet prioritizes datagrams. This alternates each packet, so it needs to
+    /// outlive the payload, which is created for a single packet.
+    prioritize_datagrams: bool,
 }
 
 impl<Config: endpoint::Config> fmt::Debug for ApplicationSpace<Config> {
@@ -123,6 +126,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             dc_manager,
             skip_counter: None,
             buffer_crypto_frames: Config::ENDPOINT_TYPE.is_client(),
+            prioritize_datagrams: false,
         }
     }
 
@@ -223,6 +227,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 &mut self.crypto_stream,
                 &mut self.datagram_manager,
                 &mut self.dc_manager,
+                &mut self.prioritize_datagrams,
             ),
             timestamp: context.timestamp,
             transmission_constraint,
