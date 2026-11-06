@@ -19,8 +19,6 @@ testing = [
     "s2n-quic-platform/testing",
     "tracing-subscriber",
 ]
-# Enables s2n-quic event emission via `tracing` (used by examples/handshake.rs)
-event-tracing = ["testing", "s2n-quic/provider-event-tracing"]
 tokio = ["tokio/io-util", "tokio/net", "tokio/rt-multi-thread", "tokio/time"]
 
 [dependencies]
@@ -95,7 +93,3 @@ panic_in_result_fn = "deny"
 large_futures = "deny"
 unwrap_used = "deny"
 unwrap_in_result = "deny"
-
-[[example]]
-name = "handshake"
-required-features = ["event-tracing"]
