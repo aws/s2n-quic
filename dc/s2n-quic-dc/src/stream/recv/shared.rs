@@ -471,9 +471,21 @@ impl Inner {
             .on_read_buffer(&mut self.reassembler, out_buf, accept_state, clock);
 
         // check if we have any packets to process
-        let has_tls_buffered = shared.s2n_connection.as_ref().is_some_and(|conn| {
-            conn.buffered_plaintext_len() > 0 || conn.buffered_ciphertext_len() > 0
-        });
+        let (tls_plaintext_len, tls_ciphertext_len) =
+            shared.s2n_connection.as_ref().map_or((0, 0), |conn| {
+                (
+                    conn.buffered_plaintext_len(),
+                    conn.buffered_ciphertext_len(),
+                )
+            });
+        let has_tls_buffered = tls_plaintext_len > 0 || tls_ciphertext_len > 0;
+        if self.buffer.is_empty() && has_tls_buffered {
+            use event::ConnectionPublisher as _;
+            publisher.on_stream_read_tls_buffered(event::builder::StreamReadTlsBuffered {
+                plaintext_len: tls_plaintext_len,
+                ciphertext_len: tls_ciphertext_len,
+            });
+        }
         if !self.buffer.is_empty() || has_tls_buffered {
             let res = {
                 let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);

@@ -78,7 +78,7 @@ impl State {
         let mut reader = reader.with_read_limit(credits.len);
 
         if let Some(s2n) = s2n_connection {
-            return s2n.write(message, &mut reader, credits.is_fin);
+            return s2n.write(message, &mut reader, credits.is_fin, publisher);
         }
 
         let max_header_len = self.max_header_len();

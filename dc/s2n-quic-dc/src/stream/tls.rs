@@ -34,6 +34,7 @@ use std::{
 use tokio::net::TcpStream;
 
 use crate::{
+    event::{self, ConnectionPublisher},
     msg,
     stream::{
         environment::{tokio::Environment, Environment as _},
@@ -48,13 +49,58 @@ pub use cert_chain::CertificateChain;
 
 pub struct S2nTlsConnection {
     socket: Option<Arc<Single<TcpStream>>>,
-    connection: Mutex<(Conn, ReadState)>,
+    connection: Mutex<(Conn, ReadState, RecordTracker)>,
     cert_chain: Option<CertificateChain>,
 }
 
 struct ReadState {
     reader: Incremental,
     buffer: bytes::BytesMut,
+}
+
+const RECORD_HEADER_LEN: usize = 5;
+
+/// Finds TLS record boundaries in the ciphertext stream s2n-tls writes.
+#[derive(Default)]
+struct RecordTracker {
+    header: [u8; RECORD_HEADER_LEN],
+    header_len: usize,
+    remaining_fragment_len: usize,
+}
+
+impl RecordTracker {
+    /// Consumes the next `bytes` of the stream, calling `on_record` with the fragment length of
+    /// each record header that completes.
+    fn observe(&mut self, mut bytes: &[u8], mut on_record: impl FnMut(usize)) {
+        while !bytes.is_empty() {
+            if self.remaining_fragment_len > 0 {
+                let skipped = self.remaining_fragment_len.min(bytes.len());
+                self.remaining_fragment_len -= skipped;
+                bytes = &bytes[skipped..];
+                continue;
+            }
+
+            let copied = (RECORD_HEADER_LEN - self.header_len).min(bytes.len());
+            self.header[self.header_len..self.header_len + copied]
+                .copy_from_slice(&bytes[..copied]);
+            self.header_len += copied;
+            bytes = &bytes[copied..];
+
+            if self.header_len == RECORD_HEADER_LEN {
+                self.header_len = 0;
+                self.remaining_fragment_len =
+                    u16::from_be_bytes([self.header[3], self.header[4]]).into();
+                on_record(self.remaining_fragment_len);
+            }
+        }
+    }
+}
+
+/// Context for [`send_io_cb`].
+struct WriteContext<'a, M, P> {
+    message: &'a mut M,
+    records: &'a mut RecordTracker,
+    publisher: &'a P,
 }
 
 pub type Conn = Box<dyn AsMut<s2n_tls::connection::Connection> + Send>;
@@ -90,6 +136,7 @@ impl S2nTlsConnection {
                     reader: Incremental::new(VarInt::ZERO),
                     buffer: bytes::BytesMut::with_capacity(8192),
                 },
+                RecordTracker::default(),
             )),
             cert_chain: None,
         })
@@ -171,25 +218,33 @@ impl S2nTlsConnection {
         clippy::unwrap_in_result,
         reason = "lock is only poisoned if another thread already panicked while holding it"
     )]
-    pub(crate) fn write<M, R>(
+    pub(crate) fn write<M, R, P>(
         &self,
         message: &mut M,
         reader: &mut R,
         is_fin: bool,
+        publisher: &P,
     ) -> Result<(), crate::stream::send::Error>
     where
         M: super::send::application::state::Message,
         R: s2n_quic_core::buffer::reader::storage::Infallible,
+        P: ConnectionPublisher,
     {
         let mut guard = self.connection.lock().unwrap();
+        let (conn, _, records) = &mut *guard;
         let conn = CallbackResetGuard {
-            conn: (*guard.0).as_mut(),
+            conn: (**conn).as_mut(),
             reset_write: true,
             reset_read: false,
         };
 
-        let mut conn = conn.set_context_mut(message);
-        conn.set_send_callback(Some(send_io_cb::<M>))
+        let mut context = WriteContext {
+            message,
+            records,
+            publisher,
+        };
+        let mut conn = conn.set_context_mut(&mut context);
+        conn.set_send_callback(Some(send_io_cb::<M, P>))
             .expect("infallible");
 
         // FIXME: If the application writes a large payload, this loop ends up buffering that
@@ -249,7 +304,7 @@ impl S2nTlsConnection {
         >,
     ) -> Result<(), super::recv::Error> {
         let mut guard = self.connection.lock().unwrap();
-        let (conn, read_state) = &mut *guard;
+        let (conn, read_state, _) = &mut *guard;
         let conn = CallbackResetGuard {
             conn: (**conn).as_mut(),
             reset_write: false,
@@ -478,21 +533,34 @@ unsafe extern "C" fn send_direct_cb<'a>(
 }
 
 /// The function should return the number of bytes sent or set errno and return an error code < 0.
-unsafe extern "C" fn send_io_cb<'a, M>(ctx: *mut core::ffi::c_void, buf: *const u8, len: u32) -> i32
+unsafe extern "C" fn send_io_cb<'a, M, P>(
+    ctx: *mut core::ffi::c_void,
+    buf: *const u8,
+    len: u32,
+) -> i32
 where
     M: 'a + super::send::application::state::Message,
+    P: 'a + ConnectionPublisher,
 {
     #[expect(
         clippy::unwrap_used,
-        reason = "ctx is the non-null message context pointer we set on the connection before s2n-tls invokes this callback"
+        reason = "ctx is the non-null WriteContext pointer we set on the connection before s2n-tls invokes this callback"
     )]
-    let message = ctx.cast::<M>().as_mut::<'a>().unwrap();
+    let WriteContext {
+        message,
+        records,
+        publisher,
+    } = ctx.cast::<WriteContext<'a, M, P>>().as_mut::<'a>().unwrap();
 
     // Clamp the length such that we can never fail when converting the written length into an i32
     // for the return type.
     let len = len.clamp(0, i32::MAX as u32);
 
     let mut buf = std::slice::from_raw_parts(buf, len as usize);
+
+    records.observe(buf, |len| {
+        publisher.on_stream_write_tls_record(event::builder::StreamWriteTlsRecord { len });
+    });
 
     while !buf.is_empty() {
         #[expect(

@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 
 use crate::{
     stream::client::tokio::Client,
@@ -119,6 +122,13 @@ fn rebind_tls_to_current_runtime() {
 }
 
 fn dc_client() -> Client<crate::psk::client::Provider, crate::event::tracing::Subscriber> {
+    dc_client_with_subscriber(crate::event::tracing::Subscriber::default())
+}
+
+fn dc_client_with_subscriber<S>(subscriber: S) -> Client<crate::psk::client::Provider, S>
+where
+    S: crate::event::Subscriber + Clone,
+{
     let map = crate::path::secret::Map::new(
         crate::path::secret::stateless_reset::Signer::new(b"default"),
         50,
@@ -135,9 +145,9 @@ fn dc_client() -> Client<crate::psk::client::Provider, crate::event::tracing::Su
             Name::from_static("qlaws.qlaws"),
         )
         .unwrap();
-    Client::<crate::psk::client::Provider, crate::event::tracing::Subscriber>::builder()
+    Client::<crate::psk::client::Provider, S>::builder()
         .with_udp(false)
-        .build(hs, crate::event::tracing::Subscriber::default())
+        .build(hs, subscriber)
         .unwrap()
 }
 
@@ -769,5 +779,109 @@ impl VerifyHostNameClientCertVerifier {
         VerifyHostNameClientCertVerifier {
             host_name: host_name.to_string(),
         }
+    }
+}
+
+/// Records the TLS stream events checked by [`tls_record_events`].
+#[derive(Clone, Default)]
+struct TlsEvents {
+    written_records: Arc<Mutex<Vec<usize>>>,
+    buffered_reads: Arc<AtomicUsize>,
+}
+
+impl crate::event::Subscriber for TlsEvents {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &self,
+        _meta: &crate::event::api::ConnectionMeta,
+        _info: &crate::event::api::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    fn on_stream_write_tls_record(
+        &self,
+        _context: &Self::ConnectionContext,
+        _meta: &crate::event::api::ConnectionMeta,
+        event: &crate::event::api::StreamWriteTlsRecord,
+    ) {
+        self.written_records.lock().unwrap().push(event.len);
+    }
+
+    fn on_stream_read_tls_buffered(
+        &self,
+        _context: &Self::ConnectionContext,
+        _meta: &crate::event::api::ConnectionMeta,
+        _event: &crate::event::api::StreamReadTlsBuffered,
+    ) {
+        self.buffered_reads.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// The client reports the length of each TLS record it writes, and reports reading plaintext that
+/// s2n-tls held back after an earlier read.
+#[tokio::test]
+async fn tls_record_events() {
+    const REQUEST_LEN: usize = 1000;
+    const RESPONSE_LEN: usize = 1 << 14;
+    // The content type byte and AEAD tag TLS 1.3 adds to each record.
+    const TLS13_RECORD_OVERHEAD: usize = 17;
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+
+    let (release, held) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let acceptor = s2n_tls_tokio::TlsAcceptor::new(server_config());
+        let mut stream = acceptor.accept(socket).await.unwrap();
+        // Send the response as one record, which holds more plaintext than one client read takes.
+        let conn: &mut s2n_tls::connection::Connection = stream.as_mut();
+        conn.prefer_throughput().unwrap();
+        let mut request = [0; REQUEST_LEN];
+        stream.read_exact(&mut request).await.unwrap();
+        stream.write_all(&[0x42; RESPONSE_LEN]).await.unwrap();
+        stream.flush().await.unwrap();
+        let _ = held.await;
+    });
+
+    let events = TlsEvents::default();
+    let client = dc_client_with_subscriber(events.clone());
+    let mut stream = client
+        .connect_tls(address, Name::from_static("qlaws.qlaws"), &client_config())
+        .await
+        .unwrap();
+    stream.write_all(&[1; REQUEST_LEN]).await.unwrap();
+
+    let mut response = vec![0; RESPONSE_LEN];
+    stream.read_exact(&mut response).await.unwrap();
+
+    let _ = release.send(());
+    server.await.unwrap();
+
+    assert_eq!(
+        *events.written_records.lock().unwrap(),
+        [REQUEST_LEN + TLS13_RECORD_OVERHEAD]
+    );
+    assert!(events.buffered_reads.load(Ordering::Relaxed) > 0);
+}
+
+/// Record lengths are found wherever s2n-tls splits its output between send callbacks.
+#[test]
+fn record_tracker_split_headers() {
+    let mut output = vec![];
+    for len in [3u16, 300] {
+        output.extend_from_slice(&[0x17, 0x03, 0x03]);
+        output.extend_from_slice(&len.to_be_bytes());
+        output.resize(output.len() + usize::from(len), 0);
+    }
+
+    for split in 0..=output.len() {
+        let (first, second) = output.split_at(split);
+        let mut tracker = super::RecordTracker::default();
+        let mut lens = vec![];
+        tracker.observe(first, |len| lens.push(len));
+        tracker.observe(second, |len| lens.push(len));
+        assert_eq!(lens, [3, 300], "split at {split}");
     }
 }
