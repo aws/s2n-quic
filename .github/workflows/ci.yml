@@ -1130,6 +1130,18 @@ jobs:
         working-directory: dc/wireshark
         run: cargo xtask test
 
+      # DEBUG ONLY: inspect the plugin tshark was given when the test fails
+      - name: Debug plugin after failure
+        if: failure() && runner.os == 'Linux'
+        working-directory: dc/wireshark
+        run: |
+          set -x
+          find target/wireshark -type f -exec ls -l {} \;
+          nm -D --defined-only target/wireshark/plugins/4.6/epan/*.so | grep -E 'plugin_' || true
+          ldd target/wireshark/plugins/4.6/epan/*.so | grep -E 'not found|wireshark|wsutil' || true
+          WIRESHARK_PLUGIN_DIR=target/wireshark/plugins tshark -G plugins | grep -i dcquic || echo "dcquic not listed"
+          WIRESHARK_PLUGIN_DIR=target/wireshark/plugins tshark --log-level debug -G protocols 2>&1 | grep -iE 'dcquic|couldn.t load|compiled for|has no' | head -20
+
       - name: Run build
         working-directory: dc/wireshark
         run: cargo xtask build
