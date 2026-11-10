@@ -49,23 +49,19 @@ pub struct Controller {
 }
 
 impl Controller {
-    /// Creates a new `stream::Controller`
+    /// Creates a new `stream::Controller`.
     ///
-    /// The peer will be allowed to open streams up to the given `initial_local_limits`.
-    ///
-    /// For local_initiated unidirectional streams, the local application will be allowed to open
-    /// up to the minimum of the given local limits (`stream_limits`) and `initial_peer_limits`.
-    ///
-    /// For bidirectional streams, the local application will be allowed to open
-    /// up to the minimum of the given `initial_local_limits` and `initial_peer_limits`.
-    ///
-    /// The peer may give additional credit to open more streams by delivering `MAX_STREAMS` frames.
+    /// `initial_peer_limits` and `stream_limits` constrain streams initiated by
+    /// the local endpoint. `current_local_limits` constrains streams initiated
+    /// by the peer and includes any post-handshake raises.
+    /// `advertised_local_limits` is the transport-parameter snapshot the peer
+    /// received and is used as the `MAX_STREAMS` synchronization baseline.
     pub fn new(
         local_endpoint_type: endpoint::Type,
         initial_peer_limits: InitialFlowControlLimits,
-        initial_local_limits: InitialFlowControlLimits,
+        current_local_limits: InitialFlowControlLimits,
         stream_limits: stream::Limits,
-        advertised_limits: InitialFlowControlLimits,
+        advertised_local_limits: InitialFlowControlLimits,
         min_rtt: Duration,
     ) -> Self {
         Self {
@@ -75,11 +71,11 @@ impl Controller {
                 stream_limits.max_open_local_bidirectional_streams,
             ),
             remote_bidi_controller: RemoteInitiated::new(
-                initial_local_limits.max_open_remote_bidirectional_streams,
+                current_local_limits.max_open_remote_bidirectional_streams,
                 stream_limits
                     .max_total_remote_bidirectional_streams
                     .as_varint(),
-                advertised_limits.max_open_remote_bidirectional_streams,
+                advertised_local_limits.max_open_remote_bidirectional_streams,
                 min_rtt,
             ),
             local_uni_controller: LocalInitiated::new(
@@ -87,11 +83,11 @@ impl Controller {
                 stream_limits.max_open_local_unidirectional_streams,
             ),
             remote_uni_controller: RemoteInitiated::new(
-                initial_local_limits.max_open_remote_unidirectional_streams,
+                current_local_limits.max_open_remote_unidirectional_streams,
                 stream_limits
                     .max_total_remote_unidirectional_streams
                     .as_varint(),
-                advertised_limits.max_open_remote_unidirectional_streams,
+                advertised_local_limits.max_open_remote_unidirectional_streams,
                 min_rtt,
             ),
         }

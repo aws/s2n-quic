@@ -210,7 +210,7 @@ struct Model {
 
 impl Model {
     fn new(local_endpoint_type: endpoint::Type, limits: Limits) -> Self {
-        let (initial_local_limits, advertised_local_limits, initial_remote_limits, stream_limits) =
+        let (current_local_limits, advertised_local_limits, initial_remote_limits, stream_limits) =
             limits.as_controller_limits();
 
         Model {
@@ -236,7 +236,7 @@ impl Model {
             subject: Controller::new(
                 local_endpoint_type,
                 initial_remote_limits,
-                initial_local_limits,
+                current_local_limits,
                 stream_limits,
                 advertised_local_limits,
                 DEFAULT_INITIAL_RTT,
@@ -497,11 +497,11 @@ enum Operation {
 #[derive(Debug, TypeGenerator, Clone, Copy)]
 struct Limits {
     // OpenRemoteBidi (initial_local_limits)
-    initial_local_max_remote_bidi: u8,
+    current_local_max_remote_bidi: u8,
     max_total_remote_bidi: u8,
 
     // OpenRemoteUni (initial_local_limits)
-    initial_local_max_remote_uni: u8,
+    current_local_max_remote_uni: u8,
     max_total_remote_uni: u8,
 
     // OpenLocalBidi (initial_remote_limits)
@@ -524,7 +524,7 @@ impl Limits {
         InitialFlowControlLimits,
         stream::Limits,
     ) {
-        let mut initial_local_limits = InitialFlowControlLimits::default();
+        let mut current_local_limits = InitialFlowControlLimits::default();
         let mut advertised_local_limits = InitialFlowControlLimits::default();
         let mut initial_remote_limits = InitialFlowControlLimits::default();
         let stream_limits = stream::Limits {
@@ -543,10 +543,10 @@ impl Limits {
             ..Default::default()
         };
 
-        // OpenRemoteBidi (initial_local_limits)
-        initial_local_limits.max_open_remote_bidirectional_streams =
-            VarInt::from_u32(self.initial_local_max_remote_bidi.into());
-        advertised_local_limits.max_open_remote_bidirectional_streams = initial_local_limits
+        // OpenRemoteBidi (current_local_limits)
+        current_local_limits.max_open_remote_bidirectional_streams =
+            VarInt::from_u32(self.current_local_max_remote_bidi.into());
+        advertised_local_limits.max_open_remote_bidirectional_streams = current_local_limits
             .max_open_remote_bidirectional_streams
             .min(
                 stream_limits
@@ -554,10 +554,10 @@ impl Limits {
                     .as_varint(),
             );
 
-        // OpenRemoteUni (initial_local_limits)
-        initial_local_limits.max_open_remote_unidirectional_streams =
-            VarInt::from_u32(self.initial_local_max_remote_uni.into());
-        advertised_local_limits.max_open_remote_unidirectional_streams = initial_local_limits
+        // OpenRemoteUni (current_local_limits)
+        current_local_limits.max_open_remote_unidirectional_streams =
+            VarInt::from_u32(self.current_local_max_remote_uni.into());
+        advertised_local_limits.max_open_remote_unidirectional_streams = current_local_limits
             .max_open_remote_unidirectional_streams
             .min(
                 stream_limits
@@ -576,7 +576,7 @@ impl Limits {
             VarInt::from_u32(self.initial_remote_max_local_uni.into());
 
         (
-            initial_local_limits,
+            current_local_limits,
             advertised_local_limits,
             initial_remote_limits,
             stream_limits,
