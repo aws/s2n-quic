@@ -1142,6 +1142,18 @@ jobs:
           WIRESHARK_PLUGIN_DIR=target/wireshark/plugins tshark -G plugins | grep -i dcquic || echo "dcquic not listed"
           WIRESHARK_PLUGIN_DIR=target/wireshark/plugins tshark --log-level debug -G protocols 2>&1 | grep -iE 'dcquic|couldn.t load|compiled for|has no' | head -20
 
+      # DEBUG ONLY: is the AppArmor tshark profile blocking the plugin dir?
+      - name: Debug apparmor after failure
+        if: failure() && runner.os == 'Linux'
+        working-directory: dc/wireshark
+        run: |
+          set -x
+          ls -l /etc/apparmor.d/tshark || true
+          sudo aa-status 2>&1 | grep -iE 'profiles are in|shark' || true
+          WIRESHARK_PLUGIN_DIR=target/wireshark/plugins tshark --log-level debug -G plugins 2>&1 | grep -iE 'scanning|dcquic' || true
+          sudo journalctl -k --no-pager 2>&1 | grep -i 'apparmor="DENIED"' | grep -i tshark | tail -10 || true
+          sudo dmesg 2>&1 | grep -i 'apparmor="DENIED"' | grep -i tshark | tail -10 || true
+
       - name: Run build
         working-directory: dc/wireshark
         run: cargo xtask build
