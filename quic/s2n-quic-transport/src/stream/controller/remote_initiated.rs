@@ -88,16 +88,11 @@ impl RemoteInitiated {
         // get the total number of streams that are allowed
         let max_allowed_stream_limit = self.max_streams_sync.latest_value().as_u64();
 
-        // since streams are 0-indexed, using `max_allowed_stream_limit` to calculate
-        // the stream_id gives 1 stream_id greater than the allowed limit
-        let not_allowed_stream_id = StreamId::nth(
-            stream_id.initiator(),
-            stream_id.stream_type(),
-            max_allowed_stream_limit,
-        )
-        .expect("max_streams is limited to MAX_STREAMS_MAX_VALUE");
+        // Stream IDs reserve their two low bits for initiator and direction, so
+        // the remaining value is the zero-based stream index.
+        let opened_stream_count = stream_id.as_varint().as_u64() / 4 + 1;
 
-        if stream_id >= not_allowed_stream_id {
+        if opened_stream_count > max_allowed_stream_limit {
             //= https://www.rfc-editor.org/rfc/rfc9000#section-4.6
             //# Endpoints MUST NOT exceed the limit set by their peer.  An endpoint
             //# that receives a frame with a stream ID exceeding the limit it has
@@ -344,6 +339,24 @@ mod tests {
         let controller = RemoteInitiated::new(max_local, MAX_STREAMS_MAX_VALUE, max_local, MIN_RTT);
 
         assert_eq!(controller.latest_limit(), max_local);
+    }
+
+    #[test]
+    fn maximum_stream_limit_accepts_all_valid_stream_ids() {
+        let mut controller = RemoteInitiated::new(
+            MAX_STREAMS_MAX_VALUE,
+            MAX_STREAMS_MAX_VALUE,
+            MAX_STREAMS_MAX_VALUE,
+            MIN_RTT,
+        );
+        let last_stream_index = MAX_STREAMS_MAX_VALUE.as_u64() - 1;
+
+        for endpoint in [endpoint::Type::Client, endpoint::Type::Server] {
+            for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
+                let last_stream = StreamId::nth(endpoint, stream_type, last_stream_index).unwrap();
+                assert_eq!(controller.on_remote_open_stream(last_stream), Ok(()));
+            }
+        }
     }
 
     /// Refill intervals to advance after the cumulative cap is reached. Enough
