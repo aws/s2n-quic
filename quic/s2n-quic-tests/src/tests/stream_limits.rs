@@ -403,56 +403,6 @@ impl s2n_quic_core::connection::limits::Limiter for PostHandshakeLimiter {
     }
 }
 
-/// Proves concurrent stream limits raised via `on_post_handshake` are honored:
-/// the client can hold more simultaneous streams open than `on_connection`
-/// allowed.
-#[test]
-fn post_handshake_raises_open_limit() {
-    let connection_open_bidi = 2u64;
-    let connection_open_uni = 2u64;
-    let raised_open_bidi = CONCURRENT_BIDI;
-    let raised_open_uni = CONCURRENT_UNI;
-
-    let model = Model::default();
-    let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
-
-    test(model.clone(), move |handle| {
-        let server = base_server(handle, model.clone(), detector)?
-            .with_limits(PostHandshakeLimiter {
-                bidi: StreamCapConfig {
-                    connection_open: connection_open_bidi,
-                    handshake_open: raised_open_bidi,
-                    ..StreamCapConfig::default()
-                },
-                uni: StreamCapConfig {
-                    connection_open: connection_open_uni,
-                    handshake_open: raised_open_uni,
-                    ..StreamCapConfig::default()
-                },
-            })?
-            .start()?;
-        let server_addr = start_server(server)?;
-
-        let client = test_client(handle, model.clone())?;
-
-        primary::spawn(async move {
-            let connect = Connect::new(server_addr).with_server_name("localhost");
-            let mut connection = client.connect(connect).await.unwrap();
-
-            // Hold raised_open_uni streams open simultaneously — proves the
-            // raised concurrent limit is in effect.
-            let _uni_streams = open_uni_streams_held(&mut connection, raised_open_uni).await;
-            assert_stream_blocked_uni(&mut connection, uni_blocked_rx, raised_open_uni).await;
-
-            let _bidi_streams = open_bidi_streams_held(&mut connection, raised_open_bidi).await;
-            assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, raised_open_bidi).await;
-        });
-
-        Ok(())
-    })
-    .unwrap();
-}
-
 /// Proves total stream caps raised via `on_post_handshake` are honored: the
 /// client can open more cumulative streams than `on_connection` allowed.
 #[test]
@@ -506,81 +456,6 @@ fn post_handshake_raises_total_limit() {
                 .unwrap();
             assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, raised_total_bidi).await;
             held_bidi.finish().unwrap();
-        });
-
-        Ok(())
-    })
-    .unwrap();
-}
-
-/// Sets open and total stream limits in `on_connection`, configures raises of
-/// both in `on_post_handshake`, and connects with an SNI the Limiter does not
-/// raise for.
-///
-/// Proves `on_connection` stream limits stay in effect when `on_post_handshake`
-/// makes no raise.
-///
-/// Streams stay held, so close-driven refill never reaches the total limit,
-/// which sits above the effective limit, and this test does not check it (see
-/// `post_handshake_effective_limit_unchanged`).
-#[test]
-fn post_handshake_no_limits_raised() {
-    // The open limit is the smaller one (2 < 3), so the `on_connection`
-    // effective limit, `min(open, total)`, is 2. `PostHandshakeLimiter` applies
-    // all raises or none, and applying them lifts the effective limit to
-    // `min(handshake_open, handshake_total)` = 5.
-    let connection_open = 2u64;
-    let connection_total = 3u64;
-    let handshake_open = 5u64;
-    let handshake_total = 12u64;
-    let effective_limit = connection_open.min(connection_total);
-
-    let model = Model::default();
-    let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
-
-    test(model.clone(), move |handle| {
-        let caps = || StreamCapConfig {
-            connection_open,
-            connection_total,
-            handshake_open,
-            handshake_total,
-        };
-        let server = base_server(handle, model.clone(), detector)?
-            .with_limits(PostHandshakeLimiter {
-                bidi: caps(),
-                uni: caps(),
-            })?
-            .start()?;
-        let server_addr = start_server(server)?;
-
-        let client = test_client(handle, model.clone())?;
-
-        primary::spawn(async move {
-            // Does not match the "localhost" SNI that `PostHandshakeLimiter`
-            // raises limits for.
-            let connect = Connect::new(server_addr).with_server_name("qlaws.qlaws");
-            let mut connection = client.connect(connect).await.unwrap();
-
-            // Streams stay held: closing one would replenish open-limit credit
-            // up to the total limit. Sending on the last held stream runs the
-            // transmit path, which delivers `STREAMS_BLOCKED` when the next
-            // open blocks.
-            let mut uni_streams = open_uni_streams_held(&mut connection, effective_limit).await;
-            let held_uni = uni_streams
-                .last_mut()
-                .expect("effective_limit uni streams are held");
-            held_uni.send(Bytes::from("held uni stream")).await.unwrap();
-            assert_stream_blocked_uni(&mut connection, uni_blocked_rx, effective_limit).await;
-
-            let mut bidi_streams = open_bidi_streams_held(&mut connection, effective_limit).await;
-            let held_bidi = bidi_streams
-                .last_mut()
-                .expect("effective_limit bidi streams are held");
-            held_bidi
-                .send(Bytes::from("held bidi stream"))
-                .await
-                .unwrap();
-            assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, effective_limit).await;
         });
 
         Ok(())

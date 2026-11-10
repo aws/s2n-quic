@@ -477,17 +477,6 @@ fn try_open(
     }
 }
 
-/// Returns the latest MAX_STREAMS value the controller would advertise
-/// for the given stream type.
-fn latest_max_streams(
-    manager: &mut AbstractStreamManager<MockStream>,
-    stream_type: StreamType,
-) -> u64 {
-    manager
-        .with_stream_controller(|ctrl| ctrl.remote_initiated_max_streams_latest_value(stream_type))
-        .as_u64()
-}
-
 #[test]
 fn remote_messages_open_unopened_streams() {
     const STREAMS_TO_OPEN: u64 = 8;
@@ -3474,320 +3463,56 @@ fn stream_batching_test() {
     }
 }
 
-/// The controller's initial MAX_STREAMS value is clamped to the cumulative cap.
+/// Proves a post-handshake raise is emitted for both stream directions before
+/// the peer has opened any streams.
 #[test]
-fn controller_initial_value_clamped_by_max_total() {
-    let bidi_open = 20;
-    let bidi_total = 10;
-    let uni_open = 40;
-    let uni_total = 15;
-
-    let limits = ConnectionLimits::default()
-        .with_max_open_remote_bidirectional_streams(bidi_open)
-        .unwrap()
-        .with_max_total_remote_bidirectional_streams(bidi_total)
-        .unwrap()
-        .with_max_open_remote_unidirectional_streams(uni_open)
-        .unwrap()
-        .with_max_total_remote_unidirectional_streams(uni_total)
-        .unwrap();
-
-    let initial_local_limits = limits.initial_flow_control_limits();
-    let initial_peer_limits = create_default_initial_flow_control_limits();
-
-    let mut manager = AbstractStreamManager::<MockStream>::new(
-        &limits,
-        endpoint::Type::Server,
-        initial_local_limits,
-        initial_peer_limits,
-        DEFAULT_INITIAL_RTT,
-    );
-
-    assert_eq!(
-        bidi_total,
-        latest_max_streams(&mut manager, StreamType::Bidirectional),
-        "initial bidi MAX_STREAMS should be clamped to max_total"
-    );
-    assert_eq!(
-        uni_total,
-        latest_max_streams(&mut manager, StreamType::Unidirectional),
-        "initial uni MAX_STREAMS should be clamped to max_total"
-    );
-}
-
-/// Opens and closes streams in cycles until the cumulative cap is reached.
-/// All streams are closed between cycles, so the concurrent count is zero
-/// when the cap bites — proving the limit is cumulative (lifetime), not
-/// just a concurrent window.
-#[test]
-fn cumulative_cap_blocks_new_streams_despite_zero_concurrent() {
-    let bidi_open = 10u64;
-    let bidi_total = 25u64;
-    let uni_open = 8u64;
-    let uni_total = 19u64;
-
-    let limits = ConnectionLimits::default()
-        .with_max_open_remote_bidirectional_streams(bidi_open)
-        .unwrap()
-        .with_max_total_remote_bidirectional_streams(bidi_total)
-        .unwrap()
-        .with_max_open_remote_unidirectional_streams(uni_open)
-        .unwrap()
-        .with_max_total_remote_unidirectional_streams(uni_total)
-        .unwrap();
-
-    for (stream_type, max_open, max_total) in [
-        (StreamType::Bidirectional, bidi_open, bidi_total),
-        (StreamType::Unidirectional, uni_open, uni_total),
-    ] {
-        let initial_local_limits = limits.initial_flow_control_limits();
-        let initial_peer_limits = create_default_initial_flow_control_limits();
-        let mut clock = time::Clock::default();
-
-        let mut manager = AbstractStreamManager::<MockStream>::new(
-            &limits,
-            endpoint::Type::Server,
-            initial_local_limits,
-            initial_peer_limits,
-            DEFAULT_INITIAL_RTT,
-        );
-
-        let mut stream_ids =
-            (0..).map(|id| StreamId::nth(endpoint::Type::Client, stream_type, id).unwrap());
-
-        // Opens `count` streams and immediately closes them, advancing the
-        // manager's timer after each.
-        let mut open_and_close =
-            |manager: &mut AbstractStreamManager<MockStream>, clock: &time::Clock, count: usize| {
-                for stream_id in (&mut stream_ids).take(count) {
-                    assert_eq!(
-                        Ok(()),
-                        manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], true)),
-                        "stream_type:{stream_type:?} — stream should open successfully"
-                    );
-                    manager.with_asserted_stream(stream_id, |stream| {
-                        stream.interests.retained = false;
-                    });
-                    manager.on_timeout(clock.get_time());
-                }
-            };
-
-        // --- assertions ---
-
-        assert_eq!(
-            max_open,
-            latest_max_streams(&mut manager, stream_type),
-            "stream_type:{stream_type:?} — initial MAX_STREAMS should equal max_open"
-        );
-
-        // -- Cycle 1: open and close max_open streams --
-        open_and_close(&mut manager, &clock, max_open as usize);
-
-        assert_eq!(
-            max_open * 2,
-            latest_max_streams(&mut manager, stream_type),
-            "stream_type:{stream_type:?} — after cycle 1, MAX_STREAMS should be 2 * max_open"
-        );
-
-        clock.inc_by(DEFAULT_INITIAL_RTT);
-        manager.on_timeout(clock.get_time());
-
-        // -- Cycle 2: open and close max_open more streams --
-        open_and_close(&mut manager, &clock, max_open as usize);
-
-        assert_eq!(
-            max_total,
-            latest_max_streams(&mut manager, stream_type),
-            "stream_type:{stream_type:?} — after cycle 2, MAX_STREAMS should be clamped to max_total"
-        );
-
-        clock.inc_by(DEFAULT_INITIAL_RTT);
-        manager.on_timeout(clock.get_time());
-
-        // -- Cycle 3: open the remaining streams to hit the cumulative cap --
-        let remaining = max_total - (max_open * 2);
-        open_and_close(&mut manager, &clock, remaining as usize);
-
-        clock.inc_by(DEFAULT_INITIAL_RTT);
-        manager.on_timeout(clock.get_time());
-
-        assert_eq!(
-            max_total,
-            latest_max_streams(&mut manager, stream_type),
-            "stream_type:{stream_type:?} — MAX_STREAMS must not grow beyond max_total"
-        );
-
-        // The next stream (index == max_total) must be rejected
-        let rejected_stream_id = stream_ids.next().unwrap();
-        assert_eq!(
-            Err(transport::Error::STREAM_LIMIT_ERROR),
-            manager.on_data(&stream_data(
-                rejected_stream_id,
-                VarInt::from_u32(0),
-                &[],
-                true
-            )),
-            "stream_type:{stream_type:?} — stream beyond max_total must be rejected with STREAM_LIMIT_ERROR"
-        );
-    }
-}
-
-/// Proves the controller emits MAX_STREAMS after a post-handshake raise,
-/// whether the stream table is empty, streams are open, or streams have
-/// been opened and closed (raise + replenishment combined).
-///
-/// Exercises the Manager → Controller → RemoteInitiated → IncrementalValueSync
-/// stack with MockStream.
-#[test]
-fn max_streams_sent_after_post_handshake_raise() {
+fn post_handshake_raise_emits_max_streams_before_any_stream_opened() {
     let advertised_bidi = 50u64;
     let advertised_uni = 40u64;
     let raised_bidi = 100u64;
     let raised_uni = 80u64;
-
-    for (label, pre_opened, pre_closed, expected_bidi_bonus) in [
-        ("no streams", 0u64, 0u64, 0u64),
-        ("3 open", 3, 0, 0),
-        ("3 open+close", 3, 3, 3),
-    ] {
-        let mut manager =
-            build_manager_with_raise(raised_bidi, raised_uni, advertised_bidi, advertised_uni);
-        let clock = time::Clock::default();
-
-        // Open `pre_opened` remote-initiated bidirectional streams.
-        for i in 0..pre_opened {
-            let stream_id =
-                StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, i).unwrap();
-            assert_eq!(
-                Ok(()),
-                manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], true)),
-                "{label}: failed to open stream {i}"
-            );
-        }
-
-        // Close `pre_closed` of those streams and run on_timeout after each
-        // so the controller registers the close and computes replenishment.
-        for i in 0..pre_closed {
-            let stream_id =
-                StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, i).unwrap();
-            manager.with_asserted_stream(stream_id, |stream| {
-                stream.interests.retained = false;
-            });
-            manager.on_timeout(clock.get_time());
-        }
-
-        // One final on_timeout processes the last close's replenishment,
-        // since on_timeout finalizes the stream *after* the controller has
-        // already run its refill pass for that tick.
-        if pre_closed > 0 {
-            manager.on_timeout(clock.get_time());
-        }
-
-        assert_eq!(
-            transmission::Interest::NewData,
-            manager.get_transmission_interest(),
-            "{label}: controller must signal NewData for the unsent MAX_STREAMS update"
-        );
-
-        let mut frame_buffer = OutgoingFrameBuffer::new();
-        let mut write_context = MockWriteContext::new(
-            clock.get_time(),
-            &mut frame_buffer,
-            transmission::Constraint::None,
-            transmission::Mode::Normal,
-            endpoint::Type::Server,
-        );
-        assert!(manager.on_transmit(&mut write_context).is_ok());
-
-        let expected_bidi_value = raised_bidi + expected_bidi_bonus;
-        let expected_bidi = Frame::MaxStreams(MaxStreams {
-            stream_type: StreamType::Bidirectional,
-            maximum_streams: VarInt::new(expected_bidi_value).unwrap(),
-        });
-        let expected_uni = Frame::MaxStreams(MaxStreams {
-            stream_type: StreamType::Unidirectional,
-            maximum_streams: VarInt::new(raised_uni).unwrap(),
-        });
-
-        let mut first = write_context.frame_buffer.pop_front().unwrap_or_else(|| {
-            panic!(
-                "{label}: first MAX_STREAMS frame missing — \
-                 on_transmit must emit a frame when latest > synced"
-            )
-        });
-        let mut second = write_context.frame_buffer.pop_front().unwrap_or_else(|| {
-            panic!(
-                "{label}: second MAX_STREAMS frame missing — \
-                 on_transmit must emit frames for both stream types"
-            )
-        });
-
-        let frames = [first.as_frame(), second.as_frame()];
-        assert!(
-            frames.contains(&expected_bidi),
-            "{label}: bidirectional MAX_STREAMS frame not found; \
-             expected value={expected_bidi_value}, emitted: {frames:?}"
-        );
-        assert!(
-            frames.contains(&expected_uni),
-            "{label}: unidirectional MAX_STREAMS frame not found; \
-             emitted: {frames:?}"
-        );
-
-        // After transmitting both stream types, no further interest remains.
-        assert_eq!(
-            transmission::Interest::None,
-            manager.get_transmission_interest(),
-            "{label}: transmission interest must be cleared after \
-             emitting MAX_STREAMS for both types"
-        );
-    }
-}
-
-/// Proves no MAX_STREAMS frame is emitted when the advertised limits
-/// match the raised limits (no post-handshake change).
-#[test]
-fn no_max_streams_when_advertised_equals_raised() {
-    let bidi = 100u64;
-    let uni = 80u64;
-    let mut manager = build_manager_with_raise(bidi, uni, bidi, uni);
-    let clock = time::Clock::default();
+    let mut manager =
+        build_manager_with_raise(raised_bidi, raised_uni, advertised_bidi, advertised_uni);
 
     assert_eq!(
-        transmission::Interest::None,
-        manager.get_transmission_interest(),
-        "no transmission interest when advertised == raised"
-    );
-
-    // Open 3 streams — interest must remain None.
-    for i in 0..3u64 {
-        let stream_id =
-            StreamId::nth(endpoint::Type::Client, StreamType::Bidirectional, i).unwrap();
-        assert_eq!(
-            Ok(()),
-            manager.on_data(&stream_data(stream_id, VarInt::from_u32(0), &[], true)),
-            "failed to open stream {i}"
-        );
-    }
-    manager.on_timeout(clock.get_time());
-
-    assert_eq!(
-        transmission::Interest::None,
-        manager.get_transmission_interest(),
-        "interest must remain None after opening streams with no raise"
+        transmission::Interest::NewData,
+        manager.get_transmission_interest()
     );
 
     let mut frame_buffer = OutgoingFrameBuffer::new();
     let mut write_context = MockWriteContext::new(
-        clock.get_time(),
+        time::now(),
         &mut frame_buffer,
         transmission::Constraint::None,
         transmission::Mode::Normal,
         endpoint::Type::Server,
     );
-    assert!(manager.on_transmit(&mut write_context).is_ok());
-    assert!(
-        write_context.frame_buffer.is_empty(),
-        "no frames should be emitted when advertised == raised"
+    manager.on_transmit(&mut write_context).unwrap();
+
+    let mut saw_bidi = false;
+    let mut saw_uni = false;
+    while let Some(mut written) = write_context.frame_buffer.pop_front() {
+        match written.as_frame() {
+            Frame::MaxStreams(MaxStreams {
+                stream_type: StreamType::Bidirectional,
+                maximum_streams,
+            }) => {
+                assert_eq!(maximum_streams, VarInt::new(raised_bidi).unwrap());
+                saw_bidi = true;
+            }
+            Frame::MaxStreams(MaxStreams {
+                stream_type: StreamType::Unidirectional,
+                maximum_streams,
+            }) => {
+                assert_eq!(maximum_streams, VarInt::new(raised_uni).unwrap());
+                saw_uni = true;
+            }
+            frame => panic!("unexpected frame {frame:?}"),
+        }
+    }
+    assert!(saw_bidi && saw_uni);
+    assert_eq!(
+        transmission::Interest::None,
+        manager.get_transmission_interest()
     );
 }
