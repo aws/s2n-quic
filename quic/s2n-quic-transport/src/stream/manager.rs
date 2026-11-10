@@ -586,11 +586,16 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                 outgoing_connection_flow_controller: OutgoingConnectionFlowController::new(
                     initial_peer_limits.max_data,
                 ),
+                // `initial_local_limits` is what the peer was told. The
+                // controller enforces the current limits, which
+                // `on_post_handshake` may have raised, and uses the advertised
+                // values as its MAX_STREAMS baseline.
                 stream_controller: stream::Controller::new(
                     local_endpoint_type,
                     initial_peer_limits,
-                    initial_local_limits,
+                    connection_limits.initial_flow_control_limits(),
                     connection_limits.stream_limits(),
+                    initial_local_limits,
                     min_rtt,
                 ),
                 streams: StreamContainer::new(connection_limits),

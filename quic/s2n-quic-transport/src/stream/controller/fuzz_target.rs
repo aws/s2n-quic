@@ -222,6 +222,7 @@ impl Model {
                 initial_remote_limits,
                 initial_local_limits,
                 stream_limits,
+                initial_local_limits,
                 DEFAULT_INITIAL_RTT,
             ),
         }

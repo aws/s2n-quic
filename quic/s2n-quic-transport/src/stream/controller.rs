@@ -22,7 +22,6 @@ use s2n_quic_core::{
     time::{timer, Timestamp},
     transport,
     transport::parameters::InitialFlowControlLimits,
-    varint::VarInt,
 };
 
 #[cfg(test)]
@@ -66,6 +65,7 @@ impl Controller {
         initial_peer_limits: InitialFlowControlLimits,
         initial_local_limits: InitialFlowControlLimits,
         stream_limits: stream::Limits,
+        advertised_limits: InitialFlowControlLimits,
         min_rtt: Duration,
     ) -> Self {
         Self {
@@ -76,6 +76,10 @@ impl Controller {
             ),
             remote_bidi_controller: RemoteInitiated::new(
                 initial_local_limits.max_open_remote_bidirectional_streams,
+                stream_limits
+                    .max_total_remote_bidirectional_streams
+                    .as_varint(),
+                advertised_limits.max_open_remote_bidirectional_streams,
                 min_rtt,
             ),
             local_uni_controller: LocalInitiated::new(
@@ -84,6 +88,10 @@ impl Controller {
             ),
             remote_uni_controller: RemoteInitiated::new(
                 initial_local_limits.max_open_remote_unidirectional_streams,
+                stream_limits
+                    .max_total_remote_unidirectional_streams
+                    .as_varint(),
+                advertised_limits.max_open_remote_unidirectional_streams,
                 min_rtt,
             ),
         }
@@ -253,17 +261,17 @@ impl Controller {
         let peer_endpoint_type = self.local_endpoint_type.peer_type();
 
         macro_rules! on_transmit {
-            ($controller:ident, $endpoint:expr, $ty:expr) => {
-                if let Some(nth) = self
+            ($controller:ident, $endpoint:expr, $ty:expr) => {{
+                // Pass the highest opened stream ID, or the initial ID if none have opened.
+                let nth = self
                     .$controller
                     .total_open_stream_count()
-                    .checked_sub(VarInt::from_u32(1))
-                {
-                    if let Some(stream_id) = StreamId::nth($endpoint, $ty, nth.as_u64()) {
-                        self.$controller.on_transmit(stream_id, context)?;
-                    }
+                    .as_u64()
+                    .saturating_sub(1);
+                if let Some(stream_id) = StreamId::nth($endpoint, $ty, nth) {
+                    self.$controller.on_transmit(stream_id, context)?;
                 }
-            };
+            }};
         }
 
         on_transmit!(

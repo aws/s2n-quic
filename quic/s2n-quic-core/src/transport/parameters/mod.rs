@@ -694,6 +694,18 @@ impl InitialMaxStreamDataUni {
 
 impl TransportParameterValidator for InitialMaxStreamDataUni {}
 
+//= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
+//# Maximum Streams:  A count of the cumulative number of streams of the
+//#    corresponding type that can be opened over the lifetime of the
+//#    connection.  This value cannot exceed 2^60, as it is not possible
+//#    to encode stream IDs larger than 2^62-1.
+/// Maximum value permitted for a stream count in a MAX_STREAMS frame or
+/// `initial_max_streams_*` transport parameter. Stream IDs are 62-bit with
+/// 2 bits encoding the stream type, so at most 2^60 streams of any single
+/// type can be addressed.
+// Safety: 2^60 is less than VarInt::MAX (2^62 - 1)
+pub const MAX_STREAMS_MAX_VALUE: VarInt = unsafe { VarInt::new_unchecked(1 << 60) };
+
 //= https://www.rfc-editor.org/rfc/rfc9000#section-18.2
 //# initial_max_streams_bidi (0x08):  The initial maximum bidirectional
 //#    streams parameter is an integer value that contains the initial
@@ -723,7 +735,7 @@ impl TransportParameterValidator for InitialMaxStreamsBidi {
         //# type FRAME_ENCODING_ERROR if it was received in a frame; see
         //# Section 10.2.
         decoder_invariant!(
-            *self <= 2u64.pow(60),
+            *self <= MAX_STREAMS_MAX_VALUE.as_u64(),
             "initial_max_streams_bidi cannot be greater than 2^60"
         );
 
@@ -760,7 +772,7 @@ impl TransportParameterValidator for InitialMaxStreamsUni {
         //# type FRAME_ENCODING_ERROR if it was received in a frame; see
         //# Section 10.2.
         decoder_invariant!(
-            *self <= 2u64.pow(60),
+            *self <= MAX_STREAMS_MAX_VALUE.as_u64(),
             "initial_max_streams_uni cannot be greater than 2^60"
         );
 
@@ -1642,15 +1654,16 @@ impl<
             initial_max_stream_data_bidi_remote
         );
         load!(unidirectional_data_window, initial_max_stream_data_uni);
-        load!(
-            max_open_remote_bidirectional_streams,
-            initial_max_streams_bidi
-        );
+        let advertised = limits.advertised_initial_flow_control_limits();
+        self.initial_max_streams_bidi = advertised
+            .max_open_remote_bidirectional_streams
+            .try_into()
+            .expect("value bounded by MAX_STREAMS_MAX_VALUE");
+        self.initial_max_streams_uni = advertised
+            .max_open_remote_unidirectional_streams
+            .try_into()
+            .expect("value bounded by MAX_STREAMS_MAX_VALUE");
 
-        load!(
-            max_open_remote_unidirectional_streams,
-            initial_max_streams_uni
-        );
         load!(max_ack_delay, max_ack_delay);
         load!(ack_delay_exponent, ack_delay_exponent);
         load!(max_active_connection_ids, active_connection_id_limit);

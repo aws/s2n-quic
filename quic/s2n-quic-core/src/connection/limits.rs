@@ -68,6 +68,7 @@ impl<'a> ConnectionInfo<'a> {
 #[cfg(feature = "alloc")]
 pub struct HandshakeInfo<'a> {
     pub remote_address: SocketAddress<'a>,
+    pub local_address: SocketAddress<'a>,
     pub server_name: Option<&'a ServerName>,
     pub application_protocol: &'a Bytes,
 }
@@ -76,11 +77,13 @@ pub struct HandshakeInfo<'a> {
 impl<'a> HandshakeInfo<'a> {
     pub fn new(
         remote_address: &'a inet::SocketAddress,
+        local_address: &'a inet::SocketAddress,
         server_name: Option<&'a ServerName>,
         application_protocol: &'a Bytes,
     ) -> HandshakeInfo<'a> {
         Self {
             remote_address: remote_address.into_event(),
+            local_address: local_address.into_event(),
             server_name,
             application_protocol,
         }
@@ -98,6 +101,8 @@ pub struct Limits {
     pub(crate) max_open_local_unidirectional_streams: stream::limits::LocalUnidirectional,
     pub(crate) max_open_remote_bidirectional_streams: InitialMaxStreamsBidi,
     pub(crate) max_open_remote_unidirectional_streams: InitialMaxStreamsUni,
+    pub(crate) max_total_remote_bidirectional_streams: stream::limits::TotalRemoteBidirectional,
+    pub(crate) max_total_remote_unidirectional_streams: stream::limits::TotalRemoteUnidirectional,
     pub(crate) max_ack_delay: MaxAckDelay,
     pub(crate) ack_delay_exponent: AckDelayExponent,
     pub(crate) max_active_connection_ids: ActiveConnectionIdLimit,
@@ -147,6 +152,10 @@ impl Limits {
             max_open_local_unidirectional_streams: stream::limits::LocalUnidirectional::RECOMMENDED,
             max_open_remote_bidirectional_streams: InitialMaxStreamsBidi::RECOMMENDED,
             max_open_remote_unidirectional_streams: InitialMaxStreamsUni::RECOMMENDED,
+            max_total_remote_bidirectional_streams:
+                stream::limits::TotalRemoteBidirectional::RECOMMENDED,
+            max_total_remote_unidirectional_streams:
+                stream::limits::TotalRemoteUnidirectional::RECOMMENDED,
             max_ack_delay: MaxAckDelay::RECOMMENDED,
             ack_delay_exponent: AckDelayExponent::RECOMMENDED,
             max_active_connection_ids: ActiveConnectionIdLimit::RECOMMENDED,
@@ -244,7 +253,13 @@ impl Limits {
         Ok(self)
     }
 
-    /// Sets the max remote limits for bidirectional streams.
+    /// Sets the maximum number of remotely initiated bidirectional streams that
+    /// may be open concurrently.
+    ///
+    /// The initial stream allowance advertised to the peer is the minimum of
+    /// this value and [`Limits::with_max_total_remote_bidirectional_streams`].
+    /// As streams close, this value controls the close-driven window used to
+    /// grant more stream credit, up to the cumulative limit.
     ///
     /// The value set is used instead of `with_max_open_bidirectional_streams` when set.
     pub fn with_max_open_remote_bidirectional_streams(
@@ -255,12 +270,65 @@ impl Limits {
         Ok(self)
     }
 
+    /// Sets the maximum cumulative number of bidirectional streams the remote
+    /// peer may open over the lifetime of the connection.
+    ///
+    /// Once this many streams have been granted via MAX_STREAMS credit, no
+    /// further credit is issued. The initial allowance is the minimum of this
+    /// value and [`Limits::with_max_open_remote_bidirectional_streams`]. As
+    /// streams close, the max-open value controls the close-driven window used
+    /// to grant more credit until this cumulative limit is reached.
+    ///
+    /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
+    /// A value of 0 means the remote peer may not open any bidirectional streams.
+    ///
+    /// The cap can be raised per connection after the handshake with
+    /// [`UpdatableLimits::with_max_total_remote_bidirectional_streams`], but not
+    /// lowered.
+    pub fn with_max_total_remote_bidirectional_streams(
+        mut self,
+        value: u64,
+    ) -> Result<Self, ValidationError> {
+        self.max_total_remote_bidirectional_streams = value.try_into()?;
+        Ok(self)
+    }
+
+    /// Sets the maximum cumulative number of unidirectional streams the remote
+    /// peer may open over the lifetime of the connection.
+    ///
+    /// Once this many streams have been granted via MAX_STREAMS credit, no
+    /// further credit is issued. The initial allowance is the minimum of this
+    /// value and [`Limits::with_max_open_remote_unidirectional_streams`]. As
+    /// streams close, the max-open value controls the close-driven window used
+    /// to grant more credit until this cumulative limit is reached.
+    ///
+    /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
+    /// A value of 0 means the remote peer may not open any unidirectional streams.
+    ///
+    /// The cap can be raised per connection after the handshake with
+    /// [`UpdatableLimits::with_max_total_remote_unidirectional_streams`], but not
+    /// lowered.
+    pub fn with_max_total_remote_unidirectional_streams(
+        mut self,
+        value: u64,
+    ) -> Result<Self, ValidationError> {
+        self.max_total_remote_unidirectional_streams = value.try_into()?;
+        Ok(self)
+    }
+
     setter!(
         with_max_open_local_unidirectional_streams,
         max_open_local_unidirectional_streams,
         u64
     );
     setter!(
+        /// Sets the maximum number of remotely initiated unidirectional streams
+        /// that may be open concurrently.
+        ///
+        /// The initial stream allowance advertised to the peer is the minimum of
+        /// this value and [`Limits::with_max_total_remote_unidirectional_streams`].
+        /// As streams close, this value controls the close-driven window used to
+        /// grant more stream credit, up to the cumulative limit.
         with_max_open_remote_unidirectional_streams,
         max_open_remote_unidirectional_streams,
         u64
@@ -419,6 +487,31 @@ impl Limits {
         }
     }
 
+    /// Returns the flow control limits that will be advertised to the peer in
+    /// transport parameters. Stream counts are clamped to
+    /// `min(max_open_remote_*, max_total_remote_*)` so the peer's initial credit
+    /// never exceeds the cumulative cap.
+    ///
+    /// This is the single source of truth for the advertised stream-count limits.
+    /// Both `TransportParameters::load_limits()` and the pre-`on_post_handshake`
+    /// snapshot in `SessionContext::on_one_rtt_keys()` derive from this method.
+    #[doc(hidden)]
+    #[inline]
+    pub fn advertised_initial_flow_control_limits(&self) -> InitialFlowControlLimits {
+        InitialFlowControlLimits {
+            stream_limits: self.initial_stream_limits(),
+            max_data: self.data_window.as_varint(),
+            max_open_remote_bidirectional_streams: self
+                .max_open_remote_bidirectional_streams
+                .as_varint()
+                .min(self.max_total_remote_bidirectional_streams.as_varint()),
+            max_open_remote_unidirectional_streams: self
+                .max_open_remote_unidirectional_streams
+                .as_varint()
+                .min(self.max_total_remote_unidirectional_streams.as_varint()),
+        }
+    }
+
     #[doc(hidden)]
     #[inline]
     pub const fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
@@ -451,6 +544,8 @@ impl Limits {
             max_send_buffer_size: self.max_send_buffer_size,
             max_open_local_unidirectional_streams: self.max_open_local_unidirectional_streams,
             max_open_local_bidirectional_streams: self.max_open_local_bidirectional_streams,
+            max_total_remote_bidirectional_streams: self.max_total_remote_bidirectional_streams,
+            max_total_remote_unidirectional_streams: self.max_total_remote_unidirectional_streams,
         }
     }
 
@@ -515,6 +610,94 @@ impl<'a> UpdatableLimits<'a> {
     pub fn with_stream_batch_size(&mut self, size: u8) {
         self.0.stream_batch_size = size;
     }
+
+    /// Raises the limit for an active connection. Values lower than the current
+    /// limit are rejected with `ValidationError`.
+    ///
+    /// The peer's effective stream allowance is the minimum of its max-open and
+    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
+    /// allowance increases.
+    pub fn with_max_open_remote_bidirectional_streams(
+        &mut self,
+        value: u64,
+    ) -> Result<(), ValidationError> {
+        let new_value: InitialMaxStreamsBidi = value.try_into()?;
+        if *new_value < *self.0.max_open_remote_bidirectional_streams {
+            return Err(ValidationError(
+                "cannot lower max_open_remote_bidirectional_streams on an active connection",
+            ));
+        }
+        self.0.max_open_remote_bidirectional_streams = new_value;
+        Ok(())
+    }
+
+    /// Raises the limit for an active connection. Values lower than the current
+    /// limit are rejected with `ValidationError`.
+    ///
+    /// The peer's effective stream allowance is the minimum of its max-open and
+    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
+    /// allowance increases.
+    pub fn with_max_open_remote_unidirectional_streams(
+        &mut self,
+        value: u64,
+    ) -> Result<(), ValidationError> {
+        let new_value: InitialMaxStreamsUni = value.try_into()?;
+        if *new_value < *self.0.max_open_remote_unidirectional_streams {
+            return Err(ValidationError(
+                "cannot lower max_open_remote_unidirectional_streams on an active connection",
+            ));
+        }
+        self.0.max_open_remote_unidirectional_streams = new_value;
+        Ok(())
+    }
+
+    /// Raises the limit for an active connection. Values lower than the current
+    /// limit are rejected with `ValidationError`.
+    ///
+    /// The peer's effective stream allowance is the minimum of its max-open and
+    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
+    /// allowance increases.
+    ///
+    /// The default is `MAX_STREAMS_MAX_VALUE`, so any other value is a decrease
+    /// and is rejected unless `on_connection` set a lower cap with
+    /// [`Limits::with_max_total_remote_bidirectional_streams`].
+    pub fn with_max_total_remote_bidirectional_streams(
+        &mut self,
+        value: u64,
+    ) -> Result<(), ValidationError> {
+        let new_value: stream::limits::TotalRemoteBidirectional = value.try_into()?;
+        if new_value.as_varint() < self.0.max_total_remote_bidirectional_streams.as_varint() {
+            return Err(ValidationError(
+                "cannot lower max_total_remote_bidirectional_streams on an active connection",
+            ));
+        }
+        self.0.max_total_remote_bidirectional_streams = new_value;
+        Ok(())
+    }
+
+    /// Raises the limit for an active connection. Values lower than the current
+    /// limit are rejected with `ValidationError`.
+    ///
+    /// The peer's effective stream allowance is the minimum of its max-open and
+    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
+    /// allowance increases.
+    ///
+    /// The default is `MAX_STREAMS_MAX_VALUE`, so any other value is a decrease
+    /// and is rejected unless `on_connection` set a lower cap with
+    /// [`Limits::with_max_total_remote_unidirectional_streams`].
+    pub fn with_max_total_remote_unidirectional_streams(
+        &mut self,
+        value: u64,
+    ) -> Result<(), ValidationError> {
+        let new_value: stream::limits::TotalRemoteUnidirectional = value.try_into()?;
+        if new_value.as_varint() < self.0.max_total_remote_unidirectional_streams.as_varint() {
+            return Err(ValidationError(
+                "cannot lower max_total_remote_unidirectional_streams on an active connection",
+            ));
+        }
+        self.0.max_total_remote_unidirectional_streams = new_value;
+        Ok(())
+    }
 }
 
 /// Creates limits for a given connection
@@ -543,6 +726,7 @@ impl Limiter for Limits {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{transport::parameters::MAX_STREAMS_MAX_VALUE, varint::VarInt};
 
     // Local max data limits should be <= u32::MAX
     #[test]
@@ -664,5 +848,372 @@ mod tests {
         // Test that getter returns the correct value
         limits = limits.with_pto_jitter_percentage(15).unwrap();
         assert_eq!(limits.pto_jitter_percentage(), 15);
+    }
+
+    #[test]
+    fn max_total_remote_bidirectional_streams_default() {
+        let limits = Limits::new();
+        assert_eq!(
+            limits.max_total_remote_bidirectional_streams.as_varint(),
+            MAX_STREAMS_MAX_VALUE
+        );
+
+        let limits = Limits::default();
+        assert_eq!(
+            limits.max_total_remote_bidirectional_streams.as_varint(),
+            MAX_STREAMS_MAX_VALUE
+        );
+    }
+
+    #[test]
+    fn max_total_remote_unidirectional_streams_default() {
+        let limits = Limits::new();
+        assert_eq!(
+            limits.max_total_remote_unidirectional_streams.as_varint(),
+            MAX_STREAMS_MAX_VALUE
+        );
+
+        let limits = Limits::default();
+        assert_eq!(
+            limits.max_total_remote_unidirectional_streams.as_varint(),
+            MAX_STREAMS_MAX_VALUE
+        );
+    }
+
+    #[test]
+    fn max_total_remote_streams_valid_values() {
+        let limits = Limits::new();
+
+        // Zero is valid (no remote streams allowed)
+        let result = limits.with_max_total_remote_bidirectional_streams(0);
+        assert!(result.is_ok());
+        assert_eq!(
+            result
+                .unwrap()
+                .max_total_remote_bidirectional_streams
+                .as_varint(),
+            VarInt::from_u8(0)
+        );
+
+        let result = limits.with_max_total_remote_unidirectional_streams(0);
+        assert!(result.is_ok());
+        assert_eq!(
+            result
+                .unwrap()
+                .max_total_remote_unidirectional_streams
+                .as_varint(),
+            VarInt::from_u8(0)
+        );
+
+        // Normal value
+        let result = limits.with_max_total_remote_bidirectional_streams(1000);
+        assert!(result.is_ok());
+
+        // MAX_STREAMS_MAX_VALUE boundary (2^60)
+        let result =
+            limits.with_max_total_remote_bidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64());
+        assert!(result.is_ok());
+
+        let result =
+            limits.with_max_total_remote_unidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn max_total_remote_streams_invalid_values() {
+        let limits = Limits::new();
+
+        // One beyond MAX_STREAMS_MAX_VALUE
+        let result =
+            limits.with_max_total_remote_bidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64() + 1);
+        assert!(result.is_err());
+
+        let result =
+            limits.with_max_total_remote_unidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64() + 1);
+        assert!(result.is_err());
+
+        // Beyond VarInt range
+        let result = limits.with_max_total_remote_bidirectional_streams(1u64 << 62);
+        assert!(result.is_err());
+
+        let result = limits.with_max_total_remote_unidirectional_streams(u64::MAX);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn max_total_remote_streams_chaining() {
+        let result = Limits::new()
+            .with_max_total_remote_bidirectional_streams(500)
+            .and_then(|l| l.with_max_total_remote_unidirectional_streams(200))
+            .and_then(|l| l.with_max_open_remote_bidirectional_streams(50));
+
+        assert!(result.is_ok());
+        let limits = result.unwrap();
+        assert_eq!(
+            limits.max_total_remote_bidirectional_streams.as_varint(),
+            VarInt::new(500).unwrap()
+        );
+        assert_eq!(
+            limits.max_total_remote_unidirectional_streams.as_varint(),
+            VarInt::new(200).unwrap()
+        );
+    }
+
+    #[test]
+    fn updatable_limits_open_remote_unidirectional() {
+        let mut limits = Limits::default();
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_open_remote_unidirectional_streams(200)
+            .is_ok());
+        assert_eq!(
+            limits
+                .initial_flow_control_limits()
+                .max_open_remote_unidirectional_streams,
+            VarInt::new(200).unwrap()
+        );
+    }
+
+    #[test]
+    fn updatable_limits_total_remote_bidirectional() {
+        let mut limits = Limits::new()
+            .with_max_total_remote_bidirectional_streams(500)
+            .unwrap();
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_total_remote_bidirectional_streams(1000)
+            .is_ok());
+        assert_eq!(
+            updatable
+                .0
+                .max_total_remote_bidirectional_streams
+                .as_varint(),
+            VarInt::new(1000).unwrap()
+        );
+
+        // MAX_STREAMS_MAX_VALUE boundary (2^60)
+        assert!(updatable
+            .with_max_total_remote_bidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64())
+            .is_ok());
+        assert_eq!(
+            limits.max_total_remote_bidirectional_streams.as_varint(),
+            MAX_STREAMS_MAX_VALUE
+        );
+    }
+
+    #[test]
+    fn updatable_limits_total_remote_unidirectional() {
+        let mut limits = Limits::new()
+            .with_max_total_remote_unidirectional_streams(200)
+            .unwrap();
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_total_remote_unidirectional_streams(500)
+            .is_ok());
+        assert_eq!(
+            updatable
+                .0
+                .max_total_remote_unidirectional_streams
+                .as_varint(),
+            VarInt::new(500).unwrap()
+        );
+
+        // MAX_STREAMS_MAX_VALUE boundary (2^60)
+        assert!(updatable
+            .with_max_total_remote_unidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64())
+            .is_ok());
+        assert_eq!(
+            limits.max_total_remote_unidirectional_streams.as_varint(),
+            MAX_STREAMS_MAX_VALUE
+        );
+    }
+
+    #[test]
+    fn updatable_limits_invalid_values() {
+        let mut limits = Limits::default();
+        let original_bidi = limits
+            .initial_flow_control_limits()
+            .max_open_remote_bidirectional_streams;
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+
+        // Values beyond VarInt range should fail
+        assert!(updatable
+            .with_max_open_remote_bidirectional_streams(1u64 << 62)
+            .is_err());
+        assert!(updatable
+            .with_max_open_remote_unidirectional_streams(u64::MAX)
+            .is_err());
+        assert!(updatable
+            .with_max_total_remote_bidirectional_streams(1u64 << 62)
+            .is_err());
+        assert!(updatable
+            .with_max_total_remote_unidirectional_streams(u64::MAX)
+            .is_err());
+
+        // One beyond MAX_STREAMS_MAX_VALUE is a raise from the default, so
+        // only the range check can reject it
+        assert!(updatable
+            .with_max_total_remote_bidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64() + 1)
+            .is_err());
+        assert!(updatable
+            .with_max_total_remote_unidirectional_streams(MAX_STREAMS_MAX_VALUE.as_u64() + 1)
+            .is_err());
+
+        // Original limits should be unchanged after failed updates
+        assert_eq!(
+            limits
+                .initial_flow_control_limits()
+                .max_open_remote_bidirectional_streams,
+            original_bidi
+        );
+    }
+
+    #[test]
+    fn updatable_limits_zero_is_valid_at_limits_level() {
+        // Zero is valid when set on Limits (pre-handshake)
+        let limits = Limits::new()
+            .with_max_open_remote_bidirectional_streams(0)
+            .unwrap()
+            .with_max_total_remote_bidirectional_streams(0)
+            .unwrap();
+
+        assert_eq!(
+            limits
+                .initial_flow_control_limits()
+                .max_open_remote_bidirectional_streams,
+            VarInt::from_u8(0)
+        );
+        assert_eq!(
+            limits.max_total_remote_bidirectional_streams.as_varint(),
+            VarInt::from_u8(0)
+        );
+    }
+
+    #[test]
+    fn updatable_limits_raise_open_bidi_succeeds() {
+        let mut limits = Limits::new()
+            .with_max_open_remote_bidirectional_streams(50)
+            .unwrap();
+        let mut updatable = UpdatableLimits::new(&mut limits);
+
+        assert!(updatable
+            .with_max_open_remote_bidirectional_streams(100)
+            .is_ok());
+        assert_eq!(
+            limits
+                .initial_flow_control_limits()
+                .max_open_remote_bidirectional_streams,
+            VarInt::new(100).unwrap()
+        );
+    }
+
+    #[test]
+    fn updatable_limits_same_value_is_idempotent() {
+        let mut limits = Limits::new()
+            .with_max_open_remote_bidirectional_streams(100)
+            .unwrap()
+            .with_max_open_remote_unidirectional_streams(50)
+            .unwrap()
+            .with_max_total_remote_bidirectional_streams(1000)
+            .unwrap()
+            .with_max_total_remote_unidirectional_streams(500)
+            .unwrap();
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+
+        assert!(updatable
+            .with_max_open_remote_bidirectional_streams(100)
+            .is_ok());
+        assert!(updatable
+            .with_max_open_remote_unidirectional_streams(50)
+            .is_ok());
+        assert!(updatable
+            .with_max_total_remote_bidirectional_streams(1000)
+            .is_ok());
+        assert!(updatable
+            .with_max_total_remote_unidirectional_streams(500)
+            .is_ok());
+    }
+
+    #[test]
+    fn updatable_limits_lower_open_bidi_rejected() {
+        let mut limits = Limits::new()
+            .with_max_open_remote_bidirectional_streams(100)
+            .unwrap();
+        let original = limits
+            .initial_flow_control_limits()
+            .max_open_remote_bidirectional_streams;
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_open_remote_bidirectional_streams(50)
+            .is_err());
+
+        // Value unchanged after rejection
+        assert_eq!(
+            limits
+                .initial_flow_control_limits()
+                .max_open_remote_bidirectional_streams,
+            original
+        );
+    }
+
+    #[test]
+    fn updatable_limits_lower_open_uni_rejected() {
+        let mut limits = Limits::new()
+            .with_max_open_remote_unidirectional_streams(100)
+            .unwrap();
+        let original = limits
+            .initial_flow_control_limits()
+            .max_open_remote_unidirectional_streams;
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_open_remote_unidirectional_streams(50)
+            .is_err());
+
+        assert_eq!(
+            limits
+                .initial_flow_control_limits()
+                .max_open_remote_unidirectional_streams,
+            original
+        );
+    }
+
+    #[test]
+    fn updatable_limits_lower_total_bidi_rejected() {
+        let mut limits = Limits::new()
+            .with_max_total_remote_bidirectional_streams(1000)
+            .unwrap();
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_total_remote_bidirectional_streams(500)
+            .is_err());
+
+        assert_eq!(
+            limits.max_total_remote_bidirectional_streams.as_varint(),
+            VarInt::new(1000).unwrap()
+        );
+    }
+
+    #[test]
+    fn updatable_limits_lower_total_uni_rejected() {
+        let mut limits = Limits::new()
+            .with_max_total_remote_unidirectional_streams(1000)
+            .unwrap();
+
+        let mut updatable = UpdatableLimits::new(&mut limits);
+        assert!(updatable
+            .with_max_total_remote_unidirectional_streams(500)
+            .is_err());
+
+        assert_eq!(
+            limits.max_total_remote_unidirectional_streams.as_varint(),
+            VarInt::new(1000).unwrap()
+        );
     }
 }

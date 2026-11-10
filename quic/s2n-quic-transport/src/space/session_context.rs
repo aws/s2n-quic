@@ -410,11 +410,17 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         };
 
         let remote_address = self.path_manager.active_path().remote_address().0;
+        let local_address = self.path_manager.active_path().local_address().0;
         let info = HandshakeInfo::new(
             &remote_address,
+            &local_address,
             self.server_name.as_ref(),
             self.application_protocol,
         );
+        // Snapshot the limits the peer learned from transport parameters,
+        // before on_post_handshake can raise them.
+        let advertised_limits = self.limits.advertised_initial_flow_control_limits();
+
         let mut updatable_limits = UpdatableLimits::new(self.limits);
         self.limits_endpoint
             .on_post_handshake(&info, &mut updatable_limits);
@@ -425,7 +431,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
         let stream_manager = <Config::StreamManager as stream::Manager>::new(
             self.limits,
             Config::ENDPOINT_TYPE,
-            self.limits.initial_flow_control_limits(),
+            advertised_limits,
             peer_params.flow_control_limits,
             self.path_manager.active_path().rtt_estimator.min_rtt(),
         );

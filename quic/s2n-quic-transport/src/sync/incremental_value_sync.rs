@@ -73,6 +73,22 @@ impl<
         self.request_delivery_if_necessary();
     }
 
+    /// Unconditionally requests delivery of the latest value, bypassing the
+    /// threshold check.
+    ///
+    /// Used when the caller knows the current delta is final and must reach
+    /// the peer even though it falls below the normal threshold (e.g. the
+    /// cumulative stream cap has been reached and no further increments will
+    /// occur).
+    pub fn request_delivery(&mut self) {
+        if self.delivery.is_cancelled() {
+            return;
+        }
+        if self.latest_value != self.value_ackd_up_to {
+            self.delivery = DeliveryState::Requested(self.latest_value);
+        }
+    }
+
     /// Stop to synchronize the value to the peer
     pub fn stop_sync(&mut self) {
         self.delivery.cancel();
