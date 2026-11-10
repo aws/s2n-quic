@@ -369,11 +369,8 @@ fn create_default_initial_flow_control_limits() -> InitialFlowControlLimits {
     }
 }
 
-/// Builds a stream manager configured for post-handshake raise testing.
-/// `raised_*` set the current concurrent window in the connection limits;
-/// `advertised_*` set what the peer saw in transport parameters
-/// (`initial_local_limits`). When raised > advertised, the controller detects
-/// a raise and emits MAX_STREAMS.
+/// Builds a manager with separate current and advertised stream limits,
+/// modeling a post-handshake raise when current exceeds advertised.
 fn build_manager_with_raise(
     raised_bidi: u64,
     raised_uni: u64,
@@ -427,9 +424,7 @@ fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager
     let initial_local_limits = create_default_initial_flow_control_limits();
     let initial_peer_limits = create_default_initial_flow_control_limits();
 
-    // set local limits high so that they are not a constraint. The remote
-    // limits match `initial_local_limits` so no post-handshake raise is
-    // implied.
+    // Keep local capacity out of the way and match the advertised remote limits.
     let limits = ConnectionLimits::default()
         .with_max_open_local_bidirectional_streams(1000)
         .unwrap()
@@ -1030,11 +1025,7 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
     }
 }
 
-/// The peer advertises a limit of 0 for each local stream type and the local
-/// endpoint tries to open a stream of that type.
-///
-/// Proves a STREAMS_BLOCKED frame with limit 0 is sent before any stream of
-/// that type is opened.
+/// Verifies `STREAMS_BLOCKED(0)` is sent before any stream of either type opens.
 #[test]
 fn send_streams_blocked_frame_before_any_stream_opened() {
     for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
@@ -1050,7 +1041,7 @@ fn send_streams_blocked_frame_before_any_stream_opened() {
             }
         }
 
-        // set local limits high so that they are not a constraint
+        // Keep local capacity out of the way.
         let limits = ConnectionLimits::default()
             .with_max_open_local_bidirectional_streams(1000)
             .unwrap()
@@ -3463,8 +3454,8 @@ fn stream_batching_test() {
     }
 }
 
-/// Proves a post-handshake raise is emitted for both stream directions before
-/// the peer has opened any streams.
+/// Verifies a post-handshake raise is sent for both stream directions before
+/// the peer opens a stream.
 #[test]
 fn post_handshake_raise_emits_max_streams_before_any_stream_opened() {
     let advertised_bidi = 50u64;

@@ -54,6 +54,7 @@ impl Controller {
     /// `initial_peer_limits` and `stream_limits` constrain streams initiated by
     /// the local endpoint. `current_local_limits` constrains streams initiated
     /// by the peer and includes any post-handshake raises.
+    ///
     /// `advertised_local_limits` is the transport-parameter snapshot the peer
     /// received and is used as the `MAX_STREAMS` synchronization baseline.
     pub fn new(

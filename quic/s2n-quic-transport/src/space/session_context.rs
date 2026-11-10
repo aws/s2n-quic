@@ -417,8 +417,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.server_name.as_ref(),
             self.application_protocol,
         );
-        // Snapshot the limits the peer learned from transport parameters,
-        // before on_post_handshake can raise them.
+        // Capture what the peer learned before `on_post_handshake` can raise it.
         let advertised_limits = self.limits.advertised_initial_flow_control_limits();
 
         let mut updatable_limits = UpdatableLimits::new(self.limits);

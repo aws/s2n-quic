@@ -43,7 +43,7 @@ fn connection_limits() {
                 expected_local_address.to_string()
             );
 
-            // The address match selects a higher per-connection stream limit.
+            // Apply the limit only after verifying the bound local address.
             limits
                 .with_max_open_remote_bidirectional_streams(2)
                 .unwrap();

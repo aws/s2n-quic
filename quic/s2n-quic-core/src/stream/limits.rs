@@ -61,7 +61,7 @@ macro_rules! limits {
     };
 }
 
-// VarInt specific functionality. An optional `$max` bounds the accepted value.
+// VarInt-specific functionality. An optional `$max` bounds accepted values.
 macro_rules! varint_limits {
     ($name:ident($encodable_type:ty) $(, $max:expr)?) => {
         limits!($name($encodable_type));
@@ -86,7 +86,7 @@ macro_rules! varint_limits {
     };
 }
 
-// Limits on streams opened by the local endpoint
+// Limits for streams opened locally.
 macro_rules! varint_local_limits {
     ($name:ident($encodable_type:ty)) => {
         varint_limits!($name($encodable_type));
@@ -100,7 +100,7 @@ macro_rules! varint_local_limits {
     };
 }
 
-// Limits on streams opened by the remote peer
+// Limits for streams opened by the peer.
 macro_rules! varint_remote_limits {
     ($name:ident($encodable_type:ty), $max:expr) => {
         varint_limits!($name($encodable_type), $max);

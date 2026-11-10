@@ -34,8 +34,8 @@ pub(super) struct RemoteInitiated {
     /// Used to calculate updated max_streams_sync value as the peer
     /// closes streams.
     max_local_limit: VarInt,
-    /// Maximum cumulative number of streams the remote peer may open.
-    /// The advertised MAX_STREAMS value will not exceed this.
+    /// Maximum cumulative number of streams the peer may open. Advertised
+    /// stream credit never exceeds this value.
     max_total_limit: VarInt,
     /// Responsible for advertising updated max stream frames as the
     /// peer closes streams
@@ -53,9 +53,7 @@ impl RemoteInitiated {
         min_rtt: Duration,
     ) -> Self {
         let max_local_limit = max_local_limit.min(max_total_limit);
-        // The peer only knows about the advertised limit (from transport parameters).
-        // If the local limit was raised post-handshake, the sync baseline must reflect
-        // what the peer was actually told, clamped to the effective local limit.
+        // Synchronize from the value advertised before any post-handshake raise.
         let synced = advertised_limit.min(max_local_limit);
         let mut controller = Self {
             max_local_limit,
@@ -74,9 +72,8 @@ impl RemoteInitiated {
                 .build(),
         };
 
-        // A post-handshake raise is a one-shot delta with nothing to batch.
-        // Force delivery so the peer learns the new limit even when the raise
-        // falls below the sync threshold.
+        // A post-handshake raise has nothing to batch, so deliver it even when
+        // it is below the sync threshold.
         if synced < max_local_limit {
             controller.max_streams_sync.request_delivery();
         }
@@ -153,9 +150,8 @@ impl RemoteInitiated {
 
     #[inline]
     pub fn on_timeout(&mut self, now: Timestamp) {
-        // At the cumulative cap no refill can raise `latest_value`, so skip the
-        // token bucket. `max_streams_sync` stays active and still delivers the
-        // final `MAX_STREAMS`.
+        // No close can grant more credit at the cap. Keep synchronization active
+        // so the final `MAX_STREAMS` can still be sent or retransmitted.
         if self.is_cumulative_cap_reached() {
             return;
         }
@@ -183,10 +179,8 @@ impl RemoteInitiated {
 
         self.max_streams_sync.update_latest_value(max_streams);
 
-        // When the cumulative cap is reached, the remaining delta may be smaller
-        // than the sync threshold so `update_latest_value` won't request delivery.
-        // Force delivery so the peer learns about the final allowance. No later
-        // close can grant more credit, so the refill timer is cancelled.
+        // The final increment can be below the sync threshold. Force delivery
+        // and stop close-driven refill once the cap is reached.
         if self.is_cumulative_cap_reached() {
             self.max_streams_sync.request_delivery();
             self.rtt_refill.cancel();
@@ -225,9 +219,6 @@ impl RemoteInitiated {
         self.max_streams_sync.latest_value() - self.max_local_limit
     }
 
-    /// Returns `true` once the `MAX_STREAMS` value to advertise has reached
-    /// `max_total_limit`. From then on, closing a stream cannot grant the peer
-    /// more credit.
     #[inline]
     fn is_cumulative_cap_reached(&self) -> bool {
         self.max_streams_sync.latest_value() >= self.max_total_limit
@@ -305,8 +296,7 @@ mod tests {
 
     const MIN_RTT: Duration = Duration::from_millis(100);
 
-    /// Verifies the initial advertised MAX_STREAMS equals min(max_local, max_total)
-    /// across boundary conditions.
+    /// Verifies the initial limit is `min(max_local, max_total)`.
     #[test]
     fn initial_limit_respects_cumulative_cap() {
         for (max_local, max_total, expected, label) in [
@@ -331,8 +321,6 @@ mod tests {
         }
     }
 
-    /// Default cumulative cap (MAX_STREAMS_MAX_VALUE) does not constrain the
-    /// concurrent window.
     #[test]
     fn default_cumulative_cap_is_unlimited() {
         let max_local = VarInt::from_u32(100);
@@ -359,15 +347,11 @@ mod tests {
         }
     }
 
-    /// Refill intervals to advance after the cumulative cap is reached. Enough
-    /// for a re-armed token bucket to refill and fire several times.
+    // Advance enough intervals to detect accidental timer re-arming.
     const MIN_RTTS_AFTER_CAP: u32 = 5;
 
-    /// Transmits any pending `MAX_STREAMS` frame from `controller` and passes
-    /// each written packet to `report`, which is `RemoteInitiated::on_packet_ack`
-    /// or `RemoteInitiated::on_packet_loss`. After an ack,
-    /// `get_transmission_interest` reflects only refill work. Returns the
-    /// `maximum_streams` value of every frame written.
+    /// Sends pending `MAX_STREAMS` frames, reports each packet through
+    /// `report`, and returns the values sent.
     fn transmit_max_streams(
         controller: &mut RemoteInitiated,
         now: Timestamp,
@@ -401,7 +385,6 @@ mod tests {
         sent
     }
 
-    /// Expected refill behaviour once the peer closes streams.
     #[derive(Clone, Copy, Debug)]
     enum RefillOutcome {
         /// The advertised `MAX_STREAMS` reaches the cumulative cap. Later closes
@@ -412,20 +395,8 @@ mod tests {
         ContinuesBelowCap,
     }
 
-    /// The controller is built with an advertised limit, which is below the
-    /// effective limit when the limit was raised after the handshake. The peer
-    /// then opens and closes streams, and time advances through several minimum
-    /// RTTs. Each `MAX_STREAMS` is acknowledged.
-    ///
-    /// Proves a raised effective limit is sent to the peer before any stream
-    /// closes, even when the raise is below the sync threshold. Proves closing
-    /// streams at the cumulative cap leaves no refill timer armed and no
-    /// transmission interest, whether the cap is reached at construction,
-    /// exactly by a refill, or by a clamped refill. Proves refill below the
-    /// cumulative cap grants a full window of credit.
-    ///
-    /// Depends on every stream being closed before the next batch opens, so the
-    /// concurrent window equals `latest_limit - total_open_stream_count`.
+    /// Verifies post-handshake delivery and close-driven refill below and at
+    /// the cumulative cap. Each emitted `MAX_STREAMS` is acknowledged.
     #[test]
     fn refill_at_cumulative_cap() {
         use RefillOutcome::{ContinuesBelowCap, StopsAtCap};
@@ -605,8 +576,8 @@ mod tests {
                         "{label}: transmission interest after a min RTT update at the cumulative cap"
                     );
 
-                    // The peer already knows the cap when it was advertised in
-                    // the transport parameters. Otherwise it is acknowledged exactly once.
+                    // Expect one cap frame unless transport parameters already
+                    // advertised the cap.
                     let expected_cap_frames = usize::from(advertised < max_total);
                     assert_eq!(
                         sent.iter().filter(|value| **value == max_total).count(),
@@ -618,14 +589,8 @@ mod tests {
         }
     }
 
-    /// The peer opens and closes streams until the advertised `MAX_STREAMS`
-    /// reaches the cumulative cap. The packet carrying that final frame is
-    /// reported lost instead of acknowledged.
-    ///
-    /// Proves the lost `MAX_STREAMS` at the cumulative cap is retransmitted
-    /// exactly once, the refill timer stays disarmed through the loss and
-    /// retransmit, and transmission interest is gone after the resend is
-    /// acknowledged.
+    /// Verifies a lost final `MAX_STREAMS` is retransmitted, the refill timer
+    /// remains disarmed, and acknowledging the retransmission clears interest.
     #[test]
     fn cap_max_streams_retransmitted_after_loss() {
         for (max_open, max_total, label) in [
@@ -663,7 +628,6 @@ mod tests {
             }
             assert_eq!(controller.latest_limit(), max_total, "{label}");
 
-            // The frame carrying the cumulative cap is reported lost.
             let lost = transmit_max_streams(
                 &mut controller,
                 clock.get_time(),
@@ -675,7 +639,6 @@ mod tests {
                 "{label}: refill timer must not be armed after losing the cap frame"
             );
 
-            // The lost frame is retransmitted exactly once.
             let retransmitted = transmit_max_streams(
                 &mut controller,
                 clock.get_time(),
@@ -691,7 +654,6 @@ mod tests {
                 "{label}: refill timer must not be armed after retransmitting the cap frame"
             );
 
-            // After acking the retransmit, no transmission interest remains.
             assert_eq!(
                 controller.get_transmission_interest(),
                 transmission::Interest::None,

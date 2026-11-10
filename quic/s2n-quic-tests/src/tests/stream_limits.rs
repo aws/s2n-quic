@@ -11,36 +11,24 @@ use s2n_quic::{
 use s2n_quic_core::transport::parameters::MAX_STREAMS_MAX_VALUE;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Maximum concurrent bidirectional streams the server allows open at once.
 const CONCURRENT_BIDI: u64 = 5;
-
-/// Maximum concurrent unidirectional streams the server allows open at once.
 const CONCURRENT_UNI: u64 = 4;
-
-/// Maximum cumulative bidirectional streams the server will grant the client.
 const TOTAL_BIDI: u64 = 12;
-
-/// Maximum cumulative unidirectional streams the server will grant the client.
 const TOTAL_UNI: u64 = 9;
 
-/// Duration to wait for a stream open that should not complete.
-/// Must be shorter than IDLE_TIMEOUT so the connection stays alive.
+// Keep the block timeout below the idle timeout so the connection remains open.
 const BLOCKED_TIMEOUT: Duration = Duration::from_secs(100);
 
-/// Idle timeout for both endpoints. Must exceed BLOCKED_TIMEOUT so the
-/// connection does not close before we observe the blocked open.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// Fires oneshots when the server receives `STREAMS_BLOCKED` frames from the
-/// client — one for bidirectional and one for unidirectional, each carrying
-/// the stream limit from the frame.
+/// Notifies tests when the server receives `STREAMS_BLOCKED` for either
+/// stream direction.
 struct StreamsBlockedDetector {
     bidi_sender: Option<tokio::sync::oneshot::Sender<u64>>,
     uni_sender: Option<tokio::sync::oneshot::Sender<u64>>,
 }
 
 impl StreamsBlockedDetector {
-    /// Returns `(detector, bidi_receiver, uni_receiver)`.
     fn new() -> (
         Self,
         tokio::sync::oneshot::Receiver<u64>,
@@ -99,9 +87,7 @@ impl events::Subscriber for StreamsBlockedDetector {
     }
 }
 
-/// Counts every `MAX_STREAMS` frame the server sends, both directions. Clones
-/// share the same counter, so the test keeps a clone to read after the
-/// server consumes the original.
+/// Counts `MAX_STREAMS` frames sent by the server. Clones share the counter.
 #[derive(Clone, Default)]
 struct MaxStreamsSentCounter {
     sent: Arc<AtomicU64>,
@@ -129,8 +115,7 @@ impl events::Subscriber for MaxStreamsSentCounter {
     }
 }
 
-/// Builds a server with common defaults: IO, TLS, event subscriber, and RNG.
-/// Callers chain `.with_limits(...)` to set stream caps before `.start()`.
+/// Builds a server with shared IO, TLS, event, and RNG providers.
 fn base_server(
     handle: &Handle,
     model: Model,
@@ -143,8 +128,7 @@ fn base_server(
         .with_random(Random::with_seed(456))?)
 }
 
-/// Builds a client with the shared IDLE_TIMEOUT. Mirrors `build_client` but
-/// adds the idle timeout required by stream-limit tests.
+/// Builds a client with the idle timeout used by these tests.
 fn test_client(handle: &Handle, model: Model) -> Result<Client> {
     Ok(Client::builder()
         .with_io(handle.builder().build()?)?
@@ -204,8 +188,7 @@ async fn open_uni_streams(connection: &mut s2n_quic::Connection, count: u64) {
     }
 }
 
-/// Opens `count` bidirectional streams without finishing or closing them.
-/// Returns the held-open streams so callers can close them later.
+/// Opens and returns `count` unfinished bidirectional streams.
 async fn open_bidi_streams_held(
     connection: &mut s2n_quic::Connection,
     count: u64,
@@ -222,8 +205,7 @@ async fn open_bidi_streams_held(
     streams
 }
 
-/// Opens `count` unidirectional (send-only) streams without finishing them.
-/// Returns the held-open streams so callers can close them later.
+/// Opens and returns `count` unfinished unidirectional streams.
 async fn open_uni_streams_held(
     connection: &mut s2n_quic::Connection,
     count: u64,
@@ -278,16 +260,16 @@ async fn assert_stream_blocked_uni(
     assert_eq!(limit, expected_cap, "uni STREAMS_BLOCKED limit");
 }
 
-/// Proves the server stops granting MAX_STREAMS credit after the cumulative
-/// cap, even when earlier streams are closed and the concurrent window has room.
+/// Verifies close-driven replenishment stops at the cumulative cap for both
+/// stream directions.
 #[test]
 fn cumulative_stream_cap() {
     let model = Model::default();
     let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
 
     test(model.clone(), move |handle| {
-        // Concurrent limits are below total, so the cap is reached through
-        // close-driven refill. The total cap is the only constraint under test.
+        // Concurrent limits are below total, so reaching the cap requires
+        // close-driven refill.
         let server = base_server(handle, model.clone(), detector)?
             .with_limits(
                 provider::limits::Limits::default()
@@ -319,7 +301,6 @@ fn cumulative_stream_cap() {
             assert_stream_blocked_uni(&mut connection, uni_blocked_rx, TOTAL_UNI).await;
             held_uni.finish().unwrap();
 
-            // Same pattern for bidi.
             open_bidi_streams(&mut connection, TOTAL_BIDI - 1).await;
             let mut held_bidi = connection.open_bidirectional_stream().await.unwrap();
             held_bidi
@@ -403,8 +384,8 @@ impl s2n_quic_core::connection::limits::Limiter for PostHandshakeLimiter {
     }
 }
 
-/// Proves total stream caps raised via `on_post_handshake` are honored: the
-/// client can open more cumulative streams than `on_connection` allowed.
+/// Verifies post-handshake cumulative-limit raises let the peer open the
+/// newly permitted streams.
 #[test]
 fn post_handshake_raises_total_limit() {
     let connection_total_bidi = 3u64;
@@ -438,16 +419,14 @@ fn post_handshake_raises_total_limit() {
             let connect = Connect::new(server_addr).with_server_name("localhost");
             let mut connection = client.connect(connect).await.unwrap();
 
-            // Open N-1 uni streams normally (send, finish, close), then hold
-            // the Nth open so the transmit path runs and delivers
-            // STREAMS_BLOCKED when the N+1th open blocks.
+            // Hold the final stream open so the next blocked attempt transmits
+            // `STREAMS_BLOCKED`.
             open_uni_streams(&mut connection, raised_total_uni - 1).await;
             let mut held_uni = connection.open_send_stream().await.unwrap();
             held_uni.send(Bytes::from("held uni stream")).await.unwrap();
             assert_stream_blocked_uni(&mut connection, uni_blocked_rx, raised_total_uni).await;
             held_uni.finish().unwrap();
 
-            // Same pattern for bidi.
             open_bidi_streams(&mut connection, raised_total_bidi - 1).await;
             let mut held_bidi = connection.open_bidirectional_stream().await.unwrap();
             held_bidi
@@ -463,12 +442,8 @@ fn post_handshake_raises_total_limit() {
     .unwrap();
 }
 
-/// Raises only the larger of the open and total stream limits in
-/// `on_post_handshake`, so the effective limit, `min(open, total)`, stays the
-/// same.
-///
-/// Proves the server sends no `MAX_STREAMS` when a post-handshake raise leaves
-/// the effective limit unchanged.
+/// Verifies raising only the larger of the open and total limits does not send
+/// `MAX_STREAMS` because `min(open, total)` is unchanged.
 #[test]
 fn post_handshake_effective_limit_unchanged() {
     let effective_limit = 5u64;
@@ -516,8 +491,7 @@ fn post_handshake_effective_limit_unchanged() {
                 let connect = Connect::new(server_addr).with_server_name("localhost");
                 let mut connection = client.connect(connect).await.unwrap();
 
-                // The settle delay is far longer than the test network RTT, so
-                // a `MAX_STREAMS` triggered by the raise has already been sent.
+                // Wait until any post-handshake update would have been sent.
                 bach::time::sleep(Duration::from_secs(1)).await;
                 assert_eq!(
                     counter.sent.load(Ordering::Relaxed),
@@ -525,10 +499,8 @@ fn post_handshake_effective_limit_unchanged() {
                     "{label}: MAX_STREAMS sent after the post-handshake raise"
                 );
 
-                // Streams stay held: closing one would replenish credit and
-                // send `MAX_STREAMS` legitimately. Sending on the last held
-                // stream runs the transmit path, which delivers
-                // `STREAMS_BLOCKED` when the next open blocks.
+                // Keep streams open so replenishment cannot change the limit.
+                // Sending on the last stream transmits `STREAMS_BLOCKED`.
                 let mut uni_streams = open_uni_streams_held(&mut connection, effective_limit).await;
                 let held_uni = uni_streams
                     .last_mut()
@@ -554,8 +526,8 @@ fn post_handshake_effective_limit_unchanged() {
     }
 }
 
-/// Proves a small post-handshake increase is advertised to the peer: the client
-/// can open exactly one more stream of each type.
+/// Verifies a small post-handshake increase reaches the peer, allowing exactly
+/// one additional stream of each type.
 #[test]
 fn post_handshake_small_raise_grants_one_stream() {
     let initial_open_limit = 20u64;
@@ -586,10 +558,8 @@ fn post_handshake_small_raise_grants_one_stream() {
             let connect = Connect::new(server_addr).with_server_name("localhost");
             let mut connection = client.connect(connect).await.unwrap();
 
-            // Streams stay held: closing one would replenish credit and send
-            // `MAX_STREAMS` legitimately. Sending on the last held stream runs
-            // the transmit path, which delivers `STREAMS_BLOCKED` when the next
-            // open blocks.
+            // Keep streams open so replenishment cannot change the limit.
+            // Sending on the last stream transmits `STREAMS_BLOCKED`.
             let mut uni_streams = open_uni_streams_held(&mut connection, raised_open_limit).await;
             let held_uni = uni_streams
                 .last_mut()

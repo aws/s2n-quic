@@ -496,21 +496,15 @@ enum Operation {
 
 #[derive(Debug, TypeGenerator, Clone, Copy)]
 struct Limits {
-    // OpenRemoteBidi (initial_local_limits)
+    // Limits for streams initiated by the peer.
     current_local_max_remote_bidi: u8,
     max_total_remote_bidi: u8,
-
-    // OpenRemoteUni (initial_local_limits)
     current_local_max_remote_uni: u8,
     max_total_remote_uni: u8,
 
-    // OpenLocalBidi (initial_remote_limits)
-    //  initial_remote_max_local_bidi.min(app_max_local_bidi)
+    // Limits for streams initiated locally.
     initial_remote_max_local_bidi: u8,
     app_max_local_bidi: u8,
-
-    // OpenLocalUni (initial_remote_limits)
-    //  initial_remote_max_local_uni.min(app_max_local_uni)
     initial_remote_max_local_uni: u8,
     app_max_local_uni: u8,
 }
@@ -543,7 +537,7 @@ impl Limits {
             ..Default::default()
         };
 
-        // OpenRemoteBidi (current_local_limits)
+        // Clamp peer-initiated stream allowances to their cumulative caps.
         current_local_limits.max_open_remote_bidirectional_streams =
             VarInt::from_u32(self.current_local_max_remote_bidi.into());
         advertised_local_limits.max_open_remote_bidirectional_streams = current_local_limits
@@ -554,7 +548,6 @@ impl Limits {
                     .as_varint(),
             );
 
-        // OpenRemoteUni (current_local_limits)
         current_local_limits.max_open_remote_unidirectional_streams =
             VarInt::from_u32(self.current_local_max_remote_uni.into());
         advertised_local_limits.max_open_remote_unidirectional_streams = current_local_limits
@@ -565,13 +558,10 @@ impl Limits {
                     .as_varint(),
             );
 
-        // OpenLocalBidi (initial_remote_limits)
-        //  initial_remote_max_local_bidi.min(app_max_local_bidi)
+        // Configure the peer's limits for locally initiated streams.
         initial_remote_limits.max_open_remote_bidirectional_streams =
             VarInt::from_u32(self.initial_remote_max_local_bidi.into());
 
-        // OpenLocalUni (initial_remote_limits)
-        //  initial_remote_max_local_uni.min(app_max_local_uni)
         initial_remote_limits.max_open_remote_unidirectional_streams =
             VarInt::from_u32(self.initial_remote_max_local_uni.into());
 

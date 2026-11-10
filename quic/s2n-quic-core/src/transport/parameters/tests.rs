@@ -369,15 +369,10 @@ fn mtu_probing_complete_support_encoding() {
     }
 }
 
-/// Each row sets (max_open, max_total) for bidi and uni streams. The expected
-/// advertised value is `min(max_open, max_total)`.
-///
-/// Proves the helper returns `min(max_open, max_total)` and that both
-/// `ServerTransportParameters` and `ClientTransportParameters` advertise the
-/// same value via `load_limits`.
+/// Verifies both endpoint types advertise `min(max_open, max_total)` for
+/// bidirectional and unidirectional streams across boundary cases.
 #[test]
 fn advertised_stream_limits_use_min_of_open_and_total() {
-    //            open_bidi, total_bidi, open_uni, total_uni, expected_bidi, expected_uni, label
     for (open_bidi, total_bidi, open_uni, total_uni, expected_bidi, expected_uni, label) in [
         (10, 20, 10, 20, 10, 10, "open < total"),
         (20, 10, 20, 10, 10, 10, "open > total"),

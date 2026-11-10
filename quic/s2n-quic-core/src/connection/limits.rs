@@ -258,8 +258,8 @@ impl Limits {
     ///
     /// The initial stream allowance advertised to the peer is the minimum of
     /// this value and [`Limits::with_max_total_remote_bidirectional_streams`].
-    /// As streams close, this value controls the close-driven window used to
-    /// grant more stream credit, up to the cumulative limit.
+    /// As streams close, replacement credit is granted up to this concurrent
+    /// window, subject to the cumulative limit.
     ///
     /// The value set is used instead of `with_max_open_bidirectional_streams` when set.
     pub fn with_max_open_remote_bidirectional_streams(
@@ -270,19 +270,17 @@ impl Limits {
         Ok(self)
     }
 
-    /// Sets the maximum cumulative number of bidirectional streams the remote
-    /// peer may open over the lifetime of the connection.
+    /// Sets the maximum number of bidirectional streams the remote peer may
+    /// open over the lifetime of the connection.
     ///
-    /// Once this many streams have been granted via MAX_STREAMS credit, no
-    /// further credit is issued. The initial allowance is the minimum of this
-    /// value and [`Limits::with_max_open_remote_bidirectional_streams`]. As
-    /// streams close, the max-open value controls the close-driven window used
-    /// to grant more credit until this cumulative limit is reached.
+    /// The initial allowance is the minimum of this value and
+    /// [`Limits::with_max_open_remote_bidirectional_streams`]. As streams close,
+    /// the max-open value controls replenishment until this cap is reached.
     ///
     /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
-    /// A value of 0 means the remote peer may not open any bidirectional streams.
+    /// A value of 0 prevents the remote peer from opening bidirectional streams.
     ///
-    /// The cap can be raised per connection after the handshake with
+    /// This cap can be raised after the handshake with
     /// [`UpdatableLimits::with_max_total_remote_bidirectional_streams`], but not
     /// lowered.
     pub fn with_max_total_remote_bidirectional_streams(
@@ -293,19 +291,17 @@ impl Limits {
         Ok(self)
     }
 
-    /// Sets the maximum cumulative number of unidirectional streams the remote
-    /// peer may open over the lifetime of the connection.
+    /// Sets the maximum number of unidirectional streams the remote peer may
+    /// open over the lifetime of the connection.
     ///
-    /// Once this many streams have been granted via MAX_STREAMS credit, no
-    /// further credit is issued. The initial allowance is the minimum of this
-    /// value and [`Limits::with_max_open_remote_unidirectional_streams`]. As
-    /// streams close, the max-open value controls the close-driven window used
-    /// to grant more credit until this cumulative limit is reached.
+    /// The initial allowance is the minimum of this value and
+    /// [`Limits::with_max_open_remote_unidirectional_streams`]. As streams close,
+    /// the max-open value controls replenishment until this cap is reached.
     ///
     /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
-    /// A value of 0 means the remote peer may not open any unidirectional streams.
+    /// A value of 0 prevents the remote peer from opening unidirectional streams.
     ///
-    /// The cap can be raised per connection after the handshake with
+    /// This cap can be raised after the handshake with
     /// [`UpdatableLimits::with_max_total_remote_unidirectional_streams`], but not
     /// lowered.
     pub fn with_max_total_remote_unidirectional_streams(
@@ -327,8 +323,8 @@ impl Limits {
         ///
         /// The initial stream allowance advertised to the peer is the minimum of
         /// this value and [`Limits::with_max_total_remote_unidirectional_streams`].
-        /// As streams close, this value controls the close-driven window used to
-        /// grant more stream credit, up to the cumulative limit.
+        /// As streams close, replacement credit is granted up to this concurrent
+        /// window, subject to the cumulative limit.
         with_max_open_remote_unidirectional_streams,
         max_open_remote_unidirectional_streams,
         u64
@@ -487,14 +483,11 @@ impl Limits {
         }
     }
 
-    /// Returns the flow control limits that will be advertised to the peer in
-    /// transport parameters. Stream counts are clamped to
-    /// `min(max_open_remote_*, max_total_remote_*)` so the peer's initial credit
-    /// never exceeds the cumulative cap.
+    /// Returns the flow control limits advertised in transport parameters.
+    /// Stream counts are `min(max_open_remote_*, max_total_remote_*)`.
     ///
-    /// This is the single source of truth for the advertised stream-count limits.
-    /// Both `TransportParameters::load_limits()` and the pre-`on_post_handshake`
-    /// snapshot in `SessionContext::on_one_rtt_keys()` derive from this method.
+    /// Used both to encode transport parameters and to capture the
+    /// pre-`on_post_handshake` synchronization baseline.
     #[doc(hidden)]
     #[inline]
     pub fn advertised_initial_flow_control_limits(&self) -> InitialFlowControlLimits {
@@ -611,12 +604,9 @@ impl<'a> UpdatableLimits<'a> {
         self.0.stream_batch_size = size;
     }
 
-    /// Raises the limit for an active connection. Values lower than the current
-    /// limit are rejected with `ValidationError`.
-    ///
-    /// The peer's effective stream allowance is the minimum of its max-open and
-    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
-    /// allowance increases.
+    /// Raises this limit for an active connection. Lower values return
+    /// `ValidationError`. A `MAX_STREAMS` update is sent only if
+    /// `min(max_open, max_total)` increases.
     pub fn with_max_open_remote_bidirectional_streams(
         &mut self,
         value: u64,
@@ -631,12 +621,9 @@ impl<'a> UpdatableLimits<'a> {
         Ok(())
     }
 
-    /// Raises the limit for an active connection. Values lower than the current
-    /// limit are rejected with `ValidationError`.
-    ///
-    /// The peer's effective stream allowance is the minimum of its max-open and
-    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
-    /// allowance increases.
+    /// Raises this limit for an active connection. Lower values return
+    /// `ValidationError`. A `MAX_STREAMS` update is sent only if
+    /// `min(max_open, max_total)` increases.
     pub fn with_max_open_remote_unidirectional_streams(
         &mut self,
         value: u64,
@@ -651,16 +638,14 @@ impl<'a> UpdatableLimits<'a> {
         Ok(())
     }
 
-    /// Raises the limit for an active connection. Values lower than the current
-    /// limit are rejected with `ValidationError`.
+    /// Raises this limit for an active connection. Lower values return
+    /// `ValidationError`. A `MAX_STREAMS` update is sent only if
+    /// `min(max_open, max_total)` increases.
     ///
-    /// The peer's effective stream allowance is the minimum of its max-open and
-    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
-    /// allowance increases.
-    ///
-    /// The default is `MAX_STREAMS_MAX_VALUE`, so any other value is a decrease
-    /// and is rejected unless `on_connection` set a lower cap with
-    /// [`Limits::with_max_total_remote_bidirectional_streams`].
+    /// The default is already `MAX_STREAMS_MAX_VALUE`. To make a later raise
+    /// possible, first set a smaller cap with
+    /// [`Limits::with_max_total_remote_bidirectional_streams`] in
+    /// `on_connection`.
     pub fn with_max_total_remote_bidirectional_streams(
         &mut self,
         value: u64,
@@ -675,16 +660,14 @@ impl<'a> UpdatableLimits<'a> {
         Ok(())
     }
 
-    /// Raises the limit for an active connection. Values lower than the current
-    /// limit are rejected with `ValidationError`.
+    /// Raises this limit for an active connection. Lower values return
+    /// `ValidationError`. A `MAX_STREAMS` update is sent only if
+    /// `min(max_open, max_total)` increases.
     ///
-    /// The peer's effective stream allowance is the minimum of its max-open and
-    /// max-total values. A `MAX_STREAMS` update is sent only when that effective
-    /// allowance increases.
-    ///
-    /// The default is `MAX_STREAMS_MAX_VALUE`, so any other value is a decrease
-    /// and is rejected unless `on_connection` set a lower cap with
-    /// [`Limits::with_max_total_remote_unidirectional_streams`].
+    /// The default is already `MAX_STREAMS_MAX_VALUE`. To make a later raise
+    /// possible, first set a smaller cap with
+    /// [`Limits::with_max_total_remote_unidirectional_streams`] in
+    /// `on_connection`.
     pub fn with_max_total_remote_unidirectional_streams(
         &mut self,
         value: u64,
