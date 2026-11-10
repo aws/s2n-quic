@@ -1108,6 +1108,20 @@ jobs:
         working-directory: dc/wireshark
         run: cargo xtask bindings
 
+      # DEBUG ONLY: why does tshark ignore WIRESHARK_PLUGIN_DIR on ubuntu-26.04?
+      - name: Debug tshark privileges
+        if: runner.os == 'Linux'
+        working-directory: dc/wireshark
+        run: |
+          set -x
+          id
+          grep -E '^(Uid|Gid|CapInh|CapPrm|CapEff|NoNewPrivs)' /proc/self/status
+          ls -l /usr/bin/tshark /usr/bin/dumpcap
+          getcap /usr/bin/tshark /usr/bin/dumpcap || true
+          tshark --version | head -1
+          tshark -G folders | grep -i plugins
+          WIRESHARK_PLUGIN_DIR=target/wireshark/plugins tshark -G folders | grep -i plugins
+
       - name: Run cargo fmt
         working-directory: dc/wireshark
         run: cargo fmt --all -- --check
