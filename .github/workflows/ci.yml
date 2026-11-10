@@ -284,6 +284,8 @@ jobs:
           - rust: stable
             os: ubuntu-latest
             target: i686-unknown-linux-gnu
+            # DEBUG ONLY: does disabling seccomp clear the ENOSYS socket failures?
+            env: CROSS_CONTAINER_OPTS="--security-opt seccomp=unconfined"
             # s2n-quic-dc requires a large number of threads for testing, which isn't supported on i686
             exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
@@ -333,6 +335,15 @@ jobs:
         shell: bash
         run: |
           find . -name 'corpus.tar.gz' -exec dirname {} ';' | xargs -L 1 bash -c 'cd "$0" && rm -rf corpus && tar xf corpus.tar.gz'
+
+      # DEBUG ONLY: Docker version and the upstream socketcall repro (runner-images#14790)
+      - name: Debug docker seccomp
+        if: ${{ matrix.target == 'i686-unknown-linux-gnu' }}
+        run: |
+          set -x
+          docker version --format 'server={{.Server.Version}} client={{.Client.Version}}'
+          rc=0; docker run --rm --platform linux/386 public.ecr.aws/docker/library/debian:bookworm getent hosts github.com || rc=$?; echo "default seccomp exit=$rc"
+          rc=0; docker run --rm --platform linux/386 --security-opt seccomp=unconfined public.ecr.aws/docker/library/debian:bookworm getent hosts github.com || rc=$?; echo "unconfined exit=$rc"
 
       - name: Set environment variables
         if: ${{ matrix.env != 'default' }}
