@@ -490,7 +490,7 @@ impl Limits {
     /// pre-`on_post_handshake` synchronization baseline.
     #[doc(hidden)]
     #[inline]
-    pub fn advertised_initial_flow_control_limits(&self) -> InitialFlowControlLimits {
+    pub fn advertised_flow_control_limits(&self) -> InitialFlowControlLimits {
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
             max_data: self.data_window.as_varint(),
@@ -507,7 +507,7 @@ impl Limits {
 
     #[doc(hidden)]
     #[inline]
-    pub const fn initial_flow_control_limits(&self) -> InitialFlowControlLimits {
+    pub const fn configured_flow_control_limits(&self) -> InitialFlowControlLimits {
         InitialFlowControlLimits {
             stream_limits: self.initial_stream_limits(),
             max_data: self.data_window.as_varint(),
@@ -887,7 +887,7 @@ mod tests {
         );
         assert_eq!(
             limits
-                .initial_flow_control_limits()
+                .configured_flow_control_limits()
                 .max_open_remote_bidirectional_streams,
             VarInt::new(50).unwrap()
         );
@@ -924,14 +924,14 @@ mod tests {
         assert_eq!(
             updatable
                 .0
-                .initial_flow_control_limits()
+                .configured_flow_control_limits()
                 .max_open_remote_bidirectional_streams,
             VarInt::new(100).unwrap()
         );
         assert_eq!(
             updatable
                 .0
-                .initial_flow_control_limits()
+                .configured_flow_control_limits()
                 .max_open_remote_unidirectional_streams,
             VarInt::new(200).unwrap()
         );
@@ -1009,13 +1009,13 @@ mod tests {
 
         assert_eq!(
             limits
-                .initial_flow_control_limits()
+                .configured_flow_control_limits()
                 .max_open_remote_bidirectional_streams,
             VarInt::new(100).unwrap()
         );
         assert_eq!(
             limits
-                .initial_flow_control_limits()
+                .configured_flow_control_limits()
                 .max_open_remote_unidirectional_streams,
             VarInt::new(50).unwrap()
         );
@@ -1041,7 +1041,7 @@ mod tests {
             .with_max_total_remote_unidirectional_streams(0)
             .unwrap();
 
-        let flow_limits = limits.initial_flow_control_limits();
+        let flow_limits = limits.configured_flow_control_limits();
         assert_eq!(
             flow_limits.max_open_remote_bidirectional_streams,
             VarInt::from_u8(0)

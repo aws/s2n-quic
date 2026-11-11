@@ -399,7 +399,7 @@ fn advertised_stream_limits_use_min_of_open_and_total() {
             .with_max_total_remote_unidirectional_streams(total_uni)
             .unwrap();
 
-        let helper = limits.advertised_initial_flow_control_limits();
+        let helper = limits.advertised_flow_control_limits();
 
         assert_eq!(
             helper.max_open_remote_bidirectional_streams.as_u64(),

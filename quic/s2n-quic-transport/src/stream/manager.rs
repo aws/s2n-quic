@@ -577,7 +577,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
             "Receive window must not exceed 32bit range"
         );
 
-        let current_local_limits = connection_limits.initial_flow_control_limits();
+        let current_local_limits = connection_limits.configured_flow_control_limits();
 
         Self {
             inner: StreamManagerState {

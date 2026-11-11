@@ -1654,7 +1654,7 @@ impl<
             initial_max_stream_data_bidi_remote
         );
         load!(unidirectional_data_window, initial_max_stream_data_uni);
-        let advertised = limits.advertised_initial_flow_control_limits();
+        let advertised = limits.advertised_flow_control_limits();
         self.initial_max_streams_bidi = advertised
             .max_open_remote_bidirectional_streams
             .try_into()

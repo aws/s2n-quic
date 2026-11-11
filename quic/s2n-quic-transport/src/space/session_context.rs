@@ -418,7 +418,7 @@ impl<Config: endpoint::Config, Pub: event::ConnectionPublisher>
             self.application_protocol,
         );
         // Capture what the peer learned before `on_post_handshake` can raise it.
-        let advertised_limits = self.limits.advertised_initial_flow_control_limits();
+        let advertised_limits = self.limits.advertised_flow_control_limits();
 
         let mut updatable_limits = UpdatableLimits::new(self.limits);
         self.limits_endpoint
