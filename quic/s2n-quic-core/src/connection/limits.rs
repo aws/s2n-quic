@@ -270,47 +270,42 @@ impl Limits {
         Ok(self)
     }
 
-    /// Sets the maximum number of bidirectional streams the remote peer may
-    /// open over the lifetime of the connection.
-    ///
-    /// The initial allowance is the minimum of this value and
-    /// [`Limits::with_max_open_remote_bidirectional_streams`]. As streams close,
-    /// the max-open value controls replenishment until this cap is reached.
-    ///
-    /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
-    /// A value of 0 prevents the remote peer from opening bidirectional streams.
-    ///
-    /// This cap can be raised after the handshake with
-    /// [`UpdatableLimits::with_max_total_remote_bidirectional_streams`], but not
-    /// lowered.
-    pub fn with_max_total_remote_bidirectional_streams(
-        mut self,
-        value: u64,
-    ) -> Result<Self, ValidationError> {
-        self.max_total_remote_bidirectional_streams = value.try_into()?;
-        Ok(self)
-    }
-
-    /// Sets the maximum number of unidirectional streams the remote peer may
-    /// open over the lifetime of the connection.
-    ///
-    /// The initial allowance is the minimum of this value and
-    /// [`Limits::with_max_open_remote_unidirectional_streams`]. As streams close,
-    /// the max-open value controls replenishment until this cap is reached.
-    ///
-    /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
-    /// A value of 0 prevents the remote peer from opening unidirectional streams.
-    ///
-    /// This cap can be raised after the handshake with
-    /// [`UpdatableLimits::with_max_total_remote_unidirectional_streams`], but not
-    /// lowered.
-    pub fn with_max_total_remote_unidirectional_streams(
-        mut self,
-        value: u64,
-    ) -> Result<Self, ValidationError> {
-        self.max_total_remote_unidirectional_streams = value.try_into()?;
-        Ok(self)
-    }
+    setter!(
+        /// Sets the maximum number of bidirectional streams the remote peer may
+        /// open over the lifetime of the connection.
+        ///
+        /// The initial allowance is the minimum of this value and
+        /// [`Limits::with_max_open_remote_bidirectional_streams`]. As streams close,
+        /// the max-open value controls replenishment until this cap is reached.
+        ///
+        /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
+        /// A value of 0 prevents the remote peer from opening bidirectional streams.
+        ///
+        /// This cap can be raised after the handshake with
+        /// [`UpdatableLimits::with_max_total_remote_bidirectional_streams`], but not
+        /// lowered.
+        with_max_total_remote_bidirectional_streams,
+        max_total_remote_bidirectional_streams,
+        u64
+    );
+    setter!(
+        /// Sets the maximum number of unidirectional streams the remote peer may
+        /// open over the lifetime of the connection.
+        ///
+        /// The initial allowance is the minimum of this value and
+        /// [`Limits::with_max_open_remote_unidirectional_streams`]. As streams close,
+        /// the max-open value controls replenishment until this cap is reached.
+        ///
+        /// Default: `MAX_STREAMS_MAX_VALUE` (2^60), which is effectively unlimited.
+        /// A value of 0 prevents the remote peer from opening unidirectional streams.
+        ///
+        /// This cap can be raised after the handshake with
+        /// [`UpdatableLimits::with_max_total_remote_unidirectional_streams`], but not
+        /// lowered.
+        with_max_total_remote_unidirectional_streams,
+        max_total_remote_unidirectional_streams,
+        u64
+    );
 
     setter!(
         with_max_open_local_unidirectional_streams,

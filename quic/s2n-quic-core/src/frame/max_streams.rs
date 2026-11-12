@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{frame::Tag, stream::StreamType, transport::parameters::MAX_STREAMS_MAX_VALUE, varint::VarInt};
+use crate::{
+    frame::Tag, stream::StreamType, transport::parameters::MAX_STREAMS_MAX_VALUE, varint::VarInt,
+};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
