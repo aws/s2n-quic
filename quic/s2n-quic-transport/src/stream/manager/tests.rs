@@ -369,6 +369,37 @@ fn create_default_initial_flow_control_limits() -> InitialFlowControlLimits {
     }
 }
 
+/// Builds a manager with separate current and advertised stream limits,
+/// modeling a post-handshake raise when current exceeds advertised.
+fn build_manager_with_raise(
+    raised_bidi: u64,
+    raised_uni: u64,
+    advertised_bidi: u64,
+    advertised_uni: u64,
+) -> AbstractStreamManager<MockStream> {
+    let connection_limits = ConnectionLimits::default()
+        .with_max_open_remote_bidirectional_streams(raised_bidi)
+        .unwrap()
+        .with_max_open_remote_unidirectional_streams(raised_uni)
+        .unwrap();
+
+    let advertised_limits = InitialFlowControlLimits {
+        stream_limits: Default::default(),
+        max_data: VarInt::default(),
+        max_open_remote_bidirectional_streams: VarInt::new(advertised_bidi).unwrap(),
+        max_open_remote_unidirectional_streams: VarInt::new(advertised_uni).unwrap(),
+    };
+    let peer_limits = create_default_initial_flow_control_limits();
+
+    AbstractStreamManager::<MockStream>::new(
+        &connection_limits,
+        endpoint::Type::Server,
+        advertised_limits,
+        peer_limits,
+        DEFAULT_INITIAL_RTT,
+    )
+}
+
 fn create_wakeup_queue_and_handle() -> (
     WakeupQueue<InternalConnectionId>,
     Arc<WakeupHandle<InternalConnectionId>>,
@@ -393,11 +424,23 @@ fn create_stream_manager(local_ep_type: endpoint::Type) -> AbstractStreamManager
     let initial_local_limits = create_default_initial_flow_control_limits();
     let initial_peer_limits = create_default_initial_flow_control_limits();
 
-    // set local limits high so that they are not a constraint
+    // Keep local capacity out of the way and match the advertised remote limits.
     let limits = ConnectionLimits::default()
         .with_max_open_local_bidirectional_streams(1000)
         .unwrap()
         .with_max_open_local_unidirectional_streams(1000)
+        .unwrap()
+        .with_max_open_remote_bidirectional_streams(
+            initial_local_limits
+                .max_open_remote_bidirectional_streams
+                .as_u64(),
+        )
+        .unwrap()
+        .with_max_open_remote_unidirectional_streams(
+            initial_local_limits
+                .max_open_remote_unidirectional_streams
+                .as_u64(),
+        )
         .unwrap();
 
     AbstractStreamManager::<MockStream>::new(
@@ -982,6 +1025,87 @@ fn send_streams_blocked_frame_when_blocked_by_peer() {
     }
 }
 
+/// Verifies `STREAMS_BLOCKED(0)` is sent before any stream of either type opens.
+#[test]
+fn send_streams_blocked_frame_before_any_stream_opened() {
+    for stream_type in [StreamType::Bidirectional, StreamType::Unidirectional] {
+        let peer_stream_limit = VarInt::from_u8(0);
+        let initial_local_limits = create_default_initial_flow_control_limits();
+        let mut initial_peer_limits = create_default_initial_flow_control_limits();
+        match stream_type {
+            StreamType::Bidirectional => {
+                initial_peer_limits.max_open_remote_bidirectional_streams = peer_stream_limit
+            }
+            StreamType::Unidirectional => {
+                initial_peer_limits.max_open_remote_unidirectional_streams = peer_stream_limit
+            }
+        }
+
+        // Keep local capacity out of the way.
+        let limits = ConnectionLimits::default()
+            .with_max_open_local_bidirectional_streams(1000)
+            .unwrap()
+            .with_max_open_local_unidirectional_streams(1000)
+            .unwrap();
+
+        let mut manager = AbstractStreamManager::<MockStream>::new(
+            &limits,
+            endpoint::Type::Server,
+            initial_local_limits,
+            initial_peer_limits,
+            DEFAULT_INITIAL_RTT,
+        );
+
+        let (waker, _) = new_count_waker();
+        let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
+        let mut token = connection::OpenToken::new();
+
+        assert!(
+            manager
+                .poll_open_local_stream(
+                    stream_type,
+                    &mut token,
+                    &mut ConnectionApiCallContext::from_wakeup_handle(&wakeup_handle),
+                    &Context::from_waker(&waker),
+                )
+                .is_pending(),
+            "stream_type:{stream_type:?}"
+        );
+
+        assert_eq!(
+            transmission::Interest::NewData,
+            manager.get_transmission_interest(),
+            "stream_type:{stream_type:?}"
+        );
+
+        let mut frame_buffer = OutgoingFrameBuffer::new();
+        let mut write_context = MockWriteContext::new(
+            time::now(),
+            &mut frame_buffer,
+            transmission::Constraint::None,
+            transmission::Mode::Normal,
+            endpoint::Type::Server,
+        );
+        assert!(manager.on_transmit(&mut write_context).is_ok());
+
+        assert_eq!(
+            1,
+            write_context.frame_buffer.len(),
+            "stream_type:{stream_type:?}"
+        );
+
+        let expected_frame = Frame::StreamsBlocked(StreamsBlocked {
+            stream_type,
+            stream_limit: peer_stream_limit,
+        });
+
+        assert_eq!(
+            expected_frame,
+            write_context.frame_buffer.pop_front().unwrap().as_frame()
+        );
+    }
+}
+
 #[test]
 fn streams_blocked_period() {
     let (_wakeup_queue, wakeup_handle) = create_wakeup_queue_and_handle();
@@ -1383,6 +1507,10 @@ fn asymmetric_stream_limits_remote_initiated() {
                     .with_max_open_local_bidirectional_streams(local_limit as u64)
                     .unwrap()
                     .with_max_open_local_unidirectional_streams(local_limit as u64)
+                    .unwrap()
+                    .with_max_open_remote_bidirectional_streams(local_limit as u64)
+                    .unwrap()
+                    .with_max_open_remote_unidirectional_streams(local_limit as u64)
                     .unwrap();
 
                 initial_local_limits.max_open_remote_bidirectional_streams =
@@ -1457,6 +1585,10 @@ fn asymmetric_stream_limits_local_initiated() {
                     .with_max_open_local_bidirectional_streams(local_limit as u64)
                     .unwrap()
                     .with_max_open_local_unidirectional_streams(local_limit as u64)
+                    .unwrap()
+                    .with_max_open_remote_bidirectional_streams(local_limit as u64)
+                    .unwrap()
+                    .with_max_open_remote_unidirectional_streams(local_limit as u64)
                     .unwrap();
 
                 initial_local_limits.max_open_remote_bidirectional_streams =
@@ -1539,6 +1671,10 @@ fn rate_limited_stream_credits() {
                 .with_max_open_local_bidirectional_streams(limit as u64)
                 .unwrap()
                 .with_max_open_local_unidirectional_streams(limit as u64)
+                .unwrap()
+                .with_max_open_remote_bidirectional_streams(limit as u64)
+                .unwrap()
+                .with_max_open_remote_unidirectional_streams(limit as u64)
                 .unwrap();
 
             initial_local_limits.max_open_remote_bidirectional_streams = VarInt::from_u32(limit);
@@ -3316,4 +3452,58 @@ fn stream_batching_test() {
             }
         }
     }
+}
+
+/// Verifies a post-handshake raise is sent for both stream directions before
+/// the peer opens a stream.
+#[test]
+fn post_handshake_raise_emits_max_streams_before_any_stream_opened() {
+    let advertised_bidi = 50u64;
+    let advertised_uni = 40u64;
+    let raised_bidi = 100u64;
+    let raised_uni = 80u64;
+    let mut manager =
+        build_manager_with_raise(raised_bidi, raised_uni, advertised_bidi, advertised_uni);
+
+    assert_eq!(
+        transmission::Interest::NewData,
+        manager.get_transmission_interest()
+    );
+
+    let mut frame_buffer = OutgoingFrameBuffer::new();
+    let mut write_context = MockWriteContext::new(
+        time::now(),
+        &mut frame_buffer,
+        transmission::Constraint::None,
+        transmission::Mode::Normal,
+        endpoint::Type::Server,
+    );
+    manager.on_transmit(&mut write_context).unwrap();
+
+    let mut saw_bidi = false;
+    let mut saw_uni = false;
+    while let Some(mut written) = write_context.frame_buffer.pop_front() {
+        match written.as_frame() {
+            Frame::MaxStreams(MaxStreams {
+                stream_type: StreamType::Bidirectional,
+                maximum_streams,
+            }) => {
+                assert_eq!(maximum_streams, VarInt::new(raised_bidi).unwrap());
+                saw_bidi = true;
+            }
+            Frame::MaxStreams(MaxStreams {
+                stream_type: StreamType::Unidirectional,
+                maximum_streams,
+            }) => {
+                assert_eq!(maximum_streams, VarInt::new(raised_uni).unwrap());
+                saw_uni = true;
+            }
+            frame => panic!("unexpected frame {frame:?}"),
+        }
+    }
+    assert!(saw_bidi && saw_uni);
+    assert_eq!(
+        transmission::Interest::None,
+        manager.get_transmission_interest()
+    );
 }

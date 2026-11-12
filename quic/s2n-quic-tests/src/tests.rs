@@ -51,6 +51,7 @@ mod retry_short_cid;
 mod self_test;
 mod skip_packets;
 mod slow_tls;
+mod stream_limits;
 mod tls_context;
 // This test uses quiche, which depends on BoringSSL. See the `boringssl` cfg in build.rs.
 #[cfg(boringssl)]
