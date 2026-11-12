@@ -652,8 +652,7 @@ impl ReceiveStream {
 
         let error = StreamError::stream_reset(frame.application_error_code.into());
         self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
-        self.final_size
-            .get_or_insert(frame.final_size.as_u64());
+        self.final_size.get_or_insert(frame.final_size.as_u64());
 
         // We don't have to send `STOP_SENDING` anymore since the stream was reset by the peer
         self.stop_sending_sync.stop_sync();
@@ -681,11 +680,7 @@ impl ReceiveStream {
         // state and make sure that the indicated size matches what we expect.
         match self.state {
             ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => {
-                ensure_actual_size_matches_known_size(
-                    actual_size,
-                    self.final_size,
-                    frame_tag,
-                )?;
+                ensure_actual_size_matches_known_size(actual_size, self.final_size, frame_tag)?;
 
                 return Ok(());
             }
@@ -717,17 +712,14 @@ impl ReceiveStream {
                 ..
             } => {
                 ensure_actual_size_gte_received_data(actual_size, *highest_received, frame_tag)?;
-                ensure_actual_size_matches_known_size(
-                    actual_size,
-                    self.final_size,
-                    frame_tag,
-                )?;
+                ensure_actual_size_matches_known_size(actual_size, self.final_size, frame_tag)?;
             }
         }
 
-        if matches!(self.state, ReceiveStreamState::Receiving
-            | ReceiveStreamState::Stopping { .. })
-        {
+        if matches!(
+            self.state,
+            ReceiveStreamState::Receiving | ReceiveStreamState::Stopping { .. }
+        ) {
             if let Some(actual_size) = actual_size {
                 // We have to acquire the flow control credits up to the
                 // offset which the peer indicates as the end of the Stream.
