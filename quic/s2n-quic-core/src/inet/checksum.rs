@@ -64,13 +64,19 @@ fn write_sized_generic<'a, const MAX_LEN: usize, const CHUNK_LEN: usize>(
 
         let mut sum = 0;
         // for each pair of bytes, interpret them as integers and sum them up
-        for chunk in chunks.as_chunks::<CHUNK_LEN>().0 {
+        //
+        // Walk the block by index instead of using a chunk iterator
+        // (`chunks_exact`/`as_chunks`): kani has to model the iterator, which makes
+        // the `differential` proof much slower and more memory-hungry.
+        let mut offset = 0;
+        while offset + CHUNK_LEN <= MAX_LEN {
             let chunk = unsafe {
-                // SAFETY: chunks_exact always produces a slice of CHUNK_LEN
-                debug_assert_eq!(chunk.len(), CHUNK_LEN);
-                &*(chunk.as_ptr() as *const [u8; CHUNK_LEN])
+                // SAFETY: `offset + CHUNK_LEN <= MAX_LEN == chunks.len()`, and
+                //         `[u8; CHUNK_LEN]` has the same alignment as `u8`
+                &*(chunks.as_ptr().add(offset) as *const [u8; CHUNK_LEN])
             };
             on_chunk(chunk, &mut sum);
+            offset += CHUNK_LEN;
         }
         *state += sum;
     }
