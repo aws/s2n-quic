@@ -56,7 +56,6 @@ fn connection_limits() {
     test(model.clone(), |handle| {
         let server = Server::builder()
             .with_io(handle.builder().build()?)?
-            .with_event(tracing_events(true, model.clone()))?
             .with_tls(SERVER_CERTS)?
             .with_event(tracing_events(true, model.clone()))?
             .with_limits(LimitsProvider {
@@ -65,8 +64,7 @@ fn connection_limits() {
             .start()?;
 
         let client = Client::builder()
-            .with_io(handle.builder().build().unwrap())?
-            .with_event(tracing_events(true, model.clone()))?
+            .with_io(handle.builder().build()?)?
             .with_tls(certificates::CERT_PEM)?
             .with_event(tracing_events(true, model.clone()))?
             .start()?;

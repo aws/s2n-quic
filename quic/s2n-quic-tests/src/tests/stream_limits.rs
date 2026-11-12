@@ -7,9 +7,13 @@ use bytes::Bytes;
 use s2n_quic::{
     server::{self, ServerProviders},
     stream::{BidirectionalStream, SendStream},
+    Connection,
 };
-use s2n_quic_core::transport::parameters::MAX_STREAMS_MAX_VALUE;
-use std::sync::atomic::{AtomicU64, Ordering};
+use s2n_quic_core::{
+    connection::limits::{ConnectionInfo, HandshakeInfo, Limiter, Limits, UpdatableLimits},
+    transport::parameters::MAX_STREAMS_MAX_VALUE,
+};
+use tokio::sync::oneshot;
 
 const CONCURRENT_BIDI: u64 = 5;
 const CONCURRENT_UNI: u64 = 4;
@@ -24,18 +28,14 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 /// Notifies tests when the server receives `STREAMS_BLOCKED` for either
 /// stream direction.
 struct StreamsBlockedDetector {
-    bidi_sender: Option<tokio::sync::oneshot::Sender<u64>>,
-    uni_sender: Option<tokio::sync::oneshot::Sender<u64>>,
+    bidi_sender: Option<oneshot::Sender<u64>>,
+    uni_sender: Option<oneshot::Sender<u64>>,
 }
 
 impl StreamsBlockedDetector {
-    fn new() -> (
-        Self,
-        tokio::sync::oneshot::Receiver<u64>,
-        tokio::sync::oneshot::Receiver<u64>,
-    ) {
-        let (bidi_tx, bidi_rx) = tokio::sync::oneshot::channel();
-        let (uni_tx, uni_rx) = tokio::sync::oneshot::channel();
+    fn new() -> (Self, oneshot::Receiver<u64>, oneshot::Receiver<u64>) {
+        let (bidi_tx, bidi_rx) = oneshot::channel();
+        let (uni_tx, uni_rx) = oneshot::channel();
         (
             Self {
                 bidi_sender: Some(bidi_tx),
@@ -87,34 +87,6 @@ impl events::Subscriber for StreamsBlockedDetector {
     }
 }
 
-/// Counts `MAX_STREAMS` frames sent by the server. Clones share the counter.
-#[derive(Clone, Default)]
-struct MaxStreamsSentCounter {
-    sent: Arc<AtomicU64>,
-}
-
-impl events::Subscriber for MaxStreamsSentCounter {
-    type ConnectionContext = ();
-
-    fn create_connection_context(
-        &mut self,
-        _meta: &events::ConnectionMeta,
-        _info: &events::ConnectionInfo,
-    ) -> Self::ConnectionContext {
-    }
-
-    fn on_frame_sent(
-        &mut self,
-        _context: &mut Self::ConnectionContext,
-        _meta: &events::ConnectionMeta,
-        event: &events::FrameSent,
-    ) {
-        if matches!(event.frame, events::Frame::MaxStreams { .. }) {
-            self.sent.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-}
-
 /// Builds a server with shared IO, TLS, event, and RNG providers.
 fn base_server(
     handle: &Handle,
@@ -124,7 +96,7 @@ fn base_server(
     Ok(Server::builder()
         .with_io(handle.builder().build()?)?
         .with_tls(SERVER_CERTS)?
-        .with_event((subscriber, tracing_events(true, model)))?
+        .with_event((tracing_events(true, model), subscriber))?
         .with_random(Random::with_seed(456))?)
 }
 
@@ -145,7 +117,7 @@ fn test_client(handle: &Handle, model: Model) -> Result<Client> {
 
 /// Opens `count` bidirectional streams, sends a payload on each, and verifies
 /// the echoed data matches.
-async fn open_bidi_streams(connection: &mut s2n_quic::Connection, count: u64) {
+async fn open_bidi_streams(connection: &mut Connection, count: u64) {
     for i in 0..count {
         let payload = Bytes::from(format!("stream {i}"));
         let result = connection.open_bidirectional_stream().await;
@@ -171,7 +143,7 @@ async fn open_bidi_streams(connection: &mut s2n_quic::Connection, count: u64) {
 }
 
 /// Opens `count` unidirectional (send-only) streams with a payload on each.
-async fn open_uni_streams(connection: &mut s2n_quic::Connection, count: u64) {
+async fn open_uni_streams(connection: &mut Connection, count: u64) {
     for i in 0..count {
         let result = connection.open_send_stream().await;
         assert!(
@@ -190,7 +162,7 @@ async fn open_uni_streams(connection: &mut s2n_quic::Connection, count: u64) {
 
 /// Opens and returns `count` unfinished bidirectional streams.
 async fn open_bidi_streams_held(
-    connection: &mut s2n_quic::Connection,
+    connection: &mut Connection,
     count: u64,
 ) -> Vec<BidirectionalStream> {
     let mut streams = Vec::with_capacity(count as usize);
@@ -206,10 +178,7 @@ async fn open_bidi_streams_held(
 }
 
 /// Opens and returns `count` unfinished unidirectional streams.
-async fn open_uni_streams_held(
-    connection: &mut s2n_quic::Connection,
-    count: u64,
-) -> Vec<SendStream> {
+async fn open_uni_streams_held(connection: &mut Connection, count: u64) -> Vec<SendStream> {
     let mut streams = Vec::with_capacity(count as usize);
     for i in 0..count {
         let result = connection.open_send_stream().await;
@@ -225,8 +194,8 @@ async fn open_uni_streams_held(
 /// Asserts the next bidirectional stream open blocks (times out) and the server
 /// received a `STREAMS_BLOCKED` frame at `expected_cap`.
 async fn assert_stream_blocked_bidi(
-    connection: &mut s2n_quic::Connection,
-    blocked_rx: tokio::sync::oneshot::Receiver<u64>,
+    connection: &mut Connection,
+    blocked_rx: oneshot::Receiver<u64>,
     expected_cap: u64,
 ) {
     match timeout(BLOCKED_TIMEOUT, connection.open_bidirectional_stream()).await {
@@ -244,8 +213,8 @@ async fn assert_stream_blocked_bidi(
 /// Asserts the next unidirectional stream open blocks (times out) and the
 /// server received a `STREAMS_BLOCKED` frame at `expected_cap`.
 async fn assert_stream_blocked_uni(
-    connection: &mut s2n_quic::Connection,
-    blocked_rx: tokio::sync::oneshot::Receiver<u64>,
+    connection: &mut Connection,
+    blocked_rx: oneshot::Receiver<u64>,
     expected_cap: u64,
 ) {
     match timeout(BLOCKED_TIMEOUT, connection.open_send_stream()).await {
@@ -342,12 +311,9 @@ struct PostHandshakeLimiter {
     uni: StreamCapConfig,
 }
 
-impl s2n_quic_core::connection::limits::Limiter for PostHandshakeLimiter {
-    fn on_connection(
-        &mut self,
-        _info: &s2n_quic_core::connection::limits::ConnectionInfo,
-    ) -> s2n_quic_core::connection::limits::Limits {
-        s2n_quic_core::connection::limits::Limits::default()
+impl Limiter for PostHandshakeLimiter {
+    fn on_connection(&mut self, _info: &ConnectionInfo) -> Limits {
+        Limits::default()
             .with_max_idle_timeout(IDLE_TIMEOUT)
             .unwrap()
             .with_max_open_remote_bidirectional_streams(self.bidi.connection_open)
@@ -360,11 +326,7 @@ impl s2n_quic_core::connection::limits::Limiter for PostHandshakeLimiter {
             .unwrap()
     }
 
-    fn on_post_handshake(
-        &mut self,
-        info: &s2n_quic_core::connection::limits::HandshakeInfo,
-        limits: &mut s2n_quic_core::connection::limits::UpdatableLimits,
-    ) {
+    fn on_post_handshake(&mut self, info: &HandshakeInfo, limits: &mut UpdatableLimits) {
         if let Some(sni) = info.server_name {
             if &**sni == "localhost" {
                 limits
@@ -474,10 +436,11 @@ fn post_handshake_effective_limit_unchanged() {
         };
         let model = Model::default();
         let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
-        let counter = MaxStreamsSentCounter::default();
+        let frame_recorder = recorder::FrameSent::new();
+        let sent_frames = frame_recorder.events();
 
         test(model.clone(), move |handle| {
-            let server = base_server(handle, model.clone(), (detector, counter.clone()))?
+            let server = base_server(handle, model.clone(), (detector, frame_recorder))?
                 .with_limits(PostHandshakeLimiter {
                     bidi: caps(),
                     uni: caps(),
@@ -493,9 +456,12 @@ fn post_handshake_effective_limit_unchanged() {
 
                 // Wait until any post-handshake update would have been sent.
                 bach::time::sleep(Duration::from_secs(1)).await;
-                assert_eq!(
-                    counter.sent.load(Ordering::Relaxed),
-                    0,
+                assert!(
+                    !sent_frames
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|event| matches!(event.frame, events::Frame::MaxStreams { .. })),
                     "{label}: MAX_STREAMS sent after the post-handshake raise"
                 );
 
