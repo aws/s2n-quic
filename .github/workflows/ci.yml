@@ -951,11 +951,23 @@ jobs:
           ! grep -q '[^[:space:]]' /tmp/typos.json
 
   kani:
-    runs-on: ubuntu-latest
+    # Name the job by crate only, so adding `runner` to the matrix doesn't
+    # rename the check from "kani (<crate>)"
+    name: kani (${{ matrix.crate }})
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        crate: [common/s2n-codec, quic/s2n-quic-core, quic/s2n-quic-platform]
+        include:
+          - crate: common/s2n-codec
+            runner: ubuntu-latest
+          # The sync::spsc::tests::alloc_test harness peaks at ~15.4 GiB (cbmc and the
+          # external kissat solver are resident together), which exhausts the 16 GB
+          # ubuntu-latest runner and gets the runner killed mid-solve.
+          - crate: quic/s2n-quic-core
+            runner: s2n_ubuntu-26.04_8-core
+          - crate: quic/s2n-quic-platform
+            runner: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
