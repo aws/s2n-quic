@@ -264,6 +264,32 @@ impl Entry {
         queue_id: Option<VarInt>,
         features: &TransportFeatures,
     ) -> Bidirectional {
+        self.bidi_remote_with_dedup(
+            credentials,
+            features,
+            Dedup::new(self.clone(), credentials.key_id, queue_id, map),
+        )
+    }
+
+    pub fn bidi_remote_for_handoff(
+        self: &Arc<Self>,
+        map: Map,
+        credentials: &Credentials,
+        queue_id: Option<VarInt>,
+    ) -> Bidirectional {
+        self.bidi_remote_with_dedup(
+            credentials,
+            &TransportFeatures::UDP,
+            Dedup::silent(self.clone(), credentials.key_id, queue_id, map),
+        )
+    }
+
+    fn bidi_remote_with_dedup(
+        &self,
+        credentials: &Credentials,
+        features: &TransportFeatures,
+        dedup: Dedup,
+    ) -> Bidirectional {
         let key_id = credentials.key_id;
         let initiator = Initiator::Remote;
 
@@ -272,7 +298,7 @@ impl Entry {
             key_id,
             initiator,
             // Remote application keys need to be de-duplicated
-            Dedup::new(self.clone(), key_id, queue_id, map),
+            dedup,
         );
 
         let control = if features.is_reliable() {

@@ -30,6 +30,8 @@ pub struct Config {
     pub accept_flavor: accept::Flavor,
     pub workers: Option<usize>,
     pub map: Map,
+    /// Routes queue-zero packets by credentials instead of accepting new streams.
+    pub route_by_credentials: bool,
 }
 
 impl Config {
@@ -54,6 +56,7 @@ impl Config {
 
             workers: None,
             map,
+            route_by_credentials: false,
         }
     }
 }

@@ -587,6 +587,105 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted when a manager hands a new UDP stream off to an application over a Unix domain socket
+    pub struct AcceptorUdpStreamHandedOff<'a> {
+        /// The address of the stream's peer
+        pub remote_address: SocketAddress<'a>,
+        /// The credential ID of the stream
+        pub credential_id: &'a [u8],
+        /// The ID of the stream
+        pub stream_id: u64,
+        /// The size of the Unix domain socket message
+        pub payload_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorUdpStreamHandedOff<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorUdpStreamHandedOff");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("stream_id", &self.stream_id);
+            fmt.field("payload_len", &self.payload_len);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorUdpStreamHandedOff<'a> {
+        const NAME: &'static str = "acceptor:udp:stream_handed_off";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Emitted when a manager forwards a later packet for an already handed-off UDP stream
+    pub struct AcceptorUdpPacketForwarded<'a> {
+        /// The address of the stream's peer
+        pub remote_address: SocketAddress<'a>,
+        /// The credential ID of the stream
+        pub credential_id: &'a [u8],
+        /// The ID of the stream
+        pub stream_id: u64,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorUdpPacketForwarded<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorUdpPacketForwarded");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("stream_id", &self.stream_id);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorUdpPacketForwarded<'a> {
+        const NAME: &'static str = "acceptor:udp:packet_forwarded";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Emitted when an application receives a UDP stream handed off from a manager
+    pub struct AcceptorUdpStreamReceived<'a> {
+        /// The address of the stream's peer
+        pub remote_address: SocketAddress<'a>,
+        /// The credential ID of the stream
+        pub credential_id: &'a [u8],
+        /// The ID of the stream
+        pub stream_id: u64,
+        /// The amount of time taken from the manager's send to the application's receive
+        pub transfer_time: core::time::Duration,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorUdpStreamReceived<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorUdpStreamReceived");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("credential_id", &"[HIDDEN]");
+            fmt.field("stream_id", &self.stream_id);
+            fmt.field("transfer_time", &self.transfer_time);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorUdpStreamReceived<'a> {
+        const NAME: &'static str = "acceptor:udp:stream_received";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Emitted when an application accepts a handed-off UDP stream without its application data
+    pub struct AcceptorUdpApplicationDataDropped<'a> {
+        /// The address of the stream's peer
+        pub remote_address: SocketAddress<'a>,
+        /// Why the application data was dropped
+        pub reason: AcceptorTcpApplicationDataDropReason,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl<'a> crate::event::snapshot::Fmt for AcceptorUdpApplicationDataDropped<'a> {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("AcceptorUdpApplicationDataDropped");
+            fmt.field("remote_address", &self.remote_address);
+            fmt.field("reason", &self.reason);
+            fmt.finish()
+        }
+    }
+    impl<'a> Event for AcceptorUdpApplicationDataDropped<'a> {
+        const NAME: &'static str = "acceptor:udp:application_data_dropped";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     /// Emitted when the UDP acceptor encounters an IO error
     pub struct AcceptorUdpIoError<'a> {
         /// The error encountered
@@ -3434,6 +3533,88 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_acceptor_udp_stream_handed_off(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamHandedOff,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorUdpStreamHandedOff {
+                remote_address,
+                credential_id,
+                stream_id,
+                payload_len,
+            } = event;
+            tracing::event!(
+                target : "acceptor_udp_stream_handed_off", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), credential_id =
+                tracing::field::debug(credential_id), stream_id =
+                tracing::field::debug(stream_id), payload_len =
+                tracing::field::debug(payload_len) }
+            );
+        }
+        #[inline]
+        fn on_acceptor_udp_packet_forwarded(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpPacketForwarded,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorUdpPacketForwarded {
+                remote_address,
+                credential_id,
+                stream_id,
+            } = event;
+            tracing::event!(
+                target : "acceptor_udp_packet_forwarded", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), credential_id =
+                tracing::field::debug(credential_id), stream_id =
+                tracing::field::debug(stream_id) }
+            );
+        }
+        #[inline]
+        fn on_acceptor_udp_stream_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamReceived,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorUdpStreamReceived {
+                remote_address,
+                credential_id,
+                stream_id,
+                transfer_time,
+            } = event;
+            tracing::event!(
+                target : "acceptor_udp_stream_received", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), credential_id =
+                tracing::field::debug(credential_id), stream_id =
+                tracing::field::debug(stream_id), transfer_time =
+                tracing::field::debug(transfer_time) }
+            );
+        }
+        #[inline]
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpApplicationDataDropped,
+        ) {
+            let parent = self.parent(meta);
+            let api::AcceptorUdpApplicationDataDropped {
+                remote_address,
+                reason,
+            } = event;
+            tracing::event!(
+                target : "acceptor_udp_application_data_dropped", parent : parent,
+                tracing::Level::DEBUG, { remote_address =
+                tracing::field::debug(remote_address), reason =
+                tracing::field::debug(reason) }
+            );
+        }
+        #[inline]
         fn on_acceptor_udp_io_error(
             &self,
             meta: &api::EndpointMeta,
@@ -5509,6 +5690,112 @@ pub mod builder {
                 remote_address: remote_address.into_event(),
                 credential_id: credential_id.into_event(),
                 stream_id: stream_id.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when a manager hands a new UDP stream off to an application over a Unix domain socket
+    pub struct AcceptorUdpStreamHandedOff<'a> {
+        /// The address of the stream's peer
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The credential ID of the stream
+        pub credential_id: &'a [u8],
+        /// The ID of the stream
+        pub stream_id: u64,
+        /// The size of the Unix domain socket message
+        pub payload_len: usize,
+    }
+    impl<'a> IntoEvent<api::AcceptorUdpStreamHandedOff<'a>> for AcceptorUdpStreamHandedOff<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorUdpStreamHandedOff<'a> {
+            let AcceptorUdpStreamHandedOff {
+                remote_address,
+                credential_id,
+                stream_id,
+                payload_len,
+            } = self;
+            api::AcceptorUdpStreamHandedOff {
+                remote_address: remote_address.into_event(),
+                credential_id: credential_id.into_event(),
+                stream_id: stream_id.into_event(),
+                payload_len: payload_len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when a manager forwards a later packet for an already handed-off UDP stream
+    pub struct AcceptorUdpPacketForwarded<'a> {
+        /// The address of the stream's peer
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The credential ID of the stream
+        pub credential_id: &'a [u8],
+        /// The ID of the stream
+        pub stream_id: u64,
+    }
+    impl<'a> IntoEvent<api::AcceptorUdpPacketForwarded<'a>> for AcceptorUdpPacketForwarded<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorUdpPacketForwarded<'a> {
+            let AcceptorUdpPacketForwarded {
+                remote_address,
+                credential_id,
+                stream_id,
+            } = self;
+            api::AcceptorUdpPacketForwarded {
+                remote_address: remote_address.into_event(),
+                credential_id: credential_id.into_event(),
+                stream_id: stream_id.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when an application receives a UDP stream handed off from a manager
+    pub struct AcceptorUdpStreamReceived<'a> {
+        /// The address of the stream's peer
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// The credential ID of the stream
+        pub credential_id: &'a [u8],
+        /// The ID of the stream
+        pub stream_id: u64,
+        /// The amount of time taken from the manager's send to the application's receive
+        pub transfer_time: core::time::Duration,
+    }
+    impl<'a> IntoEvent<api::AcceptorUdpStreamReceived<'a>> for AcceptorUdpStreamReceived<'a> {
+        #[inline]
+        fn into_event(self) -> api::AcceptorUdpStreamReceived<'a> {
+            let AcceptorUdpStreamReceived {
+                remote_address,
+                credential_id,
+                stream_id,
+                transfer_time,
+            } = self;
+            api::AcceptorUdpStreamReceived {
+                remote_address: remote_address.into_event(),
+                credential_id: credential_id.into_event(),
+                stream_id: stream_id.into_event(),
+                transfer_time: transfer_time.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when an application accepts a handed-off UDP stream without its application data
+    pub struct AcceptorUdpApplicationDataDropped<'a> {
+        /// The address of the stream's peer
+        pub remote_address: &'a s2n_quic_core::inet::SocketAddress,
+        /// Why the application data was dropped
+        pub reason: AcceptorTcpApplicationDataDropReason,
+    }
+    impl<'a> IntoEvent<api::AcceptorUdpApplicationDataDropped<'a>>
+        for AcceptorUdpApplicationDataDropped<'a>
+    {
+        #[inline]
+        fn into_event(self) -> api::AcceptorUdpApplicationDataDropped<'a> {
+            let AcceptorUdpApplicationDataDropped {
+                remote_address,
+                reason,
+            } = self;
+            api::AcceptorUdpApplicationDataDropped {
+                remote_address: remote_address.into_event(),
+                reason: reason.into_event(),
             }
         }
     }
@@ -7889,6 +8176,46 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `AcceptorUdpStreamHandedOff` event is triggered
+        #[inline]
+        fn on_acceptor_udp_stream_handed_off(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamHandedOff,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `AcceptorUdpPacketForwarded` event is triggered
+        #[inline]
+        fn on_acceptor_udp_packet_forwarded(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpPacketForwarded,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `AcceptorUdpStreamReceived` event is triggered
+        #[inline]
+        fn on_acceptor_udp_stream_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamReceived,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `AcceptorUdpApplicationDataDropped` event is triggered
+        #[inline]
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpApplicationDataDropped,
+        ) {
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `AcceptorUdpIoError` event is triggered
         #[inline]
         fn on_acceptor_udp_io_error(
@@ -8955,6 +9282,39 @@ mod traits {
             self.as_ref().on_acceptor_udp_stream_enqueued(meta, event);
         }
         #[inline]
+        fn on_acceptor_udp_stream_handed_off(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamHandedOff,
+        ) {
+            self.as_ref().on_acceptor_udp_stream_handed_off(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_udp_packet_forwarded(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpPacketForwarded,
+        ) {
+            self.as_ref().on_acceptor_udp_packet_forwarded(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_udp_stream_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamReceived,
+        ) {
+            self.as_ref().on_acceptor_udp_stream_received(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpApplicationDataDropped,
+        ) {
+            self.as_ref()
+                .on_acceptor_udp_application_data_dropped(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_io_error(
             &self,
             meta: &api::EndpointMeta,
@@ -9877,6 +10237,42 @@ mod traits {
             (self.1).on_acceptor_udp_stream_enqueued(meta, event);
         }
         #[inline]
+        fn on_acceptor_udp_stream_handed_off(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamHandedOff,
+        ) {
+            (self.0).on_acceptor_udp_stream_handed_off(meta, event);
+            (self.1).on_acceptor_udp_stream_handed_off(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_udp_packet_forwarded(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpPacketForwarded,
+        ) {
+            (self.0).on_acceptor_udp_packet_forwarded(meta, event);
+            (self.1).on_acceptor_udp_packet_forwarded(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_udp_stream_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamReceived,
+        ) {
+            (self.0).on_acceptor_udp_stream_received(meta, event);
+            (self.1).on_acceptor_udp_stream_received(meta, event);
+        }
+        #[inline]
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpApplicationDataDropped,
+        ) {
+            (self.0).on_acceptor_udp_application_data_dropped(meta, event);
+            (self.1).on_acceptor_udp_application_data_dropped(meta, event);
+        }
+        #[inline]
         fn on_acceptor_udp_io_error(
             &self,
             meta: &api::EndpointMeta,
@@ -10692,6 +11088,17 @@ mod traits {
         fn on_acceptor_udp_packet_dropped(&self, event: builder::AcceptorUdpPacketDropped);
         ///Publishes a `AcceptorUdpStreamEnqueued` event to the publisher's subscriber
         fn on_acceptor_udp_stream_enqueued(&self, event: builder::AcceptorUdpStreamEnqueued);
+        ///Publishes a `AcceptorUdpStreamHandedOff` event to the publisher's subscriber
+        fn on_acceptor_udp_stream_handed_off(&self, event: builder::AcceptorUdpStreamHandedOff);
+        ///Publishes a `AcceptorUdpPacketForwarded` event to the publisher's subscriber
+        fn on_acceptor_udp_packet_forwarded(&self, event: builder::AcceptorUdpPacketForwarded);
+        ///Publishes a `AcceptorUdpStreamReceived` event to the publisher's subscriber
+        fn on_acceptor_udp_stream_received(&self, event: builder::AcceptorUdpStreamReceived);
+        ///Publishes a `AcceptorUdpApplicationDataDropped` event to the publisher's subscriber
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            event: builder::AcceptorUdpApplicationDataDropped,
+        );
         ///Publishes a `AcceptorUdpIoError` event to the publisher's subscriber
         fn on_acceptor_udp_io_error(&self, event: builder::AcceptorUdpIoError);
         ///Publishes a `AcceptorStreamPruned` event to the publisher's subscriber
@@ -11017,6 +11424,37 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_acceptor_udp_stream_enqueued(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_udp_stream_handed_off(&self, event: builder::AcceptorUdpStreamHandedOff) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_udp_stream_handed_off(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_udp_packet_forwarded(&self, event: builder::AcceptorUdpPacketForwarded) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_udp_packet_forwarded(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_udp_stream_received(&self, event: builder::AcceptorUdpStreamReceived) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_udp_stream_received(&self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            event: builder::AcceptorUdpApplicationDataDropped,
+        ) {
+            let event = event.into_event();
+            self.subscriber
+                .on_acceptor_udp_application_data_dropped(&self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
@@ -11846,6 +12284,10 @@ pub mod testing {
             pub acceptor_udp_packet_received: AtomicU64,
             pub acceptor_udp_packet_dropped: AtomicU64,
             pub acceptor_udp_stream_enqueued: AtomicU64,
+            pub acceptor_udp_stream_handed_off: AtomicU64,
+            pub acceptor_udp_packet_forwarded: AtomicU64,
+            pub acceptor_udp_stream_received: AtomicU64,
+            pub acceptor_udp_application_data_dropped: AtomicU64,
             pub acceptor_udp_io_error: AtomicU64,
             pub acceptor_stream_pruned: AtomicU64,
             pub acceptor_stream_dequeued: AtomicU64,
@@ -11946,6 +12388,10 @@ pub mod testing {
                     acceptor_udp_packet_received: AtomicU64::new(0),
                     acceptor_udp_packet_dropped: AtomicU64::new(0),
                     acceptor_udp_stream_enqueued: AtomicU64::new(0),
+                    acceptor_udp_stream_handed_off: AtomicU64::new(0),
+                    acceptor_udp_packet_forwarded: AtomicU64::new(0),
+                    acceptor_udp_stream_received: AtomicU64::new(0),
+                    acceptor_udp_application_data_dropped: AtomicU64::new(0),
                     acceptor_udp_io_error: AtomicU64::new(0),
                     acceptor_stream_pruned: AtomicU64::new(0),
                     acceptor_stream_dequeued: AtomicU64::new(0),
@@ -12259,6 +12705,54 @@ pub mod testing {
                 event: &api::AcceptorUdpStreamEnqueued,
             ) {
                 self.acceptor_udp_stream_enqueued
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_udp_stream_handed_off(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorUdpStreamHandedOff,
+            ) {
+                self.acceptor_udp_stream_handed_off
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_udp_packet_forwarded(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorUdpPacketForwarded,
+            ) {
+                self.acceptor_udp_packet_forwarded
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_udp_stream_received(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorUdpStreamReceived,
+            ) {
+                self.acceptor_udp_stream_received
+                    .fetch_add(1, Ordering::Relaxed);
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+            fn on_acceptor_udp_application_data_dropped(
+                &self,
+                meta: &api::EndpointMeta,
+                event: &api::AcceptorUdpApplicationDataDropped,
+            ) {
+                self.acceptor_udp_application_data_dropped
                     .fetch_add(1, Ordering::Relaxed);
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
                 let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -12838,6 +13332,10 @@ pub mod testing {
         pub acceptor_udp_packet_received: AtomicU64,
         pub acceptor_udp_packet_dropped: AtomicU64,
         pub acceptor_udp_stream_enqueued: AtomicU64,
+        pub acceptor_udp_stream_handed_off: AtomicU64,
+        pub acceptor_udp_packet_forwarded: AtomicU64,
+        pub acceptor_udp_stream_received: AtomicU64,
+        pub acceptor_udp_application_data_dropped: AtomicU64,
         pub acceptor_udp_io_error: AtomicU64,
         pub acceptor_stream_pruned: AtomicU64,
         pub acceptor_stream_dequeued: AtomicU64,
@@ -12971,6 +13469,10 @@ pub mod testing {
                 acceptor_udp_packet_received: AtomicU64::new(0),
                 acceptor_udp_packet_dropped: AtomicU64::new(0),
                 acceptor_udp_stream_enqueued: AtomicU64::new(0),
+                acceptor_udp_stream_handed_off: AtomicU64::new(0),
+                acceptor_udp_packet_forwarded: AtomicU64::new(0),
+                acceptor_udp_stream_received: AtomicU64::new(0),
+                acceptor_udp_application_data_dropped: AtomicU64::new(0),
                 acceptor_udp_io_error: AtomicU64::new(0),
                 acceptor_stream_pruned: AtomicU64::new(0),
                 acceptor_stream_dequeued: AtomicU64::new(0),
@@ -13317,6 +13819,54 @@ pub mod testing {
             event: &api::AcceptorUdpStreamEnqueued,
         ) {
             self.acceptor_udp_stream_enqueued
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_stream_handed_off(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamHandedOff,
+        ) {
+            self.acceptor_udp_stream_handed_off
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_packet_forwarded(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpPacketForwarded,
+        ) {
+            self.acceptor_udp_packet_forwarded
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_stream_received(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpStreamReceived,
+        ) {
+            self.acceptor_udp_stream_received
+                .fetch_add(1, Ordering::Relaxed);
+            let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+            let event = crate::event::snapshot::Fmt::to_snapshot(event);
+            let out = format!("{meta:?} {event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            meta: &api::EndpointMeta,
+            event: &api::AcceptorUdpApplicationDataDropped,
+        ) {
+            self.acceptor_udp_application_data_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
             let event = crate::event::snapshot::Fmt::to_snapshot(event);
@@ -14360,6 +14910,10 @@ pub mod testing {
         pub acceptor_udp_packet_received: AtomicU64,
         pub acceptor_udp_packet_dropped: AtomicU64,
         pub acceptor_udp_stream_enqueued: AtomicU64,
+        pub acceptor_udp_stream_handed_off: AtomicU64,
+        pub acceptor_udp_packet_forwarded: AtomicU64,
+        pub acceptor_udp_stream_received: AtomicU64,
+        pub acceptor_udp_application_data_dropped: AtomicU64,
         pub acceptor_udp_io_error: AtomicU64,
         pub acceptor_stream_pruned: AtomicU64,
         pub acceptor_stream_dequeued: AtomicU64,
@@ -14483,6 +15037,10 @@ pub mod testing {
                 acceptor_udp_packet_received: AtomicU64::new(0),
                 acceptor_udp_packet_dropped: AtomicU64::new(0),
                 acceptor_udp_stream_enqueued: AtomicU64::new(0),
+                acceptor_udp_stream_handed_off: AtomicU64::new(0),
+                acceptor_udp_packet_forwarded: AtomicU64::new(0),
+                acceptor_udp_stream_received: AtomicU64::new(0),
+                acceptor_udp_application_data_dropped: AtomicU64::new(0),
                 acceptor_udp_io_error: AtomicU64::new(0),
                 acceptor_stream_pruned: AtomicU64::new(0),
                 acceptor_stream_dequeued: AtomicU64::new(0),
@@ -14752,6 +15310,41 @@ pub mod testing {
         }
         fn on_acceptor_udp_stream_enqueued(&self, event: builder::AcceptorUdpStreamEnqueued) {
             self.acceptor_udp_stream_enqueued
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_stream_handed_off(&self, event: builder::AcceptorUdpStreamHandedOff) {
+            self.acceptor_udp_stream_handed_off
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_packet_forwarded(&self, event: builder::AcceptorUdpPacketForwarded) {
+            self.acceptor_udp_packet_forwarded
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_stream_received(&self, event: builder::AcceptorUdpStreamReceived) {
+            self.acceptor_udp_stream_received
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+            let out = format!("{event:?}");
+            self.output.lock().unwrap().push(out);
+        }
+        fn on_acceptor_udp_application_data_dropped(
+            &self,
+            event: builder::AcceptorUdpApplicationDataDropped,
+        ) {
+            self.acceptor_udp_application_data_dropped
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             let event = crate::event::snapshot::Fmt::to_snapshot(&event);
