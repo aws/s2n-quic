@@ -102,14 +102,10 @@ where
 
 impl<Sub> Drop for SharedInner<Sub> {
     fn drop(&mut self) {
-        // drop the runtimes in a separate thread to avoid tokio complaining
         let rt = unsafe { self.runtime.assume_init_read() };
-        std::thread::Builder::new()
-            .name("rt-shutdown".into())
-            .spawn(move || {
-                // give enough time for all of the streams to shut down
-                rt.shutdown_timeout(core::time::Duration::from_secs(10));
-            })
-            .expect("failed to spawn runtime shutdown thread");
+        // A blocking-pool join in shutdown_timeout has panicked with EINVAL.
+        // shutdown_background skips that join, so Drop needs no separate
+        // shutdown thread; Tokio's threads may finish after Drop returns.
+        rt.shutdown_background();
     }
 }
