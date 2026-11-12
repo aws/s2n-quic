@@ -562,7 +562,7 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
     fn new(
         connection_limits: &connection::Limits,
         local_endpoint_type: endpoint::Type,
-        initial_local_limits: InitialFlowControlLimits,
+        advertised_local_limits: InitialFlowControlLimits,
         initial_peer_limits: InitialFlowControlLimits,
         min_rtt: Duration,
     ) -> Self {
@@ -573,15 +573,17 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
         // By representing the flow control value as a u32, we save space
         // on the connection state.
         assert!(
-            initial_local_limits.max_data <= VarInt::from_u32(u32::MAX),
+            advertised_local_limits.max_data <= VarInt::from_u32(u32::MAX),
             "Receive window must not exceed 32bit range"
         );
+
+        let current_local_limits = connection_limits.configured_flow_control_limits();
 
         Self {
             inner: StreamManagerState {
                 incoming_connection_flow_controller: IncomingConnectionFlowController::new(
-                    initial_local_limits.max_data,
-                    initial_local_limits.max_data.as_u64() as u32,
+                    advertised_local_limits.max_data,
+                    advertised_local_limits.max_data.as_u64() as u32,
                 ),
                 outgoing_connection_flow_controller: OutgoingConnectionFlowController::new(
                     initial_peer_limits.max_data,
@@ -589,14 +591,15 @@ impl<S: 'static + StreamTrait> stream::Manager for AbstractStreamManager<S> {
                 stream_controller: stream::Controller::new(
                     local_endpoint_type,
                     initial_peer_limits,
-                    initial_local_limits,
+                    current_local_limits,
                     connection_limits.stream_limits(),
+                    advertised_local_limits,
                     min_rtt,
                 ),
                 streams: StreamContainer::new(connection_limits),
                 next_stream_ids: StreamIdSet::initial(),
                 local_endpoint_type,
-                initial_local_limits,
+                initial_local_limits: advertised_local_limits,
                 initial_peer_limits,
                 close_reason: None,
                 accept_state: AcceptState::new(local_endpoint_type),

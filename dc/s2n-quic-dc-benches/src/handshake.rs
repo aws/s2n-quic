@@ -21,7 +21,7 @@ struct TestSetup {
     subscriber: NoopSubscriber,
 }
 
-async fn make_server() -> (TestSetup, tokio_util::sync::DropGuard) {
+async fn make_server() -> (TestSetup, s2n_quic_dc::psk::server::ShutdownGuard) {
     let server_builder = s2n_quic_dc::psk::server::Builder::default();
 
     let tls = TestTlsProvider {};

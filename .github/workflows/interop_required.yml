@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 100
+          fetch-depth: 150
 
       - uses: actions/setup-python@v7
         with:
@@ -27,11 +27,11 @@ jobs:
         id: check
         run: |
           python3 .github/interop/update_required.py \
-            --commits 50 \
+            --commits 100 \
             --dry-run \
             2>${{ runner.temp }}/check_stderr.txt || true
 
-          if grep -q "Found .* new entries" ${{ runner.temp }}/check_stderr.txt; then
+          if grep -q "Found .* entries to add" ${{ runner.temp }}/check_stderr.txt; then
             echo "has_updates=true" >> $GITHUB_OUTPUT
           else
             echo "has_updates=false" >> $GITHUB_OUTPUT
@@ -41,7 +41,7 @@ jobs:
         if: steps.check.outputs.has_updates == 'true'
         run: |
           python3 .github/interop/update_required.py \
-            --commits 50 \
+            --commits 100 \
             --pr-description > ${{ runner.temp }}/pr_description.txt
 
       - name: Create pull request

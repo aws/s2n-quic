@@ -23,3 +23,23 @@ fn counters_for_enum_counts() {
         "FileOpen=2 Variant|IO-NotFound,FileOpen=1 Variant|IO-Other,FileOpen=0 Variant|IO-PermissionDenied"
     );
 }
+
+#[test]
+fn pruned_list_callback_entries_are_removed() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    let registry = crate::Registry::new();
+    let alive = Arc::new(AtomicBool::new(true));
+    registry.register_pruning_list_callback("Value".into(), None, crate::Unit::Count, {
+        let alive = alive.clone();
+        move || alive.load(Ordering::Relaxed).then_some(1)
+    });
+    assert_eq!(registry.take_current_metrics_line(), "Value=1");
+
+    alive.store(false, Ordering::Relaxed);
+    assert_eq!(registry.take_current_metrics_line(), "");
+    assert!(!registry.has_metrics());
+}

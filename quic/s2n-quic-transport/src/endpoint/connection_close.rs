@@ -52,6 +52,7 @@ const DEFAULT_PAYLOAD_SIZE: usize = 150;
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
     transmissions: VecDeque<Transmission<Path>>,
+    max_peers: usize,
 }
 
 impl<Path: path::Handle> Dispatch<Path> {
@@ -64,6 +65,7 @@ impl<Path: path::Handle> Dispatch<Path> {
         };
         Self {
             transmissions: VecDeque::with_capacity(capacity),
+            max_peers: capacity,
         }
     }
 
@@ -75,6 +77,12 @@ impl<Path: path::Handle> Dispatch<Path> {
     ) where
         <C as InitialKey>::HeaderKey: InitialHeaderKey,
     {
+        // New CONNECTION_CLOSE packets are dropped once the queue holds `max_peers`
+        // pending transmissions. The connection attempt is refused either way.
+        if self.transmissions.len() >= self.max_peers {
+            return;
+        }
+
         if let Some(transmission) = Transmission::new::<C>(path_handle, packet, local_connection_id)
         {
             self.transmissions.push_back(transmission);
@@ -248,5 +256,59 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
         _gso_offset: usize,
     ) -> Result<usize, tx::Error> {
         buffer.write(self.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::endpoint::testing::protected_initial;
+    use s2n_quic_core::{
+        crypto::key::testing::Key,
+        inet::SocketAddress,
+        path::{RemoteAddress, MINIMUM_MAX_DATAGRAM_SIZE},
+    };
+
+    #[test]
+    fn max_peers_test() {
+        let max_peers = 2;
+        let mut dispatch = Dispatch::<RemoteAddress>::new(max_peers, endpoint::Type::Server);
+        let local_connection_id = connection::LocalId::try_from_bytes(&[3u8; 16]).unwrap();
+
+        for i in 0..5 {
+            let mut buffer = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
+            let packet = protected_initial(&mut buffer);
+
+            dispatch.queue::<Key>(
+                RemoteAddress::from(SocketAddress::default()),
+                &packet,
+                local_connection_id,
+            );
+
+            assert_eq!(
+                dispatch.transmissions.len(),
+                (i + 1).min(max_peers),
+                "connection close packets should not be queued past max_peers"
+            );
+        }
+    }
+
+    #[test]
+    fn client_test() {
+        let mut dispatch = Dispatch::<RemoteAddress>::new(2, endpoint::Type::Client);
+        let local_connection_id = connection::LocalId::try_from_bytes(&[3u8; 16]).unwrap();
+        let mut buffer = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
+        let packet = protected_initial(&mut buffer);
+
+        dispatch.queue::<Key>(
+            RemoteAddress::from(SocketAddress::default()),
+            &packet,
+            local_connection_id,
+        );
+
+        assert!(
+            dispatch.transmissions.is_empty(),
+            "clients should not queue connection close packets"
+        );
     }
 }

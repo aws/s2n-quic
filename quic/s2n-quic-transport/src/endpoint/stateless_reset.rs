@@ -11,6 +11,7 @@ use s2n_quic_core::{
 #[derive(Debug)]
 pub struct Dispatch<Path: path::Handle> {
     transmissions: VecDeque<Transmission<Path>>,
+    max_peers: usize,
 }
 
 impl<Path: path::Handle> Default for Dispatch<Path> {
@@ -23,6 +24,7 @@ impl<Path: path::Handle> Dispatch<Path> {
     pub fn new(max_peers: usize) -> Self {
         Self {
             transmissions: VecDeque::with_capacity(max_peers),
+            max_peers,
         }
     }
 
@@ -34,6 +36,12 @@ impl<Path: path::Handle> Dispatch<Path> {
         triggering_packet_len: usize,
         random_generator: &mut dyn random::Generator,
     ) {
+        // Sending a stateless reset is optional, so new ones are dropped once the queue
+        // holds `max_peers` pending transmissions.
+        if self.transmissions.len() >= self.max_peers {
+            return;
+        }
+
         if let Some(transmission) = Transmission::new(
             path,
             token,
@@ -155,5 +163,36 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
         _gso_offset: usize,
     ) -> Result<usize, tx::Error> {
         buffer.write(self.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use s2n_quic_core::{
+        inet::SocketAddress, path::RemoteAddress, stateless_reset::token::testing::TEST_TOKEN_1,
+    };
+
+    #[test]
+    fn max_peers_test() {
+        let max_peers = 2;
+        let mut dispatch = Dispatch::<RemoteAddress>::new(max_peers);
+        let mut random = random::testing::Generator(123);
+
+        for i in 0..5 {
+            dispatch.queue(
+                RemoteAddress::from(SocketAddress::default()),
+                TEST_TOKEN_1,
+                16,
+                MINIMUM_MAX_DATAGRAM_SIZE as usize,
+                &mut random,
+            );
+
+            assert_eq!(
+                dispatch.transmissions.len(),
+                (i + 1).min(max_peers),
+                "stateless resets should not be queued past max_peers"
+            );
+        }
     }
 }

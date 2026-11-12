@@ -43,6 +43,15 @@ diff --git a/implementations.json b/implementations.json
 index 09e2fdd..72513c8 100644
 --- a/implementations.json
 +++ b/implementations.json
+@@ -10,7 +10,7 @@
+     "role": "both"
+   },
+   "mvfst": {
+-    "image": "ghcr.io/facebook/proxygen/mvfst-interop:latest",
++    "image": "ghcr.io/meta/proxygen/mvfst-interop:latest",
+     "url": "https://github.com/facebookincubator/mvfst",
+     "role": "both"
+   },
 @@ -74,8 +74,13 @@
      "url": "https://github.com/quinn-rs/quinn",
      "role": "both"

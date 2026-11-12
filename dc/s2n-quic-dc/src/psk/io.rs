@@ -32,6 +32,9 @@ use tokio::{
     time::Instant as TokioInstant,
 };
 
+mod probe_rate_limiter;
+use probe_rate_limiter::ProbeRateLimiter;
+
 pub use crate::stream::DEFAULT_IDLE_TIMEOUT;
 pub const DEFAULT_MAX_DATA: u64 = 1u64 << 25;
 pub const DEFAULT_BASE_MTU: u16 = 1450;
@@ -488,6 +491,8 @@ pub(crate) struct HandshakeQueueConfig {
     pub(crate) inflight_limit: usize,
     /// Optional timeout for a pre-handshake dcQUIC liveness probe.
     pub(crate) probe_timeout: Option<Duration>,
+    /// Token refill rate and burst capacity for liveness probes.
+    pub(crate) probe_rate: u32,
     /// Maximum number of concurrent liveness probes.
     pub(crate) probe_limit: usize,
     pub(crate) await_dedup_removal: bool,
@@ -501,6 +506,7 @@ impl Default for HandshakeQueueConfig {
             start_limit: 5,
             inflight_limit: 750,
             probe_timeout: None,
+            probe_rate: 0,
             probe_limit: 0,
             await_dedup_removal: false,
         }
@@ -510,9 +516,10 @@ impl Default for HandshakeQueueConfig {
 /// One deduplicated handshake per peer moves through these states:
 ///
 /// 1. Wait for capacity. With probing enabled, the first waiter waits for handshake capacity
-///    directly. Once there is contention, waiters may probe; a probe holds only a
-///    `limiter_probe` permit while sending and waiting for a response. Newly available handshake
-///    capacity can interrupt a probe.
+///    directly. Once there is contention, waiters may probe; a probe holds a
+///    `limiter_probe_concurrency` permit, if configured, while sending and waiting for a response,
+///    and starting it takes a token from `limiter_probe`, if configured, waiting for one to refill
+///    if necessary. Newly available handshake capacity can interrupt a probe or either wait.
 /// 2. Acquire `limiter_inflight`, then `limiter_start`. Acquiring the second may wait while the
 ///    first is held. Both permits are held during connection setup and handshake confirmation.
 /// 3. After handshake confirmation, release `limiter_start`. Hold `limiter_inflight` until MTU
@@ -526,7 +533,8 @@ struct HandshakeQueue {
     inner: Mutex<HandshakeQueueInner>,
     limiter_start: Semaphore,
     limiter_inflight: Arc<Semaphore>,
-    limiter_probe: Semaphore,
+    limiter_probe: Option<ProbeRateLimiter>,
+    limiter_probe_concurrency: Option<Semaphore>,
     capacity_changed: Arc<Notify>,
     probe_waiters: AtomicUsize,
     probe_waiters_changed: Notify,
@@ -542,7 +550,7 @@ struct HandshakeQueue {
 
 impl HandshakeQueue {
     fn new(config: HandshakeQueueConfig) -> Self {
-        let probe_timeout = if config.probe_limit == 0 {
+        let probe_timeout = if config.probe_rate == 0 && config.probe_limit == 0 {
             None
         } else {
             config.probe_timeout
@@ -550,7 +558,10 @@ impl HandshakeQueue {
         HandshakeQueue {
             limiter_start: Semaphore::new(config.start_limit),
             limiter_inflight: Arc::new(Semaphore::new(config.inflight_limit)),
-            limiter_probe: Semaphore::new(config.probe_limit),
+            limiter_probe: (config.probe_rate > 0)
+                .then(|| ProbeRateLimiter::new(config.probe_rate)),
+            limiter_probe_concurrency: (config.probe_limit > 0)
+                .then(|| Semaphore::new(config.probe_limit)),
             capacity_changed: Arc::new(Notify::new()),
             probe_waiters: AtomicUsize::new(0),
             probe_waiters_changed: Notify::new(),
@@ -643,10 +654,17 @@ impl HandshakeQueue {
         let mut can_try_capacity = waiter_count == 1;
         let mut probe_started = false;
         let probe = async {
-            let Ok(permit_probe) = self.limiter_probe.acquire().await else {
-                // A closed limiter must not allow a probe without a permit.
-                return (Duration::ZERO, HandshakeProbeOutcome::Error);
+            let permit_probe = match &self.limiter_probe_concurrency {
+                Some(limiter) => match limiter.acquire().await {
+                    Ok(permit) => Some(permit),
+                    // A closed limiter must not allow a probe without a permit.
+                    Err(_) => return (Duration::ZERO, HandshakeProbeOutcome::Error),
+                },
+                None => None,
             };
+            if let Some(limiter) = &self.limiter_probe {
+                limiter.acquire().await;
+            }
             let start = std::time::Instant::now();
             let outcome = match Box::pin(probe::probe(peer, timeout)).await {
                 Ok(probe::Result::Responsive) => {
@@ -806,7 +824,8 @@ impl HandshakeQueue {
         let entry2 = entry.clone();
         let entry3 = entry.clone();
 
-        let handshake = async {
+        // Construct the future lazily so the initializer closure does not reserve its stack space.
+        let handshake = || async {
             // We've de-duplicated above already so the handshaker is unique per SocketAddr, so
             // these permits will only be used for the current handshake.
             let capacity = if let Some(timeout) = self.probe_timeout {
@@ -941,7 +960,8 @@ impl HandshakeQueue {
             .get_or_init(|| async {
                 // This ensures we only log the error once, even if the handshake was de-duplicated
                 // many times.
-                if let Err(e) = handshake.await {
+                // Keep the handshake state out of the nested initializer futures.
+                if let Err(e) = Box::pin(handshake()).await {
                     // We may want to remove this in favor of only relying on the service log
                     // eventually, but keeping it for parity for now.
                     tracing::error!("handshake with {peer} failed: {e}");
@@ -1066,6 +1086,7 @@ mod tests {
     use super::*;
     use crate::{
         path::secret::{stateless_reset::Signer, Map},
+        psk::server::ShutdownGuard,
         testing::{init_tracing, NoopSubscriber, TestTlsProvider},
     };
     use s2n_quic::provider::{
@@ -1074,7 +1095,6 @@ mod tests {
     };
     use s2n_quic_core::time::StdClock;
     use std::time::Instant;
-    use tokio_util::sync::DropGuard;
 
     /// A test limiter that closes all incoming connections immediately
     #[derive(Default)]
@@ -1148,7 +1168,7 @@ mod tests {
     struct TestSetup {
         client: Client,
         server_addr: SocketAddr,
-        _server_guard: DropGuard,
+        _server_guard: ShutdownGuard,
     }
 
     impl TestSetup {
@@ -1288,7 +1308,7 @@ mod tests {
             .with_handshake_start_limit(1)
             .with_handshake_inflight_limit(1)
             .with_handshake_probe_timeout(probe_timeout)
-            .with_handshake_probe_limit(2);
+            .with_handshake_probe_rate(2);
         let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
             None,
             crate::psk::server::Builder::default(),
@@ -1425,7 +1445,7 @@ mod tests {
             .with_handshake_inflight_limit(1)
             .with_handshake_start_limit(1)
             .with_handshake_probe_timeout(Duration::from_secs(1))
-            .with_handshake_probe_limit(1);
+            .with_handshake_probe_rate(1);
         let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
             None,
             crate::psk::server::Builder::default(),
@@ -1463,7 +1483,7 @@ mod tests {
             .with_handshake_inflight_limit(1)
             .with_handshake_start_limit(1)
             .with_handshake_probe_timeout(Duration::from_secs(5))
-            .with_handshake_probe_limit(1);
+            .with_handshake_probe_rate(1);
         let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
             None,
             crate::psk::server::Builder::default(),
@@ -1487,9 +1507,14 @@ mod tests {
         })
         .await
         .expect("handshake did not enter the contended queue");
-        assert_eq!(
-            setup.client.queue.limiter_probe.available_permits(),
-            1,
+        assert!(
+            setup
+                .client
+                .queue
+                .limiter_probe
+                .as_ref()
+                .unwrap()
+                .is_unused(),
             "a lone waiter unexpectedly started a liveness probe"
         );
 
@@ -1513,7 +1538,7 @@ mod tests {
             .with_handshake_inflight_limit(1)
             .with_handshake_start_limit(1)
             .with_handshake_probe_timeout(Duration::from_secs(5))
-            .with_handshake_probe_limit(2);
+            .with_handshake_probe_rate(2);
         let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
             None,
             crate::psk::server::Builder::default(),
@@ -1592,6 +1617,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(deprecated)]
     async fn preflight_probe_respects_concurrency_limit() {
         let probe_timeout = Duration::from_millis(200);
         let client_builder = crate::psk::client::Builder::default()
@@ -1678,14 +1704,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn closed_probe_limiter_skips_probes_and_allows_handshakes() {
+    async fn preflight_probe_respects_rate_limit() {
+        let probe_timeout = Duration::from_millis(200);
         let client_builder = crate::psk::client::Builder::default()
             .with_success_jitter(Duration::ZERO)
             .with_error_jitter(Duration::ZERO)
             .with_handshake_inflight_limit(1)
-            .with_handshake_start_limit(1)
-            .with_handshake_probe_timeout(Duration::from_secs(5))
-            .with_handshake_probe_limit(1);
+            .with_handshake_probe_timeout(probe_timeout)
+            .with_handshake_probe_rate(1);
         let setup = TestSetup::new_with_client_builder::<CloseAllConnectionsLimiter, _>(
             None,
             crate::psk::server::Builder::default(),
@@ -1693,15 +1719,6 @@ mod tests {
         )
         .await;
         let capacity = setup.client.queue.try_acquire_capacity().unwrap();
-        setup.client.queue.limiter_probe.close();
-        let (probe_observer, mut probe_results) = tokio::sync::mpsc::unbounded_channel();
-        *setup
-            .client
-            .queue
-            .probe_observer
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = Some(probe_observer);
-
         let first_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let second_sink = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let first_addr = first_sink.local_addr().unwrap();
@@ -1715,6 +1732,7 @@ mod tests {
                 .connect(first_addr, HandshakeReason::User, first_server_name)
                 .await
         });
+
         tokio::time::timeout(Duration::from_secs(1), async {
             while setup.client.queue.probe_waiters.load(Ordering::Acquire) != 1 {
                 tokio::task::yield_now().await;
@@ -1730,54 +1748,50 @@ mod tests {
                 .await
         });
 
-        tokio::time::timeout(Duration::from_secs(1), async {
-            let mut peers = std::collections::HashSet::new();
-            for _ in 0..2 {
-                let (peer, outcome) = probe_results.recv().await.unwrap();
-                assert_eq!(outcome, HandshakeProbeOutcome::Error);
-                peers.insert(peer);
-            }
-            assert_eq!(peers.len(), 2);
-            assert!(peers.contains(&first_addr));
-            assert!(peers.contains(&second_addr));
-        })
-        .await
-        .expect("closed probe limiter did not resolve both probes");
-
-        let mut packet = [0u8; 1200];
-        assert!(first_sink.try_recv_from(&mut packet).is_err());
-        assert!(second_sink.try_recv_from(&mut packet).is_err());
-
-        drop(capacity);
         let mut first_packet = [0u8; 1200];
         let mut second_packet = [0u8; 1200];
-        let (first_won, len) = tokio::time::timeout(Duration::from_secs(1), async {
+        let first_probe_peer = tokio::time::timeout(Duration::from_secs(1), async {
             tokio::select! {
                 result = first_sink.recv_from(&mut first_packet) => {
-                    (true, result.unwrap().0)
+                    result.unwrap();
+                    first_addr
                 }
                 result = second_sink.recv_from(&mut second_packet) => {
-                    (false, result.unwrap().0)
+                    result.unwrap();
+                    second_addr
                 }
             }
         })
         .await
-        .expect("handshake did not proceed after the probe limiter closed");
-        let packet = if first_won {
-            &first_packet[..len]
+        .expect("no probe was sent");
+
+        let blocked_sink = if first_probe_peer == first_addr {
+            &second_sink
         } else {
-            &second_packet[..len]
+            &first_sink
         };
-        assert!(!is_probe_request(packet));
+        let mut packet = [0u8; 1200];
+        assert!(
+            tokio::time::timeout(probe_timeout * 3, blocked_sink.recv_from(&mut packet))
+                .await
+                .is_err(),
+            "a second probe exceeded the configured rate limit"
+        );
+        tokio::time::timeout(Duration::from_secs(2), blocked_sink.recv_from(&mut packet))
+            .await
+            .expect("the blocked probe did not start after a token refilled")
+            .unwrap();
 
         first.abort();
         second.abort();
         let _ = first.await;
         let _ = second.await;
+        drop(capacity);
     }
 
     #[test]
     fn probing_is_opt_in() {
+        assert_eq!(HandshakeQueueConfig::default().probe_rate, 0);
         assert_eq!(HandshakeQueueConfig::default().probe_limit, 0);
         let queue = HandshakeQueue::new(HandshakeQueueConfig {
             probe_timeout: Some(Duration::from_secs(1)),

@@ -347,6 +347,9 @@ jobs:
           cp .github/interop/*.js web/
           TARGET_SHA="${{ github.sha }}/interop"
           aws s3 sync web "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA" --acl private --follow-symlinks
+          # Keep a copy of this attempt's results. Retries overwrite logs/latest,
+          # so this is the only record of attempts that failed.
+          aws s3 cp web/logs/latest/result.json "s3://${{ env.CI_ARTIFACTS_BUCKET }}/$TARGET_SHA/logs/attempt-${{ github.run_attempt }}/result.json" --acl private
           URL="$CDN/$TARGET_SHA/index.html"
           echo "URL=$URL" >> $GITHUB_OUTPUT
 

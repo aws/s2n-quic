@@ -93,6 +93,7 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal AS endpoint-base
 ENV RUST_BACKTRACE="1"
 
 ARG sim_hash="1f569016bcd9f7076fc9fd932c1415d28d3020f7"
+ARG wait_for_it_hash="81b1373f17855a4dc21156cfe1694c31d7d1792e"
 
 RUN set -eux; \
   dnf makecache --refresh; \
@@ -101,7 +102,7 @@ RUN set -eux; \
   rm -rf /var/cache/yum; \
   curl -o setup.sh https://raw.githubusercontent.com/marten-seemann/quic-network-simulator/${sim_hash}/endpoint/setup.sh; \
   chmod +x setup.sh; \
-  curl -o wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh; \
+  curl -o wait-for-it.sh https://raw.githubusercontent.com/vishnubob/wait-for-it/${wait_for_it_hash}/wait-for-it.sh; \
   chmod +x wait-for-it.sh;
 
 ARG tls

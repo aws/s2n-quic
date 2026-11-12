@@ -5,18 +5,32 @@
 
 pub use crate::task::TaskMonitor;
 use crate::{Registry, Unit};
-use std::time::Duration;
+use std::{
+    sync::{Arc, Weak},
+    time::Duration,
+};
+use tokio::runtime::RuntimeMetrics;
 
 #[track_caller]
 fn delta(
-    mut callback: impl FnMut() -> u64 + Send + 'static,
-) -> impl FnMut() -> u64 + Send + 'static {
-    let mut prev = callback();
+    mut callback: impl FnMut() -> Option<u64> + Send + 'static,
+) -> impl FnMut() -> Option<u64> + Send + 'static {
+    let mut prev = callback().unwrap_or_default();
     move || {
-        let delta = callback() - prev;
+        let delta = callback()? - prev;
         prev += delta;
-        delta
+        Some(delta)
     }
+}
+
+/// Reads from the runtime's metrics while the runtime is alive, and returns `None` (which
+/// unregisters the callback) once it has shut down.
+fn read<T>(
+    metrics: &Weak<RuntimeMetrics>,
+    f: impl Fn(&RuntimeMetrics) -> T + Send + 'static,
+) -> impl FnMut() -> Option<T> + Send + 'static {
+    let metrics = metrics.clone();
+    move || Some(f(&*metrics.upgrade()?))
 }
 
 impl Registry {
@@ -32,6 +46,10 @@ impl Registry {
 
     /// This should only be called once per runtime, as duplicate calls will instrument that
     /// runtime twice (presenting metrics with duplicate values).
+    ///
+    /// The registry only holds weak references to the runtime, so instrumenting a runtime doesn't
+    /// keep it (or its I/O driver's file descriptors) alive after it shuts down; its metrics are
+    /// unregistered once it has.
     #[cfg(tokio_unstable)]
     pub fn instrument_runtime(
         &self,
@@ -39,13 +57,17 @@ impl Registry {
         runtime: &tokio::runtime::Handle,
         interval_duration: std::time::Duration,
     ) {
-        let metrics = runtime.metrics();
+        // The sampling task below owns the only strong reference. Tokio drops the task when the
+        // runtime shuts down, which releases the runtime's handle and lets the callbacks prune
+        // themselves.
+        let metrics = Arc::new(runtime.metrics());
+        let weak = Arc::downgrade(&metrics);
+        let num_workers = metrics.num_workers();
         let aggregation = Some(format!("Runtime|{name}"));
 
         {
             let registry = self.clone();
             let aggregation = aggregation.clone();
-            let metrics = runtime.metrics();
             runtime.spawn(async move {
                 let mut interval = tokio::time::interval(interval_duration);
 
@@ -83,99 +105,72 @@ impl Registry {
             });
         }
 
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:NumWorkers".into(),
             aggregation.clone(),
             Unit::Count,
-            {
-                let metrics = metrics.clone();
-                move || metrics.num_workers()
-            },
+            read(&weak, |m| m.num_workers()),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:NumAliveTasks".into(),
             aggregation.clone(),
             Unit::Count,
-            {
-                let metrics = metrics.clone();
-                move || metrics.num_alive_tasks()
-            },
+            read(&weak, |m| m.num_alive_tasks()),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:NumBlockingThreads".into(),
             aggregation.clone(),
             Unit::Count,
-            {
-                let metrics = metrics.clone();
-                move || metrics.num_blocking_threads()
-            },
+            read(&weak, |m| m.num_blocking_threads()),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:NumIdleBlockingThreads".into(),
             aggregation.clone(),
             Unit::Count,
-            {
-                let metrics = metrics.clone();
-                move || metrics.num_idle_blocking_threads()
-            },
+            read(&weak, |m| m.num_idle_blocking_threads()),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:RemoteScheduleCount".into(),
             aggregation.clone(),
             Unit::Count,
-            delta({
-                let metrics = metrics.clone();
-                move || metrics.remote_schedule_count()
-            }),
+            delta(read(&weak, |m| m.remote_schedule_count())),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:BudgetForcedYieldCount".into(),
             aggregation.clone(),
             Unit::Count,
-            delta({
-                let metrics = metrics.clone();
-                move || metrics.budget_forced_yield_count()
-            }),
+            delta(read(&weak, |m| m.budget_forced_yield_count())),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:RegisteredFileDescriptors".into(),
             aggregation.clone(),
             Unit::Count,
-            {
-                let metrics = metrics.clone();
-                move || {
-                    metrics.io_driver_fd_registered_count()
-                        - metrics.io_driver_fd_deregistered_count()
-                }
-            },
+            read(&weak, |m| {
+                m.io_driver_fd_registered_count() - m.io_driver_fd_deregistered_count()
+            }),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:FileDescriptorRegistrations".into(),
             aggregation.clone(),
             Unit::Count,
-            delta({
-                let metrics = metrics.clone();
-                move || metrics.io_driver_fd_registered_count()
-            }),
+            delta(read(&weak, |m| m.io_driver_fd_registered_count())),
         );
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:ReadyEvents".into(),
             aggregation.clone(),
             Unit::Count,
-            delta({
-                let metrics = metrics.clone();
-                move || metrics.io_driver_ready_count()
-            }),
+            delta(read(&weak, |m| m.io_driver_ready_count())),
         );
 
-        self.register_list_callback(
+        self.register_pruning_list_callback(
             "TokioRuntime:IdleWorkerCount".into(),
             aggregation.clone(),
             Unit::Count,
             {
-                let metrics = metrics.clone();
-                let mut previous = vec![Duration::ZERO; metrics.num_workers()];
+                let weak = weak.clone();
+                let mut previous = vec![Duration::ZERO; num_workers];
                 move || {
+                    let metrics = weak.upgrade()?;
                     let mut idle = 0;
                     for (idx, prev) in previous.iter_mut().enumerate() {
                         let current = metrics.worker_total_busy_duration(idx);
@@ -187,124 +182,99 @@ impl Registry {
                         }
                         *prev = current;
                     }
-                    idle
+                    Some(idle)
                 }
             },
         );
 
-        for worker in 0..metrics.num_workers() {
-            self.register_list_callback(
+        for worker in 0..num_workers {
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerParkCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_park_count(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_park_count(worker))),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerUnparkCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_park_count(worker)
-                }),
+                // The park/unpark count goes up on every park and every unpark, so half of it
+                // (rounded down) is the unpark count. Reading one counter keeps this monotonic.
+                delta(read(&weak, move |m| m.worker_park_unpark_count(worker) / 2)),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerNoopCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_noop_count(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_noop_count(worker))),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerStealCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_steal_count(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_steal_count(worker))),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerStealOperations".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_steal_operations(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_steal_operations(worker))),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerPollCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_poll_count(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_poll_count(worker))),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerTotalBusyDuration".into(),
                 aggregation.clone(),
                 Unit::Microsecond,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_total_busy_duration(worker).as_micros() as u64
-                }),
+                delta(read(&weak, move |m| {
+                    m.worker_total_busy_duration(worker).as_micros() as u64
+                })),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerBusyPercent".into(),
                 aggregation.clone(),
                 Unit::Percent,
                 {
-                    let metrics = metrics.clone();
-                    let callback = move || metrics.worker_total_busy_duration(worker);
+                    let mut callback = read(&weak, move |m| m.worker_total_busy_duration(worker));
 
                     let mut at = std::time::Instant::now();
-                    let mut prev = callback();
+                    let mut prev = callback().unwrap_or_default();
                     move || {
-                        let new = callback();
+                        let new = callback()?;
                         let delta = new.saturating_sub(prev);
                         let elapsed = at.elapsed();
                         prev = new;
                         at = std::time::Instant::now();
 
                         // What % of the time since we were last polled did this worker spend busy?
-                        delta.div_duration_f32(elapsed) * 100.0
+                        Some(delta.div_duration_f32(elapsed) * 100.0)
                     }
                 },
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerLocalScheduleCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_local_schedule_count(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_local_schedule_count(worker))),
             );
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerOverflowCount".into(),
                 aggregation.clone(),
                 Unit::Count,
-                delta({
-                    let metrics = metrics.clone();
-                    move || metrics.worker_overflow_count(worker)
-                }),
+                delta(read(&weak, move |m| m.worker_overflow_count(worker))),
             );
 
-            self.register_list_callback(
+            self.register_pruning_list_callback(
                 "TokioRuntime:WorkerMeanPollTime".into(),
                 aggregation.clone(),
                 Unit::Microsecond,
-                {
-                    let metrics = metrics.clone();
-                    move || metrics.worker_mean_poll_time(worker).as_micros() as u64
-                },
+                read(&weak, move |m| {
+                    m.worker_mean_poll_time(worker).as_micros() as u64
+                }),
             );
         }
     }
@@ -390,6 +360,27 @@ mod test {
             got, expected,
             "original: {line:?},{got:#?} != {expected:#?}",
         );
+    }
+
+    /// The registry must not keep an instrumented runtime alive: holding its handle keeps the
+    /// runtime's I/O driver, and its file descriptors, open after shutdown.
+    #[test]
+    fn shut_down_runtime_is_unregistered() {
+        let registry = Registry::new();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        registry.instrument_runtime("A", runtime.handle(), Duration::from_secs(3_600));
+        assert!(registry
+            .take_current_metrics_line()
+            .contains("TokioRuntime:NumWorkers"));
+
+        runtime.shutdown_timeout(Duration::from_secs(5));
+
+        let line = registry.take_current_metrics_line();
+        assert!(!line.contains("TokioRuntime:NumWorkers"), "{line}");
     }
 
     #[test]
