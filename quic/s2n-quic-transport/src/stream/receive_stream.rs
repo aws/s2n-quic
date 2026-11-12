@@ -352,7 +352,7 @@ pub struct ReceiveStream {
     ///
     /// The receive buffer is cleared in the terminal states, so the size is kept here
     /// to detect conflicting RESET_STREAM frames after the stream has finished.
-    known_final_size: Option<u64>,
+    final_size: Option<u64>,
 }
 
 impl ReceiveStream {
@@ -381,7 +381,7 @@ impl ReceiveStream {
             stop_sending_sync: OnceSync::new(),
             read_waiter: None,
             final_state_observed: is_closed,
-            known_final_size: None,
+            final_size: None,
             detached: is_closed,
         };
 
@@ -420,29 +420,50 @@ impl ReceiveStream {
 
                 // If we don't know the final size then try acquiring flow control
                 // for any data that arrived before the peer processed STOP_SENDING.
-                if self.receive_buffer.final_size().is_none() {
-                    let data_end = frame
-                        .offset
-                        .checked_add_usize(frame.data.len())
-                        .ok_or_else(|| {
-                            transport::Error::FLOW_CONTROL_ERROR
-                                .with_reason("data size overflow")
-                                .with_frame_type(frame.tag().into())
-                        })?;
-                    self.flow_controller
-                        .acquire_window_up_to(data_end, frame.tag().into())?;
+                let data_end = frame
+                    .offset
+                    .checked_add_usize(frame.data.len())
+                    .ok_or_else(|| {
+                        transport::Error::FLOW_CONTROL_ERROR
+                            .with_reason("data size overflow")
+                            .with_frame_type(frame.tag().into())
+                    })?;
 
-                    // Update snapshot of highest offset if we received data in stopping state
-                    *highest_received = (*highest_received).max(data_end.as_u64());
-                    if frame.is_fin {
-                        assert_actual_size_matches_known_size(
-                            Some(data_end),
-                            self.known_final_size,
-                            Some(frame.tag()),
-                        )?;
-                        self.known_final_size.get_or_insert(data_end.as_u64());
-                    }
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-4.5
+                //# A receiver SHOULD treat receipt of data at or beyond the
+                //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
+                //# is closed.
+                // Applies to every frame, not just FIN frames. Checked before acquiring
+                // flow control so data past the final size reports FINAL_SIZE_ERROR.
+                // `final_size` is always recorded from a `VarInt`, so the conversion
+                // can't fail.
+                ensure_actual_size_gte_received_data(
+                    self.final_size.and_then(|size| VarInt::new(size).ok()),
+                    data_end.as_u64(),
+                    Some(frame.tag()),
+                )?;
+
+                self.flow_controller
+                    .acquire_window_up_to(data_end, frame.tag().into())?;
+
+                if frame.is_fin {
+                    // The reported final size must not be smaller than data we've
+                    // already received, even if no final size was known before.
+                    ensure_actual_size_gte_received_data(
+                        Some(data_end),
+                        *highest_received,
+                        Some(frame.tag()),
+                    )?;
+                    ensure_actual_size_matches_known_size(
+                        Some(data_end),
+                        self.final_size,
+                        Some(frame.tag()),
+                    )?;
+                    self.final_size.get_or_insert(data_end.as_u64());
                 }
+
+                // Update snapshot of highest offset if we received data in stopping state
+                *highest_received = (*highest_received).max(data_end.as_u64());
 
                 // Release any outstanding credits immediately since the data
                 // will not be consumed by the application on this stream.
@@ -559,7 +580,7 @@ impl ReceiveStream {
                 }
 
                 if let Some(total_size) = self.receive_buffer.final_size() {
-                    self.known_final_size = Some(total_size);
+                    self.final_size = Some(total_size);
 
                     // If we already have received all the data, there is no point
                     // in transmitting STOP_SENDING anymore.
@@ -631,8 +652,8 @@ impl ReceiveStream {
 
         let error = StreamError::stream_reset(frame.application_error_code.into());
         self.init_reset(error, Some(frame.final_size), Some(frame.tag()))?;
-        self.known_final_size
-            .get_or_insert(Into::<u64>::into(frame.final_size));
+        self.final_size
+            .get_or_insert(frame.final_size.as_u64());
 
         // We don't have to send `STOP_SENDING` anymore since the stream was reset by the peer
         self.stop_sending_sync.stop_sync();
@@ -659,30 +680,22 @@ impl ReceiveStream {
         // A reset frame contains a size field. We need to go through each
         // state and make sure that the indicated size matches what we expect.
         match self.state {
-            ReceiveStreamState::Reset(_) => {
-                assert_actual_size_matches_known_size(
+            ReceiveStreamState::Reset(_) | ReceiveStreamState::DataRead => {
+                ensure_actual_size_matches_known_size(
                     actual_size,
-                    self.known_final_size,
+                    self.final_size,
                     frame_tag,
                 )?;
 
                 return Ok(());
             }
-            ReceiveStreamState::DataRead => {
-                assert_actual_size_matches_known_size(
-                    actual_size,
-                    self.known_final_size,
-                    frame_tag,
-                )?;
-                return Ok(());
-            }
             ReceiveStreamState::Receiving => {
-                assert_actual_size_gte_received_data(
+                ensure_actual_size_gte_received_data(
                     actual_size,
                     self.receive_buffer.highest_received_offset(),
                     frame_tag,
                 )?;
-                assert_actual_size_matches_known_size(
+                ensure_actual_size_matches_known_size(
                     actual_size,
                     self.receive_buffer.final_size(),
                     frame_tag,
@@ -703,17 +716,17 @@ impl ReceiveStream {
                 ref highest_received,
                 ..
             } => {
-                assert_actual_size_gte_received_data(actual_size, *highest_received, frame_tag)?;
-                assert_actual_size_matches_known_size(
+                ensure_actual_size_gte_received_data(actual_size, *highest_received, frame_tag)?;
+                ensure_actual_size_matches_known_size(
                     actual_size,
-                    self.known_final_size,
+                    self.final_size,
                     frame_tag,
                 )?;
             }
         }
 
-        if matches!(self.state, ReceiveStreamState::Receiving)
-            | matches!(self.state, ReceiveStreamState::Stopping { .. })
+        if matches!(self.state, ReceiveStreamState::Receiving
+            | ReceiveStreamState::Stopping { .. })
         {
             if let Some(actual_size) = actual_size {
                 // We have to acquire the flow control credits up to the
@@ -1035,16 +1048,16 @@ impl ReceiveStream {
 //# handling.  A receiver SHOULD treat receipt of data at or beyond the
 //# final size as an error of type FINAL_SIZE_ERROR, even after a stream
 //# is closed.
-fn assert_actual_size_matches_known_size(
+fn ensure_actual_size_matches_known_size(
     actual_size: Option<VarInt>,
-    known_final_size: Option<u64>,
+    final_size: Option<u64>,
     frame_tag: Option<u8>,
 ) -> Result<(), transport::Error> {
     if let Some(actual_size) = actual_size {
-        if let Some(known_final_size) = known_final_size {
-            if actual_size != known_final_size {
+        if let Some(final_size) = final_size {
+            if actual_size != final_size {
                 return Err(transport::Error::FINAL_SIZE_ERROR
-                    .with_reason("Final size in reset frame did not match previous final size")
+                    .with_reason("Reported final size did not match the known final size")
                     .with_frame_type(frame_tag.unwrap_or_default().into()));
             }
         }
@@ -1053,19 +1066,23 @@ fn assert_actual_size_matches_known_size(
 }
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-20.1
-//# (2) an endpoint received a STREAM frame or a
-//# RESET_STREAM frame containing a final size
-//# that was lower than the size of stream data
-//# that was already received,
-fn assert_actual_size_gte_received_data(
+//# FINAL_SIZE_ERROR (0x06):  (1) An endpoint received a STREAM frame
+//#      containing data that exceeded the previously established final
+//#      size,(2) an endpoint received a STREAM frame or a
+//#      RESET_STREAM frame containing a final size
+//#      that was lower than the size of stream data
+//#      that was already received, or (3) an endpoint received
+//#      a STREAM frame or a RESET_STREAM frame containing a different
+//#      final size to the one already established.
+fn ensure_actual_size_gte_received_data(
     actual_size: Option<VarInt>,
     received_data: u64,
     frame_tag: Option<u8>,
 ) -> Result<(), transport::Error> {
     if let Some(actual_size) = actual_size {
-        if Into::<u64>::into(actual_size) < received_data {
+        if actual_size.as_u64() < received_data {
             return Err(transport::Error::FINAL_SIZE_ERROR
-                .with_reason("Final size in reset is smaller than amount of received data")
+                .with_reason("Reported final size is smaller than the highest received offset")
                 .with_frame_type(frame_tag.unwrap_or_default().into()));
         }
     }

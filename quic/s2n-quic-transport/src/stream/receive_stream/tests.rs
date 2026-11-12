@@ -672,7 +672,7 @@ fn reset_with_larger_final_size_is_accepted_after_non_fin_data_in_stopping_state
             .is_ok());
 
         // Data without FIN does not establish a final size
-        assert_eq!(None, test_env.stream.receive_stream.known_final_size);
+        assert_eq!(None, test_env.stream.receive_stream.final_size);
 
         // The peer may have sent more data which is still in flight, so a final size
         // beyond the highest received offset is valid
@@ -691,7 +691,7 @@ fn reset_with_larger_final_size_is_accepted_after_non_fin_data_in_stopping_state
         // The final size is now established by the RESET_STREAM
         assert_eq!(
             Some(*final_size as u64),
-            test_env.stream.receive_stream.known_final_size
+            test_env.stream.receive_stream.final_size
         );
     }
 }
@@ -959,7 +959,7 @@ fn reset_errors_if_final_size_differs_from_fin_received_before_entering_stopping
                 &mut events
             )
             .is_ok());
-        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+        assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
 
         // STOP_SENDING clears the receive buffer, but the known final size must survive
         assert!(test_env
@@ -969,7 +969,7 @@ fn reset_errors_if_final_size_differs_from_fin_received_before_entering_stopping
             test_env.stream.receive_stream.state,
             ReceiveStreamState::Stopping { .. }
         ));
-        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+        assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
 
         // The peer replies to STOP_SENDING with a RESET_STREAM claiming a different size
         let reset_frame = ResetStream {
@@ -989,7 +989,7 @@ fn reset_errors_if_final_size_differs_from_fin_received_before_entering_stopping
             test_env.stream.receive_stream.state,
             ReceiveStreamState::Stopping { .. }
         ));
-        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+        assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
 
         // A RESET_STREAM that matches the FIN size is still accepted
         let reset_frame = ResetStream {
@@ -1003,7 +1003,7 @@ fn reset_errors_if_final_size_differs_from_fin_received_before_entering_stopping
             test_env.stream.receive_stream.state,
             ReceiveStreamState::Reset(_)
         ));
-        assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+        assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
     }
 }
 
@@ -1087,7 +1087,7 @@ fn fin_contradicting_previous_fin_errors_in_stopping_state() {
             }
 
             // Either way, the final size of 800 is now known
-            assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+            assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
 
             let conflicting_fin = stream_data(
                 test_env.stream.stream_id,
@@ -1102,9 +1102,70 @@ fn fin_contradicting_previous_fin_errors_in_stopping_state() {
             );
 
             // The conflicting FIN must not have replaced the known final size
-            assert_eq!(Some(800), test_env.stream.receive_stream.known_final_size);
+            assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
         }
     }
+}
+
+#[test]
+fn first_fin_below_highest_received_errors_in_stopping_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+
+    // Receive [100, 800) without establishing a final size.
+    test_env.feed_data(VarInt::from_u32(100), 700);
+    assert!(test_env.stop_sending(ApplicationErrorCode::UNKNOWN).is_ok());
+    assert!(matches!(
+        test_env.stream.receive_stream.state,
+        ReceiveStreamState::Stopping { .. }
+    ));
+
+    let fin = stream_data(
+        test_env.stream.stream_id,
+        VarInt::from_u32(799),
+        no_data,
+        true,
+    );
+    let mut events = StreamEvents::new();
+    assert_is_transport_error(
+        test_env.stream.on_data(&fin, &mut events),
+        TransportError::FINAL_SIZE_ERROR,
+    );
+}
+
+#[test]
+fn non_fin_data_beyond_final_size_errors_in_stopping_state() {
+    let mut test_env = setup_receive_only_test_env();
+    let no_data: &[u8] = &[];
+    let data: &[u8] = &[0];
+
+    assert!(test_env.stop_sending(ApplicationErrorCode::UNKNOWN).is_ok());
+    assert!(matches!(
+        test_env.stream.receive_stream.state,
+        ReceiveStreamState::Stopping { .. }
+    ));
+
+    let fin = stream_data(
+        test_env.stream.stream_id,
+        VarInt::from_u32(800),
+        no_data,
+        true,
+    );
+    let mut events = StreamEvents::new();
+    assert!(test_env.stream.on_data(&fin, &mut events).is_ok());
+    assert_eq!(Some(800), test_env.stream.receive_stream.final_size);
+
+    let frame = stream_data(
+        test_env.stream.stream_id,
+        VarInt::from_u32(800),
+        data,
+        false,
+    );
+    let mut events = StreamEvents::new();
+    assert_is_transport_error(
+        test_env.stream.on_data(&frame, &mut events),
+        TransportError::FINAL_SIZE_ERROR,
+    );
 }
 
 #[test]
@@ -1121,7 +1182,7 @@ fn first_fin_in_stopping_state_acquires_connection_flow_control_window() {
     ));
 
     // The final size becomes known through this FIN, so it must still be accounted for
-    // in the connection flow control window, even though it records `known_final_size`.
+    // in the connection flow control window, even though it records `final_size`.
     let mut events = StreamEvents::new();
     assert_is_transport_error(
         test_env.stream.on_data(
