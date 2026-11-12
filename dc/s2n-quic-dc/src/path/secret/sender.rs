@@ -8,6 +8,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 type StatelessReset = [u8; secret_control::TAG_LEN];
 
+/// Why restoring a [`State`] from a persisted sender counter failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum RestoreError {
+    /// Advancing the persisted counter would exceed the `VarInt` maximum, so no safe key id remains
+    /// for this entry. Practically unreachable -- it needs a persisted counter within one advance of
+    /// 2^62 -- but restoring it verbatim would risk key-id reuse, so the entry is rejected instead.
+    #[error("restored sender counter would exceed the maximum key id")]
+    CounterOverflow,
+}
+
 #[derive(Debug)]
 pub struct State {
     current_id: AtomicU64,
@@ -32,6 +42,44 @@ impl State {
             current_id: AtomicU64::new(0),
             stateless_reset,
         }
+    }
+
+    /// Rebuilds a sender from a persisted counter, advancing it by `advance` so no key id is reissued.
+    ///
+    /// `persisted_current_id` is the counter value observed when the entry was written (see
+    /// [`State::current_id`]); the live counter may have moved past it before the write, and a crash
+    /// loses any issuance since. `advance` is applied verbatim and must cover that gap: a sender
+    /// restored with too small an advance reissues key ids, and reissuing a key id reuses the
+    /// `(key, iv)` pair it derives. A caller restoring a sender that will issue applies the
+    /// `MIN_RESTORE_ADVANCE` minimum the persistence codec defines; only inspection of what a file
+    /// holds passes less.
+    ///
+    /// The result must remain a usable key id: the sender always keeps room to add one (see
+    /// [`State::next_key_id`]), so the ceiling is `VarInt::MAX - 1`, and a value that would cross it
+    /// is rejected with [`RestoreError::CounterOverflow`] rather than silently wrapped.
+    pub fn restore(
+        persisted_current_id: u64,
+        stateless_reset: StatelessReset,
+        advance: u64,
+    ) -> Result<Self, RestoreError> {
+        let advanced = persisted_current_id
+            .checked_add(advance)
+            .filter(|id| *id < *VarInt::MAX)
+            .ok_or(RestoreError::CounterOverflow)?;
+
+        Ok(Self {
+            current_id: AtomicU64::new(advanced),
+            stateless_reset,
+        })
+    }
+
+    /// The next key id this sender would issue, as a plain `u64`, for persistence.
+    ///
+    /// This is the live counter, not advanced by anything: the advance is applied on the way back
+    /// in by [`State::restore`], so a persisted file records the truth and the advance can change
+    /// without invalidating existing files.
+    pub fn current_id(&self) -> u64 {
+        self.current_id.load(Ordering::Relaxed)
     }
 
     /// Returns the next key ID to send at, or `None` if available key id is exhausted.
