@@ -38,6 +38,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
         crypto_stream: &'a mut CryptoStream,
         datagram_manager: &'a mut datagram::Manager<Config>,
         dc_manager: &'a mut dc::Manager<Config>,
+        prioritize_datagrams: &'a mut bool,
     ) -> Self {
         if transmission_mode != Mode::PathValidationOnly {
             debug_assert_eq!(path_id, path_manager.active_path_id());
@@ -56,7 +57,7 @@ impl<'a, Config: endpoint::Config> Payload<'a, Config> {
                     crypto_stream,
                     datagram_manager,
                     dc_manager,
-                    prioritize_datagrams: false,
+                    prioritize_datagrams,
                 })
             }
             Mode::MtuProbing => transmission::application::Payload::MtuProbe(MtuProbe {
@@ -110,7 +111,7 @@ pub struct Normal<'a, Config: endpoint::Config> {
     crypto_stream: &'a mut CryptoStream,
     datagram_manager: &'a mut datagram::Manager<Config>,
     dc_manager: &'a mut dc::Manager<Config>,
-    prioritize_datagrams: bool,
+    prioritize_datagrams: &'a mut bool,
 }
 
 impl<Config: endpoint::Config> Normal<'_, Config> {
@@ -125,12 +126,10 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
         // and filling the packet with other frames. This is because datagrams
         // cannot be fragmented across packets and we want to do the most to send
         // large datagrams.
-        if self.prioritize_datagrams && can_transmit {
-            self.datagram_manager.on_transmit(
-                context,
-                self.stream_manager,
-                self.prioritize_datagrams,
-            );
+        let prioritize_datagrams = *self.prioritize_datagrams;
+        if prioritize_datagrams && can_transmit {
+            self.datagram_manager
+                .on_transmit(context, self.stream_manager, prioritize_datagrams);
         }
         let did_send_ack = self.ack_manager.on_transmit(context);
 
@@ -140,11 +139,11 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
 
             // If we did not prioritize datagrams in this packet, we send them just
             // before we send stream data.
-            if !self.prioritize_datagrams {
+            if !prioritize_datagrams {
                 self.datagram_manager.on_transmit(
                     context,
                     self.stream_manager,
-                    self.prioritize_datagrams,
+                    prioritize_datagrams,
                 );
             }
 
@@ -165,7 +164,7 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
         }
 
         // Alternate between prioritizing datagrams or not each packet
-        self.prioritize_datagrams = !self.prioritize_datagrams;
+        *self.prioritize_datagrams = !prioritize_datagrams;
     }
 
     // Sends control data frames
