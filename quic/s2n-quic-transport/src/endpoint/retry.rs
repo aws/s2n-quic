@@ -20,6 +20,7 @@ pub struct Dispatch<Path: path::Handle> {
     // TODO: Find a better datastructure capable of handling delays in transmission
     // https://github.com/aws/s2n-quic/issues/280
     transmissions: VecDeque<Transmission<Path>>,
+    max_peers: usize,
 }
 
 impl<Path: path::Handle> Default for Dispatch<Path> {
@@ -32,6 +33,7 @@ impl<Path: path::Handle> Dispatch<Path> {
     pub fn new(max_peers: usize) -> Self {
         Self {
             transmissions: VecDeque::with_capacity(max_peers),
+            max_peers,
         }
     }
 
@@ -43,6 +45,12 @@ impl<Path: path::Handle> Dispatch<Path> {
         random: &mut dyn random::Generator,
         token_format: &mut T,
     ) {
+        // New Retry packets are dropped once the queue holds `max_peers` pending
+        // transmissions. The client retransmits its Initial if it gets no response.
+        if self.transmissions.len() >= self.max_peers {
+            return;
+        }
+
         if let Some(transmission) = Transmission::new::<_, C>(
             path_handle,
             packet,
@@ -167,5 +175,40 @@ impl<Path: path::Handle> tx::Message for &Transmission<Path> {
         _gso_offset: usize,
     ) -> Result<usize, tx::Error> {
         buffer.write(self.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::endpoint::testing::protected_initial;
+    use s2n_quic_core::{crypto::key::testing::Key, inet::SocketAddress, path::RemoteAddress};
+
+    #[test]
+    fn max_peers_test() {
+        let max_peers = 2;
+        let mut dispatch = Dispatch::<RemoteAddress>::new(max_peers);
+        let mut random = random::testing::Generator(123);
+        let mut token_format = token::testing::Format::new();
+        let local_connection_id = connection::LocalId::try_from_bytes(&[3u8; 16]).unwrap();
+
+        for i in 0..5 {
+            let mut buffer = [0u8; MINIMUM_MAX_DATAGRAM_SIZE as usize];
+            let packet = protected_initial(&mut buffer);
+
+            dispatch.queue::<_, Key>(
+                RemoteAddress::from(SocketAddress::default()),
+                &packet,
+                local_connection_id,
+                &mut random,
+                &mut token_format,
+            );
+
+            assert_eq!(
+                dispatch.transmissions.len(),
+                (i + 1).min(max_peers),
+                "retry packets should not be queued past max_peers"
+            );
+        }
     }
 }

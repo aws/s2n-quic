@@ -1,7 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{frame::Tag, stream::StreamType, varint::VarInt};
+use crate::{
+    frame::Tag, stream::StreamType, transport::parameters::MAX_STREAMS_MAX_VALUE, varint::VarInt,
+};
 use s2n_codec::{decoder_invariant, decoder_parameterized_value, Encoder, EncoderValue};
 
 //= https://www.rfc-editor.org/rfc/rfc9000#section-19.11
@@ -77,7 +79,7 @@ decoder_parameterized_value!(
             //# permits opening of a stream larger than this limit MUST be treated
             //# as a connection error of type FRAME_ENCODING_ERROR.
             decoder_invariant!(
-                *maximum_streams <= 2u64.pow(60),
+                *maximum_streams <= MAX_STREAMS_MAX_VALUE.as_u64(),
                 "maximum streams cannot exceed 2^60"
             );
 

@@ -73,6 +73,17 @@ impl<
         self.request_delivery_if_necessary();
     }
 
+    /// Requests the latest unacknowledged value regardless of the sync
+    /// threshold. Does nothing after synchronization is cancelled.
+    pub fn request_delivery(&mut self) {
+        if self.delivery.is_cancelled() {
+            return;
+        }
+        if self.latest_value != self.value_ackd_up_to {
+            self.delivery = DeliveryState::Requested(self.latest_value);
+        }
+    }
+
     /// Stop to synchronize the value to the peer
     pub fn stop_sync(&mut self) {
         self.delivery.cancel();

@@ -13,6 +13,11 @@ pub(crate) trait ValueList {
 
     /// Returns any for the self type, used to cast back when registering equally-named metrics.
     fn as_any(&mut self) -> &mut dyn Any;
+
+    /// Returns true once the list has no callbacks left, so the registry can drop its entry.
+    fn is_empty(&self) -> bool {
+        false
+    }
 }
 
 impl<D, F> ValueList for (Vec<F>, Unit)
@@ -43,5 +48,45 @@ where
 
     fn as_any(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+/// A list callback that is removed from its list the first time it returns `None`.
+pub(crate) struct Pruning<F>(pub(crate) F);
+
+impl<D, F> ValueList for (Vec<Pruning<F>>, Unit)
+where
+    F: FnMut() -> Option<D> + Send + 'static,
+    D: std::fmt::Display,
+{
+    fn take_current(&mut self) -> Option<String> {
+        let mut output = String::new();
+        let mut first = true;
+        self.0.retain_mut(|Pruning(callback)| {
+            let Some(value) = callback() else {
+                return false;
+            };
+            if !first {
+                output.push('+');
+            }
+            first = false;
+            write!(output, "{value}").unwrap();
+            true
+        });
+
+        if output.is_empty() {
+            return None;
+        }
+
+        output.push_str(self.1.pmet_str());
+        Some(output)
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }

@@ -155,8 +155,9 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
     /// `ProbeResponse` is treated as nonresponsive for prioritization, but its normal handshake
     /// still proceeds after the probe timeout.
     ///
-    /// This is disabled unless a positive probe limit is also configured with
-    /// [`Self::with_handshake_probe_limit`].
+    /// This is disabled unless a positive probe rate is also configured with
+    /// [`Self::with_handshake_probe_rate`] (or a positive limit with the deprecated
+    /// [`Self::with_handshake_probe_limit`]).
     ///
     /// # Stability
     ///
@@ -167,16 +168,40 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
         self
     }
 
-    /// Sets the maximum number of concurrent pre-handshake liveness probes.
+    /// Sets the token refill rate for pre-handshake liveness probes.
+    ///
+    /// The bucket initially holds `probes_per_second` tokens and refills continuously at this rate.
+    /// For example, a rate of 4 allows four probes immediately, then one every 250 ms while busy.
+    /// Idle time restores up to four tokens in this example. Burst credit means the number of
+    /// starts in a rolling second can exceed the refill rate.
+    ///
+    /// Each probe holds a UDP socket for up to the probe timeout, so at most roughly
+    /// `rate * (1s + timeout)` probes are in flight. Refill intervals round up to nanoseconds;
+    /// rates above one billion therefore refill at one billion tokens per second.
     ///
     /// The default value is zero, which disables probing.
-    /// Prioritization is best-effort: a low limit can serialize probes and reduce the opportunity
-    /// for responsive peers to overtake silent peers.
+    /// Prioritization is best-effort: a low rate can delay probes and reduce the opportunity for
+    /// responsive peers to overtake silent peers.
     ///
     /// # Stability
     ///
     /// This API is unstable and may change behavior or be removed in future releases.
     #[doc(hidden)]
+    pub fn with_handshake_probe_rate(mut self, probes_per_second: u32) -> Self {
+        self.handshake_queue.probe_rate = probes_per_second;
+        self
+    }
+
+    /// Sets the maximum number of concurrent pre-handshake liveness probes.
+    ///
+    /// The default value is zero, which applies no concurrency limit. When combined with
+    /// [`Self::with_handshake_probe_rate`], both limits apply.
+    ///
+    /// # Stability
+    ///
+    /// This API is unstable and may change behavior or be removed in future releases.
+    #[doc(hidden)]
+    #[deprecated(note = "use `with_handshake_probe_rate`")]
     pub fn with_handshake_probe_limit(mut self, limit: usize) -> Self {
         self.handshake_queue.probe_limit = limit;
         self
