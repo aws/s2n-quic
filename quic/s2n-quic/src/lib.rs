@@ -95,6 +95,10 @@
 //! responsible for meeting guidelines for using rustls with
 //! [FIPS-approved cryptography](https://docs.rs/rustls/latest/rustls/manual/_06_fips/index.html).
 //!
+//! FIPS mode is available on the targets supported by `aws-lc-rs`. See the
+//! [`aws-lc-rs` platform support](https://aws.github.io/aws-lc-rs/platform_support.html) page
+//! for the supported targets and build requirements.
+//!
 //! Applications wanting to use FIPS-approved cryptography with `provider-tls-rustls` should:
 //!
 //! 1. Enable the following features:
