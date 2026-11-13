@@ -26,6 +26,7 @@ pub mod server;
 pub mod shared;
 pub mod socket;
 pub(crate) mod tls;
+pub(crate) mod transport;
 
 pub use tls::{CertificateChain, Conn as TlsConnection, ConnectionBuilder as TlsConnectionBuilder};
 

@@ -9,6 +9,7 @@ use crate::{
         runtime,
         shared::ArcShared,
         socket,
+        transport::Transport,
     },
 };
 use core::mem::ManuallyDrop;
@@ -65,7 +66,10 @@ where
             endpoint::Type::Server => LocalState::Reading,
         };
 
-        Reader(ManuallyDrop::new(Box::new(Inner {
+        let is_tls = shared.common.s2n_connection.is_some();
+        let transport = Transport::variant(&*sockets, is_tls);
+
+        Reader(ManuallyDrop::new(Box::new(transport(Inner {
             shared,
             sockets,
             send_buffer,
@@ -74,6 +78,6 @@ where
             timer,
             local_state,
             runtime,
-        })))
+        }))))
     }
 }

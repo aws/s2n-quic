@@ -11,6 +11,7 @@ use crate::{
         send::{flow, queue},
         shared::{ArcShared, ShutdownKind},
         socket,
+        transport::Transport,
     },
 };
 use core::{
@@ -30,7 +31,7 @@ pub mod transmission;
 use crate::stream::socket::Application;
 pub use builder::Builder;
 
-pub struct Writer<Sub: event::Subscriber>(Box<Inner<Sub>>);
+pub struct Writer<Sub: event::Subscriber>(Box<Transport<Inner<Sub>>>);
 
 struct Inner<Sub>
 where
@@ -78,28 +79,48 @@ where
 {
     #[cfg(feature = "tokio")]
     pub(crate) fn replace_application_sockets(&mut self, sockets: socket::ArcApplication) {
-        self.0.sockets = sockets;
+        match &mut *self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.sockets = sockets
+            }
+        }
     }
 
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.0.shared.common.ensure_open()?;
-        Ok(self.0.shared.remote_addr().into())
+        match &*self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shared.common.ensure_open()?;
+                Ok(inner.shared.remote_addr().into())
+            }
+        }
     }
 
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.0.sockets.write_application().local_addr()
+        match &*self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.sockets.write_application().local_addr()
+            }
+        }
     }
 
     #[inline]
     pub fn path_secret_id(&self) -> &Id {
-        &self.0.shared.credentials().id
+        match &*self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                &inner.shared.credentials().id
+            }
+        }
     }
 
     #[inline]
     pub fn protocol(&self) -> socket::Protocol {
-        self.0.sockets.protocol()
+        match &*self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.sockets.protocol()
+            }
+        }
     }
 
     #[inline]
@@ -156,52 +177,67 @@ where
     where
         S: buffer::reader::storage::Infallible,
     {
-        let start_time = self.0.shared.clock.get_time();
-        let provided_len = buf.buffered_len();
+        match &mut *self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let start_time = inner.shared.clock.get_time();
+                let provided_len = buf.buffered_len();
 
-        let res = waker::debug_assert_contract(cx, |cx| {
-            let res = ready!(self.0.poll_write_from(cx, buf, is_fin));
+                let res = waker::debug_assert_contract(cx, |cx| {
+                    let res = ready!(inner.poll_write_from(cx, buf, is_fin));
 
-            // if we got an error then shut down the stream if needed
-            if res.is_err() {
-                // use the `Drop` type so we send a RST instead
-                let _ = self.0.shutdown(ShutdownType::Drop {
-                    is_panicking: false,
+                    // if we got an error then shut down the stream if needed
+                    if res.is_err() {
+                        // use the `Drop` type so we send a RST instead
+                        let _ = inner.shutdown(ShutdownType::Drop {
+                            is_panicking: false,
+                        });
+                    }
+
+                    res.into()
                 });
+
+                inner.publish_write_events(provided_len, is_fin, start_time, &res);
+
+                res
             }
-
-            res.into()
-        });
-
-        self.0
-            .publish_write_events(provided_len, is_fin, start_time, &res);
-
-        res
+        }
     }
 
     /// Shutdown the stream for writing.
     pub fn shutdown(&mut self) -> io::Result<()> {
-        self.0.shutdown(ShutdownType::Explicit)
+        match &mut *self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shutdown(ShutdownType::Explicit)
+            }
+        }
     }
 
     pub fn query_event_context<C: 'static, R>(&self, query: impl FnOnce(&C) -> R) -> Option<R> {
-        let ctxt = &self.0.shared.common.subscriber.context;
-        let mut query = s2n_quic_core::query::Once::new(query);
-        Sub::query(ctxt, &mut query);
-        let res: Result<_, _> = query.into();
-        match res {
-            Ok(r) => Some(r),
-            // ConnectionLockPoisoned is not used except by s2n-quic infrastructure, so it's not
-            // reachable here.
-            Err(s2n_quic_core::query::Error::ConnectionLockPoisoned) => unreachable!(),
-            Err(s2n_quic_core::query::Error::ContextTypeMismatch) => None,
-            // unreachable in practice, needed due to #[non_exhaustive]
-            Err(_) => None,
+        match &*self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let ctxt = &inner.shared.common.subscriber.context;
+                let mut query = s2n_quic_core::query::Once::new(query);
+                Sub::query(ctxt, &mut query);
+                let res: Result<_, _> = query.into();
+                match res {
+                    Ok(r) => Some(r),
+                    // ConnectionLockPoisoned is not used except by s2n-quic infrastructure, so it's not
+                    // reachable here.
+                    Err(s2n_quic_core::query::Error::ConnectionLockPoisoned) => unreachable!(),
+                    Err(s2n_quic_core::query::Error::ContextTypeMismatch) => None,
+                    // unreachable in practice, needed due to #[non_exhaustive]
+                    Err(_) => None,
+                }
+            }
         }
     }
 
     pub fn peer_cert_chain(&self) -> Option<&crate::stream::tls::CertificateChain> {
-        self.0.shared.s2n_connection.as_ref()?.peer_cert_chain()
+        match &*self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shared.s2n_connection.as_ref()?.peer_cert_chain()
+            }
+        }
     }
 }
 
@@ -530,7 +566,11 @@ where
         mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
     ) -> Poll<Result<(), io::Error>> {
-        self.0.shutdown(ShutdownType::Explicit).into()
+        match &mut *self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shutdown(ShutdownType::Explicit).into()
+            }
+        }
     }
 
     #[inline(always)]
@@ -545,9 +585,13 @@ where
 {
     #[inline]
     fn drop(&mut self) {
-        let _ = self.0.shutdown(ShutdownType::Drop {
-            is_panicking: std::thread::panicking(),
-        });
+        match &mut *self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let _ = inner.shutdown(ShutdownType::Drop {
+                    is_panicking: std::thread::panicking(),
+                });
+            }
+        }
     }
 }
 

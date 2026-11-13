@@ -10,7 +10,9 @@ use crate::{
     stream::{
         recv, runtime,
         shared::{AcceptState, ArcShared, ShutdownKind},
-        socket, Actor,
+        socket,
+        transport::Transport,
+        Actor,
     },
 };
 use core::{
@@ -45,7 +47,7 @@ pub enum ReadMode {
     Drain,
 }
 
-pub struct Reader<Sub: event::Subscriber>(ManuallyDrop<Box<Inner<Sub>>>);
+pub struct Reader<Sub: event::Subscriber>(ManuallyDrop<Box<Transport<Inner<Sub>>>>);
 
 pub(crate) struct Inner<Sub>
 where
@@ -127,54 +129,85 @@ where
 {
     #[cfg(feature = "tokio")]
     pub(crate) fn rebind_to_current_runtime(&mut self) -> io::Result<socket::ArcApplication> {
-        let sockets = self.0.sockets.rebind_to_current_runtime()?;
-        // The receiver computes its deadline on each poll. Recreate the sleep
-        // handle using the same clock so that timestamps keep their original epoch.
-        let timer = self
-            .0
-            .timer
-            .as_ref()
-            .map(|_| Timer::new(&self.0.shared.clock));
-        self.0.timer = timer;
-        self.0.sockets = sockets.clone();
-        Ok(sockets)
+        match &mut **self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let sockets = inner.sockets.rebind_to_current_runtime()?;
+                // The receiver computes its deadline on each poll. Recreate the sleep
+                // handle using the same clock so that timestamps keep their original epoch.
+                let timer = inner
+                    .timer
+                    .as_ref()
+                    .map(|_| Timer::new(&inner.shared.clock));
+                inner.timer = timer;
+                inner.sockets = sockets.clone();
+                Ok(sockets)
+            }
+        }
     }
 
     #[inline]
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        self.0.shared.common.ensure_open()?;
-        Ok(self.0.shared.remote_addr().into())
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shared.common.ensure_open()?;
+                Ok(inner.shared.remote_addr().into())
+            }
+        }
     }
 
     #[inline]
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        self.0.sockets.read_application().local_addr()
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.sockets.read_application().local_addr()
+            }
+        }
     }
 
     #[inline]
     pub fn path_secret_id(&self) -> &Id {
-        &self.0.shared.credentials().id
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                &inner.shared.credentials().id
+            }
+        }
     }
 
     #[inline]
     pub fn path_application_data(&self) -> Option<&ApplicationData> {
-        self.0.shared.application_data()
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shared.application_data()
+            }
+        }
     }
 
     #[inline]
     pub fn protocol(&self) -> socket::Protocol {
-        self.0.sockets.protocol()
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.sockets.protocol()
+            }
+        }
     }
 
     #[inline]
     pub fn set_read_mode(&mut self, read_mode: ReadMode) -> &mut Self {
-        self.0.read_mode = read_mode;
+        match &mut **self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.read_mode = read_mode
+            }
+        }
         self
     }
 
     #[inline]
     pub fn set_ack_mode(&mut self, ack_mode: AckMode) -> &mut Self {
-        self.0.ack_mode = ack_mode;
+        match &mut **self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.ack_mode = ack_mode
+            }
+        }
         self
     }
 
@@ -195,52 +228,64 @@ where
     where
         S: buffer::writer::Storage,
     {
-        let start_time = self.0.shared.clock.get_time();
-        let capacity = out_buf.remaining_capacity();
+        match &mut **self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let start_time = inner.shared.clock.get_time();
+                let capacity = out_buf.remaining_capacity();
 
-        let result = waker::debug_assert_contract(cx, |cx| {
-            let mut out_buf = out_buf.track_write();
-            let res = self.0.poll_read_into(cx, &mut out_buf);
+                let result = waker::debug_assert_contract(cx, |cx| {
+                    let mut out_buf = out_buf.track_write();
+                    let res = inner.poll_read_into(cx, &mut out_buf);
 
-            if res.is_pending() {
-                debug_assert_eq!(
-                    out_buf.written_len(),
-                    0,
-                    "bytes should only be written on Ready(_)"
-                );
+                    if res.is_pending() {
+                        debug_assert_eq!(
+                            out_buf.written_len(),
+                            0,
+                            "bytes should only be written on Ready(_)"
+                        );
+                    }
+
+                    let res = ready!(res);
+                    // record the first time we get `Poll::Ready`
+                    inner.local_state.on_read();
+                    res?;
+
+                    Ok(out_buf.written_len()).into()
+                });
+
+                inner.publish_read_events(capacity, start_time, &result);
+
+                result
             }
-
-            let res = ready!(res);
-            // record the first time we get `Poll::Ready`
-            self.0.local_state.on_read();
-            res?;
-
-            Ok(out_buf.written_len()).into()
-        });
-
-        self.0.publish_read_events(capacity, start_time, &result);
-
-        result
+        }
     }
 
     pub fn query_event_context<C: 'static, R>(&self, query: impl FnOnce(&C) -> R) -> Option<R> {
-        let ctxt = &self.0.shared.common.subscriber.context;
-        let mut query = s2n_quic_core::query::Once::new(query);
-        Sub::query(ctxt, &mut query);
-        let res: Result<_, _> = query.into();
-        match res {
-            Ok(r) => Some(r),
-            // ConnectionLockPoisoned is not used except by s2n-quic infrastructure, so it's not
-            // reachable here.
-            Err(s2n_quic_core::query::Error::ConnectionLockPoisoned) => unreachable!(),
-            Err(s2n_quic_core::query::Error::ContextTypeMismatch) => None,
-            // unreachable in practice, needed due to #[non_exhaustive]
-            Err(_) => None,
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let ctxt = &inner.shared.common.subscriber.context;
+                let mut query = s2n_quic_core::query::Once::new(query);
+                Sub::query(ctxt, &mut query);
+                let res: Result<_, _> = query.into();
+                match res {
+                    Ok(r) => Some(r),
+                    // ConnectionLockPoisoned is not used except by s2n-quic infrastructure, so it's not
+                    // reachable here.
+                    Err(s2n_quic_core::query::Error::ConnectionLockPoisoned) => unreachable!(),
+                    Err(s2n_quic_core::query::Error::ContextTypeMismatch) => None,
+                    // unreachable in practice, needed due to #[non_exhaustive]
+                    Err(_) => None,
+                }
+            }
         }
     }
 
     pub fn peer_cert_chain(&self) -> Option<&crate::stream::tls::CertificateChain> {
-        self.0.shared.s2n_connection.as_ref()?.peer_cert_chain()
+        match &**self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                inner.shared.s2n_connection.as_ref()?.peer_cert_chain()
+            }
+        }
     }
 }
 
@@ -398,7 +443,11 @@ where
     }
 
     #[inline]
-    fn shutdown(mut self: Box<Self>) {
+    fn shutdown(mut this: Box<Transport<Self>>) {
+        let inner = match &mut *this {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => inner,
+        };
+
         // Attempt a non-blocking drain if the application hasn't consumed all peer data:
         //
         // - Ready: the application never read from the stream, so we try now to process any
@@ -409,16 +458,17 @@ where
         //   `net/ipv4/tcp.c`: when `sk_receive_queue` is non-empty at close time, the kernel
         //   calls `tcp_set_state(sk, TCP_CLOSE)` and sends RST rather than FIN. This increments
         //   `TcpExtTCPAbortOnClose` (`/proc/net/netstat`).
-        if matches!(self.local_state, LocalState::Ready | LocalState::Reading) {
+        if matches!(inner.local_state, LocalState::Ready | LocalState::Reading) {
             let mut storage = buffer::writer::storage::Empty;
             let waker = s2n_quic_core::task::waker::noop();
             let mut cx = core::task::Context::from_waker(&waker);
-            let _ = self.poll_read_into(&mut cx, &mut storage.track_write());
+            let _ = inner.poll_read_into(&mut cx, &mut storage.track_write());
         }
 
-        let background = matches!(self.local_state, LocalState::Ready);
+        let background = matches!(inner.local_state, LocalState::Ready);
 
-        self.shared
+        inner
+            .shared
             .publisher()
             .on_stream_read_shutdown(event::builder::StreamReadShutdown { background });
 
@@ -427,15 +477,16 @@ where
         // This is important for processing any secret control packets that the server sends us
         if background {
             tracing::debug!("spawning task to read server's response");
-            let runtime = self.runtime.clone();
-            let handle = Shutdown(self);
+            let runtime = inner.runtime.clone();
+            let handle = Shutdown(this);
             runtime.spawn_recv_shutdown(handle);
             return;
         }
 
         // update the common closed state if needed
-        self.local_state
-            .transition(LocalState::Drained, &self.shared);
+        inner
+            .local_state
+            .transition(LocalState::Drained, &inner.shared);
 
         // let the peer know if we shut down cleanly
         let kind = if std::thread::panicking() {
@@ -444,7 +495,7 @@ where
             ShutdownKind::Normal
         };
 
-        self.shared.receiver.shutdown(kind);
+        inner.shared.receiver.shutdown(kind);
     }
 
     #[inline(always)]
@@ -524,11 +575,11 @@ where
             // SAFETY: the inner type is only taken once
             ManuallyDrop::take(&mut self.0)
         };
-        inner.shutdown();
+        Inner::shutdown(inner);
     }
 }
 
-pub struct Shutdown<Sub: event::Subscriber>(Box<Inner<Sub>>);
+pub struct Shutdown<Sub: event::Subscriber>(Box<Transport<Inner<Sub>>>);
 
 impl<Sub> core::future::Future for Shutdown<Sub>
 where
@@ -539,7 +590,11 @@ where
     #[inline]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
         let mut storage = buffer::writer::storage::Empty;
-        let _ = ready!(self.0.poll_read_into(cx, &mut storage.track_write()));
+        match &mut *self.0 {
+            Transport::DcUdp(inner) | Transport::DcTcp(inner) | Transport::Tls(inner) => {
+                let _ = ready!(inner.poll_read_into(cx, &mut storage.track_write()));
+            }
+        }
         Poll::Ready(())
     }
 }
