@@ -1,0 +1,10 @@
+# BoringSSL (vendored by boring-sys 5.x, pulled in through quiche) requires SSE2 on
+# 32-bit x86. boring-sys normally adds -msse2 through its own 32-bit CMake toolchain,
+# but skips it when CMAKE_TOOLCHAIN_FILE is already set, which the cross i686 image
+# does. cc-rs then compiles with `-m32 -march=i686` only. Rust's i686 target already
+# assumes SSE2, so enabling it for C/C++ keeps both sides on the same baseline.
+[target.i686-unknown-linux-gnu.env]
+passthrough = [
+    "CFLAGS_i686_unknown_linux_gnu=-msse2",
+    "CXXFLAGS_i686_unknown_linux_gnu=-msse2",
+]
