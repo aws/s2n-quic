@@ -25,7 +25,7 @@ impl Peer {
         let Some((sealer, credentials)) = self.entry.uni_sealer() else {
             // Key ID has been exhausted. Therefore, initiate another handshake to recover.
             self.map.store.request_handshake(
-                *self.entry.peer(),
+                &self.entry,
                 event::builder::HandshakeReason::KeyIdExhaustion,
             );
             return None;
@@ -44,7 +44,7 @@ impl Peer {
         let Some(keys) = self.entry.bidi_local(features) else {
             // Key ID has been exhausted. Therefore, initiate another handshake to recover.
             self.map.store.request_handshake(
-                *self.entry.peer(),
+                &self.entry,
                 event::builder::HandshakeReason::KeyIdExhaustion,
             );
             return None;

@@ -2,12 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::io::{self, HandshakeFailed};
-use crate::{path::secret, psk::io::HandshakeReason};
+use crate::{
+    path::secret::{self, map::LocalEndpoint},
+    psk::io::HandshakeReason,
+};
 use s2n_quic::{
     provider::{event::Subscriber as Sub, tls::Provider as Prov},
     server::Name,
 };
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, OnceLock, Weak},
+};
 use tokio::runtime::Runtime;
 use tokio_util::sync::DropGuard;
 
@@ -29,6 +35,7 @@ struct State {
     map: secret::Map,
     client: io::Client,
     local_addr: SocketAddr,
+    _local_endpoint: LocalEndpoint,
 }
 
 fn make_runtime() -> std::io::Result<(Arc<Runtime>, DropGuard)> {
@@ -58,10 +65,12 @@ impl State {
     >(
         addr: SocketAddr,
         map: secret::Map,
+        local_endpoint: LocalEndpoint,
         tls_materials_provider: Provider,
         subscriber: Subscriber,
         builder: Builder<Event>,
     ) -> io::Result<Self> {
+        let map = map.with_local_endpoint(&local_endpoint);
         let (runtime, rt_guard) = make_runtime()?;
         let guard = runtime.enter();
         let client = io::Client::bind::<Provider, Subscriber, Event>(
@@ -78,6 +87,7 @@ impl State {
             runtime: Some((runtime, rt_guard)),
             local_addr: client.local_addr()?,
             client,
+            _local_endpoint: local_endpoint,
         })
     }
 }
@@ -100,29 +110,37 @@ impl Provider {
         builder: Builder<Event>,
         server_name: Name,
     ) -> io::Result<Self> {
+        // The callback is registered before the state it drives is built, so it reaches the state
+        // through this cell, filled once the state exists.
+        // Avoid holding onto the state unintentionally after it's no longer needed.
+        let state_cell = Arc::new(OnceLock::<Weak<State>>::new());
+        let local_endpoint = map.register_local_endpoint({
+            let state_cell = state_cell.clone();
+            Arc::new(move |peer, reason| {
+                let state = state_cell.get()?.upgrade()?;
+                let runtime = state.runtime.as_ref().map(|v| &v.0)?;
+                let client = state.client.clone();
+                let server_name = server_name.clone();
+                Some(runtime.spawn(async move {
+                    if let Err(HandshakeFailed { .. }) =
+                        client.connect(peer, reason, server_name).await
+                    {
+                        // failure has already been logged, no further action required.
+                    }
+                }))
+            })
+        });
+
         let state = State::new_runtime(
             addr,
-            map.clone(),
+            map,
+            local_endpoint,
             tls_materials_provider,
             subscriber,
             builder,
         )?;
         let state = Arc::new(state);
-
-        // Avoid holding onto the state unintentionally after it's no longer needed.
-        let weak = Arc::downgrade(&state);
-        map.register_request_handshake(Box::new(move |peer, reason| {
-            let state = weak.upgrade()?;
-            let runtime = state.runtime.as_ref().map(|v| &v.0)?;
-            let client = state.client.clone();
-            let server_name = server_name.clone();
-            Some(runtime.spawn(async move {
-                if let Err(HandshakeFailed { .. }) = client.connect(peer, reason, server_name).await
-                {
-                    // failure has already been logged, no further action required.
-                }
-            }))
-        }));
+        let _ = state_cell.set(Arc::downgrade(&state));
 
         Ok(Self { state })
     }
