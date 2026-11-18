@@ -68,9 +68,9 @@ impl State {
         local_endpoint: LocalEndpoint,
         tls_materials_provider: Provider,
         subscriber: Subscriber,
-        builder: Builder<Event>,
+        mut builder: Builder<Event>,
     ) -> io::Result<Self> {
-        let map = map.with_local_endpoint(&local_endpoint);
+        builder.local_endpoint = Some(local_endpoint.id());
         let (runtime, rt_guard) = make_runtime()?;
         let guard = runtime.enter();
         let client = io::Client::bind::<Provider, Subscriber, Event>(

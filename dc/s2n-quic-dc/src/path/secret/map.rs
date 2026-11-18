@@ -49,6 +49,7 @@ pub(crate) use cleaner::Epoch;
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
+pub(crate) use handshake::ClientEndpoint;
 pub use handshake::HandshakingPath;
 pub(crate) use local_endpoint::{LocalEndpoint, LocalEndpointId, RequestHandshake};
 pub use peer::Peer;
@@ -92,8 +93,6 @@ fn encode_unknown_path_secret(
 #[derive(Clone)]
 pub struct Map {
     store: Arc<dyn Store>,
-    /// Recorded on entries created by handshakes through this handle.
-    local_endpoint: Option<LocalEndpointId>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -164,7 +163,6 @@ where
     pub fn build(self) -> Result<Map, MapBuilderError> {
         Ok(Map {
             store: self.inner.build().map_err(MapBuilderError)?,
-            local_endpoint: None,
         })
     }
 }
@@ -287,15 +285,6 @@ impl Map {
             self.store.register_local_endpoint(rehandshake_callback),
             self.store.clone(),
         )
-    }
-
-    /// Returns a handle to the same map whose handshakes record `endpoint` as the creator of the
-    /// entries they create.
-    pub(crate) fn with_local_endpoint(&self, endpoint: &LocalEndpoint) -> Self {
-        Self {
-            store: self.store.clone(),
-            local_endpoint: Some(endpoint.id()),
-        }
     }
 
     /// Gets the [`Peer`] entry for the given address
@@ -570,7 +559,7 @@ impl Map {
     #[cfg(any(test, feature = "testing"))]
     pub fn test_insert(&self, peer: SocketAddr) {
         let receiver = super::receiver::State::new();
-        let entry = Entry::fake_created_by(peer, Some(receiver), self.local_endpoint);
+        let entry = Entry::fake(peer, Some(receiver));
         self.store.test_insert(entry);
     }
 

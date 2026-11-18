@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{client, probe, server};
-use crate::path::secret::{self, map::HandshakeProbeOutcome};
+use crate::path::secret::{
+    self,
+    map::{ClientEndpoint, HandshakeProbeOutcome},
+};
 use rand::RngExt;
 use s2n_quic::{
     provider::{
@@ -397,7 +400,7 @@ impl Client {
         let client = client
             .with_connection_close_formatter(crate::connection_close::TransparentTransport)?
             .with_limits(connection_limits)?
-            .with_dc(map.clone())?
+            .with_dc(ClientEndpoint::new(map.clone(), builder.local_endpoint))?
             .with_event((event, builder.event_subscriber))?
             .with_tls(tls_materials_provider)?
             .start()?;

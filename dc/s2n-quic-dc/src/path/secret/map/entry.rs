@@ -57,9 +57,9 @@ pub struct Entry {
     // maps while not having two writes and wasting an extra byte of space.
     accessed: AtomicU8,
     application_data: Option<ApplicationData>,
-    /// The local endpoint whose handshake created this entry. `None` for entries created by a
-    /// remotely initiated handshake.
-    created_by: Option<LocalEndpointId>,
+    /// The local endpoint that initiated the handshake creating this entry; `None` if the handshake
+    /// was accepted.
+    initiated_by: Option<LocalEndpointId>,
 }
 
 impl SizeOf for Entry {
@@ -75,7 +75,7 @@ impl SizeOf for Entry {
             accessed,
             application_data,
             accessed_at,
-            created_by,
+            initiated_by,
         } = self;
         creation_time.size()
             + peer.size()
@@ -87,7 +87,7 @@ impl SizeOf for Entry {
             + accessed.size()
             + application_data.size()
             + accessed_at.size()
-            + created_by.size()
+            + initiated_by.size()
     }
 }
 
@@ -135,22 +135,22 @@ impl Entry {
             accessed: AtomicU8::new(0),
             accessed_at: AccessedAt(AtomicU64::new(0)),
             application_data,
-            created_by: None,
+            initiated_by: None,
         }
     }
 
-    pub(crate) fn with_created_by(mut self, created_by: Option<LocalEndpointId>) -> Self {
-        self.created_by = created_by;
+    pub(crate) fn with_initiated_by(mut self, initiated_by: Option<LocalEndpointId>) -> Self {
+        self.initiated_by = initiated_by;
         self
     }
 
-    pub(crate) fn created_by(&self) -> Option<LocalEndpointId> {
-        self.created_by
+    pub(crate) fn initiated_by(&self) -> Option<LocalEndpointId> {
+        self.initiated_by
     }
 
     #[cfg(any(test, feature = "testing"))]
     pub fn fake(peer: SocketAddr, receiver: Option<receiver::State>) -> Arc<Entry> {
-        Self::fake_created_by(peer, receiver, None)
+        Self::fake_initiated_by(peer, receiver, None)
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -158,10 +158,10 @@ impl Entry {
         clippy::unwrap_used,
         reason = "test-support helper may panic to surface setup failures"
     )]
-    pub(crate) fn fake_created_by(
+    pub(crate) fn fake_initiated_by(
         peer: SocketAddr,
         receiver: Option<receiver::State>,
-        created_by: Option<LocalEndpointId>,
+        initiated_by: Option<LocalEndpointId>,
     ) -> Arc<Entry> {
         let receiver = receiver.unwrap_or_default();
 
@@ -183,7 +183,7 @@ impl Entry {
                 dc::testing::TEST_REHANDSHAKE_PERIOD,
                 None,
             )
-            .with_created_by(created_by),
+            .with_initiated_by(initiated_by),
         )
     }
 

@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{stateless_reset, ApplicationData, ApplicationDataError, LocalEndpoint, Map};
+use super::{stateless_reset, ApplicationData, ApplicationDataError, Entry, LocalEndpoint, Map};
 use s2n_quic_core::time::NoopClock;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -95,9 +95,12 @@ fn key_id_exhaustion_requests_rehandshake() {
         None
     }));
 
-    let map = map.with_local_endpoint(&endpoint);
     let peer_addr: SocketAddr = "127.0.0.1:1234".parse().expect("valid address literal");
-    map.test_insert(peer_addr);
+    map.store.test_insert(Entry::fake_initiated_by(
+        peer_addr,
+        None,
+        Some(endpoint.id()),
+    ));
 
     let peer = map.get_tracked(peer_addr).expect("just inserted");
 
@@ -158,8 +161,16 @@ fn rehandshake_goes_through_the_creating_endpoint() {
 
     let peer_a: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
     let peer_b: SocketAddr = "127.0.0.1:1002".parse().expect("valid address literal");
-    map.with_local_endpoint(&endpoint_a).test_insert(peer_a);
-    map.with_local_endpoint(&endpoint_b).test_insert(peer_b);
+    map.store.test_insert(Entry::fake_initiated_by(
+        peer_a,
+        None,
+        Some(endpoint_a.id()),
+    ));
+    map.store.test_insert(Entry::fake_initiated_by(
+        peer_b,
+        None,
+        Some(endpoint_b.id()),
+    ));
 
     for peer in [peer_a, peer_b] {
         let entry = map
@@ -183,7 +194,8 @@ fn rehandshake_with_dropped_endpoint_goes_through_remaining_endpoint() {
     let (dropped, dropped_requested) = recording_endpoint(&map);
     let (remaining, remaining_requested) = recording_endpoint(&map);
     let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
-    map.with_local_endpoint(&dropped).test_insert(peer);
+    map.store
+        .test_insert(Entry::fake_initiated_by(peer, None, Some(dropped.id())));
     drop(dropped);
 
     let entry = map
@@ -211,7 +223,8 @@ fn rehandshake_with_dropped_endpoint_evicts_entry() {
     let map = test_map();
     let (endpoint, requested) = recording_endpoint(&map);
     let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
-    map.with_local_endpoint(&endpoint).test_insert(peer);
+    map.store
+        .test_insert(Entry::fake_initiated_by(peer, None, Some(endpoint.id())));
     drop(endpoint);
 
     let entry = map
@@ -239,7 +252,8 @@ fn periodic_rehandshake_with_dropped_endpoint_keeps_entry() {
     let map = test_map();
     let (endpoint, requested) = recording_endpoint(&map);
     let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
-    map.with_local_endpoint(&endpoint).test_insert(peer);
+    map.store
+        .test_insert(Entry::fake_initiated_by(peer, None, Some(endpoint.id())));
     drop(endpoint);
 
     let entry = map
@@ -278,4 +292,76 @@ fn rehandshake_without_endpoint_is_not_requested() {
         map.contains(&peer),
         "entry without a creating endpoint is kept"
     );
+}
+
+/// Entries from accepted handshakes record no local endpoint, even when the server shares a map
+/// handle obtained from a client, so the server never re-handshakes them.
+#[tokio::test]
+async fn accepted_entries_have_no_local_endpoint() {
+    use crate::{
+        psk::{client::Provider as ClientProvider, server::Provider as ServerProvider},
+        testing::{init_tracing, server_name, NoopSubscriber, TestTlsProvider},
+    };
+    use s2n_quic_core::time::StdClock;
+    use std::time::Duration;
+
+    init_tracing();
+
+    let new_map = || {
+        Map::new(
+            stateless_reset::Signer::random(),
+            100,
+            false,
+            StdClock::default(),
+            NoopSubscriber {},
+        )
+    };
+    let start_client = |map: &Map| {
+        ClientProvider::builder()
+            .start(
+                "127.0.0.1:0".parse().unwrap(),
+                map.clone(),
+                TestTlsProvider {},
+                NoopSubscriber {},
+                server_name(),
+            )
+            .unwrap()
+    };
+
+    let client_map = new_map();
+    let client = start_client(&client_map);
+    let server = ServerProvider::builder()
+        .start(
+            "127.0.0.1:0".parse().unwrap(),
+            TestTlsProvider {},
+            NoopSubscriber {},
+            client.map().clone(),
+        )
+        .await
+        .unwrap();
+
+    let dialer_map = new_map();
+    let dialer = start_client(&dialer_map);
+    dialer
+        .handshake_with(server.local_addr(), server_name())
+        .await
+        .unwrap();
+
+    let dialer_addr = dialer.local_addr().unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !client_map.contains(&dialer_addr) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("server records the dialer's path secret");
+
+    let initiated_by = |map: &Map, peer| {
+        map.store
+            .get_by_addr_untracked(&peer)
+            .expect("entry exists")
+            .initiated_by()
+    };
+    assert!(initiated_by(&client_map, dialer_addr).is_none());
+    assert!(initiated_by(&dialer_map, server.local_addr()).is_some());
 }
