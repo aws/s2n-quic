@@ -8,6 +8,7 @@ use crate::{
         send::application::{Inner, Writer},
         shared::ArcShared,
         socket,
+        transport::Transport,
     },
 };
 
@@ -30,13 +31,16 @@ where
     #[inline]
     pub fn build(self, shared: ArcShared<Sub>, sockets: socket::ArcApplication) -> Writer<Sub> {
         let Self { runtime } = self;
-        Writer(Box::new(Inner {
+        let is_tls = shared.common.s2n_connection.is_some();
+        let transport = Transport::variant(&*sockets, is_tls);
+
+        Writer(Box::new(transport(Inner {
             shared,
             sockets,
             queue: Default::default(),
             pacer: Default::default(),
             status: Default::default(),
             runtime,
-        }))
+        })))
     }
 }
