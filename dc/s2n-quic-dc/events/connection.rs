@@ -143,6 +143,15 @@ pub struct StreamWriteSocketErrored {
     errno: Option<i32>,
 }
 
+/// Emitted for each TLS record s2n-tls writes on a TLS stream.
+#[event("stream:write_tls_record")]
+pub struct StreamWriteTlsRecord {
+    /// The record header's length field: the encrypted fragment, including the AEAD tag and, for
+    /// TLS 1.3, the content type byte
+    #[measure("len", Bytes)]
+    len: usize,
+}
+
 #[event("stream:read_flushed")]
 #[checkpoint("latency")]
 #[measure_counter("conn")]
@@ -257,6 +266,20 @@ pub struct StreamReadSocketErrored {
 
     /// The system `errno` from the returned error
     errno: Option<i32>,
+}
+
+/// Emitted when a TLS stream reads from s2n-tls without new socket data because s2n-tls
+/// still holds data from an earlier read.
+#[event("stream:read_tls_buffered")]
+pub struct StreamReadTlsBuffered {
+    /// The number of decrypted bytes s2n-tls held
+    #[measure("plaintext", Bytes)]
+    plaintext_len: usize,
+
+    /// The number of bytes s2n-tls had taken from the socket but not decrypted, which can include
+    /// an incomplete record
+    #[measure("ciphertext", Bytes)]
+    ciphertext_len: usize,
 }
 
 #[event("stream:decrypt_packet")]

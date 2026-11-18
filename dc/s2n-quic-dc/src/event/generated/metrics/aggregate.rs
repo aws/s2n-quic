@@ -134,6 +134,8 @@ mod id {
         STREAM_WRITE_SOCKET_BLOCKED__PROVIDED,
         STREAM_WRITE_SOCKET_ERRORED,
         STREAM_WRITE_SOCKET_ERRORED__PROVIDED,
+        STREAM_WRITE_TLS_RECORD,
+        STREAM_WRITE_TLS_RECORD__LEN,
         STREAM_READ_FLUSHED,
         STREAM_READ_FLUSHED__LATENCY,
         STREAM_READ_FLUSHED__CONN,
@@ -174,6 +176,9 @@ mod id {
         STREAM_READ_SOCKET_BLOCKED__CAPACITY,
         STREAM_READ_SOCKET_ERRORED,
         STREAM_READ_SOCKET_ERRORED__CAPACITY,
+        STREAM_READ_TLS_BUFFERED,
+        STREAM_READ_TLS_BUFFERED__PLAINTEXT,
+        STREAM_READ_TLS_BUFFERED__CIPHERTEXT,
         STREAM_DECRYPT_PACKET,
         STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE,
         STREAM_DECRYPT_PACKET__FORCED_COPY,
@@ -564,6 +569,8 @@ mod id {
     pub const STREAM_WRITE_SOCKET_ERRORED: usize = InfoId::STREAM_WRITE_SOCKET_ERRORED as usize;
     pub const STREAM_WRITE_SOCKET_ERRORED__PROVIDED: usize =
         InfoId::STREAM_WRITE_SOCKET_ERRORED__PROVIDED as usize;
+    pub const STREAM_WRITE_TLS_RECORD: usize = InfoId::STREAM_WRITE_TLS_RECORD as usize;
+    pub const STREAM_WRITE_TLS_RECORD__LEN: usize = InfoId::STREAM_WRITE_TLS_RECORD__LEN as usize;
     pub const STREAM_READ_FLUSHED: usize = InfoId::STREAM_READ_FLUSHED as usize;
     pub const STREAM_READ_FLUSHED__LATENCY: usize = InfoId::STREAM_READ_FLUSHED__LATENCY as usize;
     pub const STREAM_READ_FLUSHED__CONN: usize = InfoId::STREAM_READ_FLUSHED__CONN as usize;
@@ -626,6 +633,11 @@ mod id {
     pub const STREAM_READ_SOCKET_ERRORED: usize = InfoId::STREAM_READ_SOCKET_ERRORED as usize;
     pub const STREAM_READ_SOCKET_ERRORED__CAPACITY: usize =
         InfoId::STREAM_READ_SOCKET_ERRORED__CAPACITY as usize;
+    pub const STREAM_READ_TLS_BUFFERED: usize = InfoId::STREAM_READ_TLS_BUFFERED as usize;
+    pub const STREAM_READ_TLS_BUFFERED__PLAINTEXT: usize =
+        InfoId::STREAM_READ_TLS_BUFFERED__PLAINTEXT as usize;
+    pub const STREAM_READ_TLS_BUFFERED__CIPHERTEXT: usize =
+        InfoId::STREAM_READ_TLS_BUFFERED__CIPHERTEXT as usize;
     pub const STREAM_DECRYPT_PACKET: usize = InfoId::STREAM_DECRYPT_PACKET as usize;
     pub const STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE: usize =
         InfoId::STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE as usize;
@@ -1005,6 +1017,7 @@ mod id {
         COUNTERS_STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__TOTAL,
         COUNTERS_STREAM_WRITE_SOCKET_BLOCKED,
         COUNTERS_STREAM_WRITE_SOCKET_ERRORED,
+        COUNTERS_STREAM_WRITE_TLS_RECORD,
         COUNTERS_STREAM_READ_FLUSHED,
         COUNTERS_STREAM_READ_FLUSHED__COMMITTED__TOTAL,
         COUNTERS_STREAM_READ_FIN_FLUSHED,
@@ -1016,6 +1029,7 @@ mod id {
         COUNTERS_STREAM_READ_SOCKET_FLUSHED__COMMITTED__TOTAL,
         COUNTERS_STREAM_READ_SOCKET_BLOCKED,
         COUNTERS_STREAM_READ_SOCKET_ERRORED,
+        COUNTERS_STREAM_READ_TLS_BUFFERED,
         COUNTERS_STREAM_DECRYPT_PACKET,
         COUNTERS_STREAM_TCP_CONNECT,
         COUNTERS_STREAM_TLS_CONNECT,
@@ -1161,6 +1175,8 @@ mod id {
         Counters::COUNTERS_STREAM_WRITE_SOCKET_BLOCKED as usize;
     pub const COUNTERS_STREAM_WRITE_SOCKET_ERRORED: usize =
         Counters::COUNTERS_STREAM_WRITE_SOCKET_ERRORED as usize;
+    pub const COUNTERS_STREAM_WRITE_TLS_RECORD: usize =
+        Counters::COUNTERS_STREAM_WRITE_TLS_RECORD as usize;
     pub const COUNTERS_STREAM_READ_FLUSHED: usize = Counters::COUNTERS_STREAM_READ_FLUSHED as usize;
     pub const COUNTERS_STREAM_READ_FLUSHED__COMMITTED__TOTAL: usize =
         Counters::COUNTERS_STREAM_READ_FLUSHED__COMMITTED__TOTAL as usize;
@@ -1180,6 +1196,8 @@ mod id {
         Counters::COUNTERS_STREAM_READ_SOCKET_BLOCKED as usize;
     pub const COUNTERS_STREAM_READ_SOCKET_ERRORED: usize =
         Counters::COUNTERS_STREAM_READ_SOCKET_ERRORED as usize;
+    pub const COUNTERS_STREAM_READ_TLS_BUFFERED: usize =
+        Counters::COUNTERS_STREAM_READ_TLS_BUFFERED as usize;
     pub const COUNTERS_STREAM_DECRYPT_PACKET: usize =
         Counters::COUNTERS_STREAM_DECRYPT_PACKET as usize;
     pub const COUNTERS_STREAM_TCP_CONNECT: usize = Counters::COUNTERS_STREAM_TCP_CONNECT as usize;
@@ -1575,6 +1593,7 @@ mod id {
         MEASURES_STREAM_WRITE_SOCKET_BLOCKED__CONN,
         MEASURES_STREAM_WRITE_SOCKET_BLOCKED__PROVIDED,
         MEASURES_STREAM_WRITE_SOCKET_ERRORED__PROVIDED,
+        MEASURES_STREAM_WRITE_TLS_RECORD__LEN,
         MEASURES_STREAM_READ_FLUSHED__CONN,
         MEASURES_STREAM_READ_FLUSHED__CAPACITY,
         MEASURES_STREAM_READ_FLUSHED__COMMITTED,
@@ -1598,6 +1617,8 @@ mod id {
         MEASURES_STREAM_READ_SOCKET_BLOCKED__CONN,
         MEASURES_STREAM_READ_SOCKET_BLOCKED__CAPACITY,
         MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY,
+        MEASURES_STREAM_READ_TLS_BUFFERED__PLAINTEXT,
+        MEASURES_STREAM_READ_TLS_BUFFERED__CIPHERTEXT,
         MEASURES_STREAM_DECRYPT_PACKET__FORCED_COPY,
         MEASURES_STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER,
         MEASURES_STREAM_PACKET_TRANSMITTED__PACKET_LEN,
@@ -1759,6 +1780,8 @@ mod id {
         Measures::MEASURES_STREAM_WRITE_SOCKET_BLOCKED__PROVIDED as usize;
     pub const MEASURES_STREAM_WRITE_SOCKET_ERRORED__PROVIDED: usize =
         Measures::MEASURES_STREAM_WRITE_SOCKET_ERRORED__PROVIDED as usize;
+    pub const MEASURES_STREAM_WRITE_TLS_RECORD__LEN: usize =
+        Measures::MEASURES_STREAM_WRITE_TLS_RECORD__LEN as usize;
     pub const MEASURES_STREAM_READ_FLUSHED__CONN: usize =
         Measures::MEASURES_STREAM_READ_FLUSHED__CONN as usize;
     pub const MEASURES_STREAM_READ_FLUSHED__CAPACITY: usize =
@@ -1805,6 +1828,10 @@ mod id {
         Measures::MEASURES_STREAM_READ_SOCKET_BLOCKED__CAPACITY as usize;
     pub const MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY: usize =
         Measures::MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY as usize;
+    pub const MEASURES_STREAM_READ_TLS_BUFFERED__PLAINTEXT: usize =
+        Measures::MEASURES_STREAM_READ_TLS_BUFFERED__PLAINTEXT as usize;
+    pub const MEASURES_STREAM_READ_TLS_BUFFERED__CIPHERTEXT: usize =
+        Measures::MEASURES_STREAM_READ_TLS_BUFFERED__CIPHERTEXT as usize;
     pub const MEASURES_STREAM_DECRYPT_PACKET__FORCED_COPY: usize =
         Measures::MEASURES_STREAM_DECRYPT_PACKET__FORCED_COPY as usize;
     pub const MEASURES_STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER: usize =
@@ -2041,7 +2068,7 @@ mod id {
     pub const TIMERS_DC_HANDSHAKE_PROBE__LATENCY: usize =
         Timers::TIMERS_DC_HANDSHAKE_PROBE__LATENCY as usize;
 }
-static INFO: &[Info; 349usize] = &[
+static INFO: &[Info; 354usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -2745,6 +2772,18 @@ static INFO: &[Info; 349usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::STREAM_WRITE_TLS_RECORD,
+        name: Str::new("stream_write_tls_record\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::STREAM_WRITE_TLS_RECORD__LEN,
+        name: Str::new("stream_write_tls_record.len\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
         id: id::STREAM_READ_FLUSHED,
         name: Str::new("stream_read_flushed\0"),
         units: Units::None,
@@ -2981,6 +3020,24 @@ static INFO: &[Info; 349usize] = &[
     info::Builder {
         id: id::STREAM_READ_SOCKET_ERRORED__CAPACITY,
         name: Str::new("stream_read_socket_errored.capacity\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::STREAM_READ_TLS_BUFFERED,
+        name: Str::new("stream_read_tls_buffered\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::STREAM_READ_TLS_BUFFERED__PLAINTEXT,
+        name: Str::new("stream_read_tls_buffered.plaintext\0"),
+        units: Units::Bytes,
+    }
+    .build(),
+    info::Builder {
+        id: id::STREAM_READ_TLS_BUFFERED__CIPHERTEXT,
+        name: Str::new("stream_read_tls_buffered.ciphertext\0"),
         units: Units::Bytes,
     }
     .build(),
@@ -4174,7 +4231,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 116usize]>,
+    counters: Box<[R::Counter; 118usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
@@ -4182,7 +4239,7 @@ pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
     nominal_counter_offsets: Box<[usize; 41usize]>,
     #[allow(dead_code)]
-    measures: Box<[R::Measure; 137usize]>,
+    measures: Box<[R::Measure; 140usize]>,
     #[allow(dead_code)]
     gauges: Box<[R::Gauge; 0usize]>,
     #[allow(dead_code)]
@@ -4209,11 +4266,11 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(116usize);
+        let mut counters = Vec::with_capacity(118usize);
         let mut bool_counters = Vec::with_capacity(25usize);
         let mut nominal_counters = Vec::with_capacity(41usize);
         let mut nominal_counter_offsets = Vec::with_capacity(41usize);
-        let mut measures = Vec::with_capacity(137usize);
+        let mut measures = Vec::with_capacity(140usize);
         let mut gauges = Vec::with_capacity(0usize);
         let mut timers = Vec::with_capacity(30usize);
         let mut nominal_timers = Vec::with_capacity(0usize);
@@ -4263,6 +4320,7 @@ impl<R: Registry> Subscriber<R> {
         );
         counters.push(registry.register_counter(&INFO[id::STREAM_WRITE_SOCKET_BLOCKED]));
         counters.push(registry.register_counter(&INFO[id::STREAM_WRITE_SOCKET_ERRORED]));
+        counters.push(registry.register_counter(&INFO[id::STREAM_WRITE_TLS_RECORD]));
         counters.push(registry.register_counter(&INFO[id::STREAM_READ_FLUSHED]));
         counters.push(registry.register_counter(&INFO[id::STREAM_READ_FLUSHED__COMMITTED__TOTAL]));
         counters.push(registry.register_counter(&INFO[id::STREAM_READ_FIN_FLUSHED]));
@@ -4276,6 +4334,7 @@ impl<R: Registry> Subscriber<R> {
         );
         counters.push(registry.register_counter(&INFO[id::STREAM_READ_SOCKET_BLOCKED]));
         counters.push(registry.register_counter(&INFO[id::STREAM_READ_SOCKET_ERRORED]));
+        counters.push(registry.register_counter(&INFO[id::STREAM_READ_TLS_BUFFERED]));
         counters.push(registry.register_counter(&INFO[id::STREAM_DECRYPT_PACKET]));
         counters.push(registry.register_counter(&INFO[id::STREAM_TCP_CONNECT]));
         counters.push(registry.register_counter(&INFO[id::STREAM_TLS_CONNECT]));
@@ -5059,6 +5118,7 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_SOCKET_BLOCKED__CONN]));
         measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_SOCKET_BLOCKED__PROVIDED]));
         measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_SOCKET_ERRORED__PROVIDED]));
+        measures.push(registry.register_measure(&INFO[id::STREAM_WRITE_TLS_RECORD__LEN]));
         measures.push(registry.register_measure(&INFO[id::STREAM_READ_FLUSHED__CONN]));
         measures.push(registry.register_measure(&INFO[id::STREAM_READ_FLUSHED__CAPACITY]));
         measures.push(registry.register_measure(&INFO[id::STREAM_READ_FLUSHED__COMMITTED]));
@@ -5098,6 +5158,8 @@ impl<R: Registry> Subscriber<R> {
         measures.push(registry.register_measure(&INFO[id::STREAM_READ_SOCKET_BLOCKED__CONN]));
         measures.push(registry.register_measure(&INFO[id::STREAM_READ_SOCKET_BLOCKED__CAPACITY]));
         measures.push(registry.register_measure(&INFO[id::STREAM_READ_SOCKET_ERRORED__CAPACITY]));
+        measures.push(registry.register_measure(&INFO[id::STREAM_READ_TLS_BUFFERED__PLAINTEXT]));
+        measures.push(registry.register_measure(&INFO[id::STREAM_READ_TLS_BUFFERED__CIPHERTEXT]));
         measures.push(registry.register_measure(&INFO[id::STREAM_DECRYPT_PACKET__FORCED_COPY]));
         measures.push(
             registry
@@ -5432,6 +5494,7 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_STREAM_WRITE_SOCKET_ERRORED => {
                     (&INFO[id::STREAM_WRITE_SOCKET_ERRORED], entry)
                 }
+                id::COUNTERS_STREAM_WRITE_TLS_RECORD => (&INFO[id::STREAM_WRITE_TLS_RECORD], entry),
                 id::COUNTERS_STREAM_READ_FLUSHED => (&INFO[id::STREAM_READ_FLUSHED], entry),
                 id::COUNTERS_STREAM_READ_FLUSHED__COMMITTED__TOTAL => {
                     (&INFO[id::STREAM_READ_FLUSHED__COMMITTED__TOTAL], entry)
@@ -5453,6 +5516,9 @@ impl<R: Registry> Subscriber<R> {
                 }
                 id::COUNTERS_STREAM_READ_SOCKET_ERRORED => {
                     (&INFO[id::STREAM_READ_SOCKET_ERRORED], entry)
+                }
+                id::COUNTERS_STREAM_READ_TLS_BUFFERED => {
+                    (&INFO[id::STREAM_READ_TLS_BUFFERED], entry)
                 }
                 id::COUNTERS_STREAM_DECRYPT_PACKET => (&INFO[id::STREAM_DECRYPT_PACKET], entry),
                 id::COUNTERS_STREAM_TCP_CONNECT => (&INFO[id::STREAM_TCP_CONNECT], entry),
@@ -6358,6 +6424,9 @@ impl<R: Registry> Subscriber<R> {
                     id::MEASURES_STREAM_WRITE_SOCKET_ERRORED__PROVIDED => {
                         (&INFO[id::STREAM_WRITE_SOCKET_ERRORED__PROVIDED], entry)
                     }
+                    id::MEASURES_STREAM_WRITE_TLS_RECORD__LEN => {
+                        (&INFO[id::STREAM_WRITE_TLS_RECORD__LEN], entry)
+                    }
                     id::MEASURES_STREAM_READ_FLUSHED__CONN => {
                         (&INFO[id::STREAM_READ_FLUSHED__CONN], entry)
                     }
@@ -6438,6 +6507,12 @@ impl<R: Registry> Subscriber<R> {
                     }
                     id::MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY => {
                         (&INFO[id::STREAM_READ_SOCKET_ERRORED__CAPACITY], entry)
+                    }
+                    id::MEASURES_STREAM_READ_TLS_BUFFERED__PLAINTEXT => {
+                        (&INFO[id::STREAM_READ_TLS_BUFFERED__PLAINTEXT], entry)
+                    }
+                    id::MEASURES_STREAM_READ_TLS_BUFFERED__CIPHERTEXT => {
+                        (&INFO[id::STREAM_READ_TLS_BUFFERED__CIPHERTEXT], entry)
                     }
                     id::MEASURES_STREAM_DECRYPT_PACKET__FORCED_COPY => {
                         (&INFO[id::STREAM_DECRYPT_PACKET__FORCED_COPY], entry)
@@ -7860,6 +7935,29 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
         let _ = event;
     }
     #[inline]
+    fn on_stream_write_tls_record(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamWriteTlsRecord,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::STREAM_WRITE_TLS_RECORD,
+            id::COUNTERS_STREAM_WRITE_TLS_RECORD,
+            1usize,
+        );
+        self.measure(
+            id::STREAM_WRITE_TLS_RECORD__LEN,
+            id::MEASURES_STREAM_WRITE_TLS_RECORD__LEN,
+            event.len,
+        );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
     fn on_stream_read_flushed(
         &self,
         context: &Self::ConnectionContext,
@@ -8151,6 +8249,34 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::STREAM_READ_SOCKET_ERRORED__CAPACITY,
             id::MEASURES_STREAM_READ_SOCKET_ERRORED__CAPACITY,
             event.capacity,
+        );
+        let _ = context;
+        let _ = meta;
+        let _ = event;
+    }
+    #[inline]
+    fn on_stream_read_tls_buffered(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamReadTlsBuffered,
+    ) {
+        #[allow(unused_imports)]
+        use api::*;
+        self.count(
+            id::STREAM_READ_TLS_BUFFERED,
+            id::COUNTERS_STREAM_READ_TLS_BUFFERED,
+            1usize,
+        );
+        self.measure(
+            id::STREAM_READ_TLS_BUFFERED__PLAINTEXT,
+            id::MEASURES_STREAM_READ_TLS_BUFFERED__PLAINTEXT,
+            event.plaintext_len,
+        );
+        self.measure(
+            id::STREAM_READ_TLS_BUFFERED__CIPHERTEXT,
+            id::MEASURES_STREAM_READ_TLS_BUFFERED__CIPHERTEXT,
+            event.ciphertext_len,
         );
         let _ = context;
         let _ = meta;

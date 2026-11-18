@@ -130,6 +130,8 @@ mod id {
         STREAM_WRITE_SOCKET_BLOCKED__PROVIDED,
         STREAM_WRITE_SOCKET_ERRORED,
         STREAM_WRITE_SOCKET_ERRORED__PROVIDED,
+        STREAM_WRITE_TLS_RECORD,
+        STREAM_WRITE_TLS_RECORD__LEN,
         STREAM_READ_FLUSHED,
         STREAM_READ_FLUSHED__LATENCY,
         STREAM_READ_FLUSHED__CONN,
@@ -170,6 +172,9 @@ mod id {
         STREAM_READ_SOCKET_BLOCKED__CAPACITY,
         STREAM_READ_SOCKET_ERRORED,
         STREAM_READ_SOCKET_ERRORED__CAPACITY,
+        STREAM_READ_TLS_BUFFERED,
+        STREAM_READ_TLS_BUFFERED__PLAINTEXT,
+        STREAM_READ_TLS_BUFFERED__CIPHERTEXT,
         STREAM_DECRYPT_PACKET,
         STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE,
         STREAM_DECRYPT_PACKET__FORCED_COPY,
@@ -560,6 +565,8 @@ mod id {
     pub const STREAM_WRITE_SOCKET_ERRORED: usize = InfoId::STREAM_WRITE_SOCKET_ERRORED as usize;
     pub const STREAM_WRITE_SOCKET_ERRORED__PROVIDED: usize =
         InfoId::STREAM_WRITE_SOCKET_ERRORED__PROVIDED as usize;
+    pub const STREAM_WRITE_TLS_RECORD: usize = InfoId::STREAM_WRITE_TLS_RECORD as usize;
+    pub const STREAM_WRITE_TLS_RECORD__LEN: usize = InfoId::STREAM_WRITE_TLS_RECORD__LEN as usize;
     pub const STREAM_READ_FLUSHED: usize = InfoId::STREAM_READ_FLUSHED as usize;
     pub const STREAM_READ_FLUSHED__LATENCY: usize = InfoId::STREAM_READ_FLUSHED__LATENCY as usize;
     pub const STREAM_READ_FLUSHED__CONN: usize = InfoId::STREAM_READ_FLUSHED__CONN as usize;
@@ -622,6 +629,11 @@ mod id {
     pub const STREAM_READ_SOCKET_ERRORED: usize = InfoId::STREAM_READ_SOCKET_ERRORED as usize;
     pub const STREAM_READ_SOCKET_ERRORED__CAPACITY: usize =
         InfoId::STREAM_READ_SOCKET_ERRORED__CAPACITY as usize;
+    pub const STREAM_READ_TLS_BUFFERED: usize = InfoId::STREAM_READ_TLS_BUFFERED as usize;
+    pub const STREAM_READ_TLS_BUFFERED__PLAINTEXT: usize =
+        InfoId::STREAM_READ_TLS_BUFFERED__PLAINTEXT as usize;
+    pub const STREAM_READ_TLS_BUFFERED__CIPHERTEXT: usize =
+        InfoId::STREAM_READ_TLS_BUFFERED__CIPHERTEXT as usize;
     pub const STREAM_DECRYPT_PACKET: usize = InfoId::STREAM_DECRYPT_PACKET as usize;
     pub const STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE: usize =
         InfoId::STREAM_DECRYPT_PACKET__DECRYPTED_IN_PLACE as usize;
@@ -1021,6 +1033,7 @@ mod counter {
                 }
                 id::STREAM_WRITE_SOCKET_BLOCKED => Self(stream_write_socket_blocked),
                 id::STREAM_WRITE_SOCKET_ERRORED => Self(stream_write_socket_errored),
+                id::STREAM_WRITE_TLS_RECORD => Self(stream_write_tls_record),
                 id::STREAM_READ_FLUSHED => Self(stream_read_flushed),
                 id::STREAM_READ_FLUSHED__COMMITTED__TOTAL => {
                     Self(stream_read_flushed__committed__total)
@@ -1036,6 +1049,7 @@ mod counter {
                 }
                 id::STREAM_READ_SOCKET_BLOCKED => Self(stream_read_socket_blocked),
                 id::STREAM_READ_SOCKET_ERRORED => Self(stream_read_socket_errored),
+                id::STREAM_READ_TLS_BUFFERED => Self(stream_read_tls_buffered),
                 id::STREAM_DECRYPT_PACKET => Self(stream_decrypt_packet),
                 id::STREAM_TCP_CONNECT => Self(stream_tcp_connect),
                 id::STREAM_TLS_CONNECT => Self(stream_tls_connect),
@@ -1263,6 +1277,9 @@ mod counter {
         s2n_quic_dc__event__counter__stream_write_socket_errored]
             fn stream_write_socket_errored(value: u64);
             #[link_name =
+        s2n_quic_dc__event__counter__stream_write_tls_record]
+            fn stream_write_tls_record(value: u64);
+            #[link_name =
         s2n_quic_dc__event__counter__stream_read_flushed]
             fn stream_read_flushed(value: u64);
             #[link_name =
@@ -1293,6 +1310,9 @@ mod counter {
             #[link_name =
         s2n_quic_dc__event__counter__stream_read_socket_errored]
             fn stream_read_socket_errored(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__stream_read_tls_buffered]
+            fn stream_read_tls_buffered(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__stream_decrypt_packet]
             fn stream_decrypt_packet(value: u64);
@@ -2172,6 +2192,7 @@ mod measure {
                 id::STREAM_WRITE_SOCKET_ERRORED__PROVIDED => {
                     Self(stream_write_socket_errored__provided)
                 }
+                id::STREAM_WRITE_TLS_RECORD__LEN => Self(stream_write_tls_record__len),
                 id::STREAM_READ_FLUSHED__CONN => Self(stream_read_flushed__conn),
                 id::STREAM_READ_FLUSHED__CAPACITY => Self(stream_read_flushed__capacity),
                 id::STREAM_READ_FLUSHED__COMMITTED => Self(stream_read_flushed__committed),
@@ -2222,6 +2243,12 @@ mod measure {
                 }
                 id::STREAM_READ_SOCKET_ERRORED__CAPACITY => {
                     Self(stream_read_socket_errored__capacity)
+                }
+                id::STREAM_READ_TLS_BUFFERED__PLAINTEXT => {
+                    Self(stream_read_tls_buffered__plaintext)
+                }
+                id::STREAM_READ_TLS_BUFFERED__CIPHERTEXT => {
+                    Self(stream_read_tls_buffered__ciphertext)
                 }
                 id::STREAM_DECRYPT_PACKET__FORCED_COPY => Self(stream_decrypt_packet__forced_copy),
                 id::STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER => {
@@ -2555,6 +2582,9 @@ mod measure {
         s2n_quic_dc__event__measure__stream_write_socket_errored__provided]
             fn stream_write_socket_errored__provided(value: u64);
             #[link_name =
+        s2n_quic_dc__event__measure__stream_write_tls_record__len]
+            fn stream_write_tls_record__len(value: u64);
+            #[link_name =
         s2n_quic_dc__event__measure__stream_read_flushed__conn]
             fn stream_read_flushed__conn(value: u64);
             #[link_name =
@@ -2623,6 +2653,12 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__stream_read_socket_errored__capacity]
             fn stream_read_socket_errored__capacity(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_tls_buffered__plaintext]
+            fn stream_read_tls_buffered__plaintext(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__stream_read_tls_buffered__ciphertext]
+            fn stream_read_tls_buffered__ciphertext(value: u64);
             #[link_name =
         s2n_quic_dc__event__measure__stream_decrypt_packet__forced_copy]
             fn stream_decrypt_packet__forced_copy(value: u64);

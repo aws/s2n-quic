@@ -1163,6 +1163,25 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
+    /// Emitted for each TLS record s2n-tls writes on a TLS stream.
+    pub struct StreamWriteTlsRecord {
+        /// The record header's length field: the encrypted fragment, including the AEAD tag and, for
+        /// TLS 1.3, the content type byte
+        pub len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamWriteTlsRecord {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamWriteTlsRecord");
+            fmt.field("len", &self.len);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamWriteTlsRecord {
+        const NAME: &'static str = "stream:write_tls_record";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
     pub struct StreamReadFlushed {
         /// The number of bytes that the application tried to read
         pub capacity: usize,
@@ -1344,6 +1363,29 @@ pub mod api {
     }
     impl Event for StreamReadSocketErrored {
         const NAME: &'static str = "stream:read_socket_errored";
+    }
+    #[derive(Clone, Debug)]
+    #[non_exhaustive]
+    /// Emitted when a TLS stream reads from s2n-tls without new socket data because s2n-tls
+    /// still holds data from an earlier read.
+    pub struct StreamReadTlsBuffered {
+        /// The number of decrypted bytes s2n-tls held
+        pub plaintext_len: usize,
+        /// The number of bytes s2n-tls had taken from the socket but not decrypted, which can include
+        /// an incomplete record
+        pub ciphertext_len: usize,
+    }
+    #[cfg(any(test, feature = "testing"))]
+    impl crate::event::snapshot::Fmt for StreamReadTlsBuffered {
+        fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::fmt::Result {
+            let mut fmt = fmt.debug_struct("StreamReadTlsBuffered");
+            fmt.field("plaintext_len", &self.plaintext_len);
+            fmt.field("ciphertext_len", &self.ciphertext_len);
+            fmt.finish()
+        }
+    }
+    impl Event for StreamReadTlsBuffered {
+        const NAME: &'static str = "stream:read_tls_buffered";
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -3676,6 +3718,20 @@ pub mod tracing {
             );
         }
         #[inline]
+        fn on_stream_write_tls_record(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamWriteTlsRecord,
+        ) {
+            let id = context.id();
+            let api::StreamWriteTlsRecord { len } = event;
+            tracing::event!(
+                target : "stream_write_tls_record", parent : id, tracing::Level::DEBUG, {
+                len = tracing::field::debug(len) }
+            );
+        }
+        #[inline]
         fn on_stream_read_flushed(
             &self,
             context: &Self::ConnectionContext,
@@ -3824,6 +3880,24 @@ pub mod tracing {
                 target : "stream_read_socket_errored", parent : id,
                 tracing::Level::DEBUG, { capacity = tracing::field::debug(capacity),
                 errno = tracing::field::debug(errno) }
+            );
+        }
+        #[inline]
+        fn on_stream_read_tls_buffered(
+            &self,
+            context: &Self::ConnectionContext,
+            _meta: &api::ConnectionMeta,
+            event: &api::StreamReadTlsBuffered,
+        ) {
+            let id = context.id();
+            let api::StreamReadTlsBuffered {
+                plaintext_len,
+                ciphertext_len,
+            } = event;
+            tracing::event!(
+                target : "stream_read_tls_buffered", parent : id, tracing::Level::DEBUG,
+                { plaintext_len = tracing::field::debug(plaintext_len), ciphertext_len =
+                tracing::field::debug(ciphertext_len) }
             );
         }
         #[inline]
@@ -5959,6 +6033,22 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
+    /// Emitted for each TLS record s2n-tls writes on a TLS stream.
+    pub struct StreamWriteTlsRecord {
+        /// The record header's length field: the encrypted fragment, including the AEAD tag and, for
+        /// TLS 1.3, the content type byte
+        pub len: usize,
+    }
+    impl IntoEvent<api::StreamWriteTlsRecord> for StreamWriteTlsRecord {
+        #[inline]
+        fn into_event(self) -> api::StreamWriteTlsRecord {
+            let StreamWriteTlsRecord { len } = self;
+            api::StreamWriteTlsRecord {
+                len: len.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
     pub struct StreamReadFlushed {
         /// The number of bytes that the application tried to read
         pub capacity: usize,
@@ -6129,6 +6219,29 @@ pub mod builder {
             api::StreamReadSocketErrored {
                 capacity: capacity.into_event(),
                 errno: errno.into_event(),
+            }
+        }
+    }
+    #[derive(Clone, Debug)]
+    /// Emitted when a TLS stream reads from s2n-tls without new socket data because s2n-tls
+    /// still holds data from an earlier read.
+    pub struct StreamReadTlsBuffered {
+        /// The number of decrypted bytes s2n-tls held
+        pub plaintext_len: usize,
+        /// The number of bytes s2n-tls had taken from the socket but not decrypted, which can include
+        /// an incomplete record
+        pub ciphertext_len: usize,
+    }
+    impl IntoEvent<api::StreamReadTlsBuffered> for StreamReadTlsBuffered {
+        #[inline]
+        fn into_event(self) -> api::StreamReadTlsBuffered {
+            let StreamReadTlsBuffered {
+                plaintext_len,
+                ciphertext_len,
+            } = self;
+            api::StreamReadTlsBuffered {
+                plaintext_len: plaintext_len.into_event(),
+                ciphertext_len: ciphertext_len.into_event(),
             }
         }
     }
@@ -8039,6 +8152,18 @@ mod traits {
             let _ = meta;
             let _ = event;
         }
+        ///Called when the `StreamWriteTlsRecord` event is triggered
+        #[inline]
+        fn on_stream_write_tls_record(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteTlsRecord,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
         ///Called when the `StreamReadFlushed` event is triggered
         #[inline]
         fn on_stream_read_flushed(
@@ -8142,6 +8267,18 @@ mod traits {
             context: &Self::ConnectionContext,
             meta: &api::ConnectionMeta,
             event: &api::StreamReadSocketErrored,
+        ) {
+            let _ = context;
+            let _ = meta;
+            let _ = event;
+        }
+        ///Called when the `StreamReadTlsBuffered` event is triggered
+        #[inline]
+        fn on_stream_read_tls_buffered(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadTlsBuffered,
         ) {
             let _ = context;
             let _ = meta;
@@ -9075,6 +9212,16 @@ mod traits {
                 .on_stream_write_socket_errored(context, meta, event);
         }
         #[inline]
+        fn on_stream_write_tls_record(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteTlsRecord,
+        ) {
+            self.as_ref()
+                .on_stream_write_tls_record(context, meta, event);
+        }
+        #[inline]
         fn on_stream_read_flushed(
             &self,
             context: &Self::ConnectionContext,
@@ -9159,6 +9306,16 @@ mod traits {
         ) {
             self.as_ref()
                 .on_stream_read_socket_errored(context, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_tls_buffered(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadTlsBuffered,
+        ) {
+            self.as_ref()
+                .on_stream_read_tls_buffered(context, meta, event);
         }
         #[inline]
         fn on_stream_decrypt_packet(
@@ -10004,6 +10161,16 @@ mod traits {
             (self.1).on_stream_write_socket_errored(&context.1, meta, event);
         }
         #[inline]
+        fn on_stream_write_tls_record(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteTlsRecord,
+        ) {
+            (self.0).on_stream_write_tls_record(&context.0, meta, event);
+            (self.1).on_stream_write_tls_record(&context.1, meta, event);
+        }
+        #[inline]
         fn on_stream_read_flushed(
             &self,
             context: &Self::ConnectionContext,
@@ -10092,6 +10259,16 @@ mod traits {
         ) {
             (self.0).on_stream_read_socket_errored(&context.0, meta, event);
             (self.1).on_stream_read_socket_errored(&context.1, meta, event);
+        }
+        #[inline]
+        fn on_stream_read_tls_buffered(
+            &self,
+            context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadTlsBuffered,
+        ) {
+            (self.0).on_stream_read_tls_buffered(&context.0, meta, event);
+            (self.1).on_stream_read_tls_buffered(&context.1, meta, event);
         }
         #[inline]
         fn on_stream_decrypt_packet(
@@ -11403,6 +11580,8 @@ mod traits {
         fn on_stream_write_socket_blocked(&self, event: builder::StreamWriteSocketBlocked);
         ///Publishes a `StreamWriteSocketErrored` event to the publisher's subscriber
         fn on_stream_write_socket_errored(&self, event: builder::StreamWriteSocketErrored);
+        ///Publishes a `StreamWriteTlsRecord` event to the publisher's subscriber
+        fn on_stream_write_tls_record(&self, event: builder::StreamWriteTlsRecord);
         ///Publishes a `StreamReadFlushed` event to the publisher's subscriber
         fn on_stream_read_flushed(&self, event: builder::StreamReadFlushed);
         ///Publishes a `StreamReadFinFlushed` event to the publisher's subscriber
@@ -11421,6 +11600,8 @@ mod traits {
         fn on_stream_read_socket_blocked(&self, event: builder::StreamReadSocketBlocked);
         ///Publishes a `StreamReadSocketErrored` event to the publisher's subscriber
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored);
+        ///Publishes a `StreamReadTlsBuffered` event to the publisher's subscriber
+        fn on_stream_read_tls_buffered(&self, event: builder::StreamReadTlsBuffered);
         ///Publishes a `StreamDecryptPacket` event to the publisher's subscriber
         fn on_stream_decrypt_packet(&self, event: builder::StreamDecryptPacket);
         ///Publishes a `StreamPacketTransmitted` event to the publisher's subscriber
@@ -11585,6 +11766,15 @@ mod traits {
             self.subscriber.on_event(&self.meta, &event);
         }
         #[inline]
+        fn on_stream_write_tls_record(&self, event: builder::StreamWriteTlsRecord) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_write_tls_record(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
         fn on_stream_read_flushed(&self, event: builder::StreamReadFlushed) {
             let event = event.into_event();
             self.subscriber
@@ -11661,6 +11851,15 @@ mod traits {
             let event = event.into_event();
             self.subscriber
                 .on_stream_read_socket_errored(self.context, &self.meta, &event);
+            self.subscriber
+                .on_connection_event(self.context, &self.meta, &event);
+            self.subscriber.on_event(&self.meta, &event);
+        }
+        #[inline]
+        fn on_stream_read_tls_buffered(&self, event: builder::StreamReadTlsBuffered) {
+            let event = event.into_event();
+            self.subscriber
+                .on_stream_read_tls_buffered(self.context, &self.meta, &event);
             self.subscriber
                 .on_connection_event(self.context, &self.meta, &event);
             self.subscriber.on_event(&self.meta, &event);
@@ -12851,6 +13050,7 @@ pub mod testing {
         pub stream_write_socket_flushed: AtomicU64,
         pub stream_write_socket_blocked: AtomicU64,
         pub stream_write_socket_errored: AtomicU64,
+        pub stream_write_tls_record: AtomicU64,
         pub stream_read_flushed: AtomicU64,
         pub stream_read_fin_flushed: AtomicU64,
         pub stream_read_blocked: AtomicU64,
@@ -12860,6 +13060,7 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_read_tls_buffered: AtomicU64,
         pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_tls_connect: AtomicU64,
@@ -12984,6 +13185,7 @@ pub mod testing {
                 stream_write_socket_flushed: AtomicU64::new(0),
                 stream_write_socket_blocked: AtomicU64::new(0),
                 stream_write_socket_errored: AtomicU64::new(0),
+                stream_write_tls_record: AtomicU64::new(0),
                 stream_read_flushed: AtomicU64::new(0),
                 stream_read_fin_flushed: AtomicU64::new(0),
                 stream_read_blocked: AtomicU64::new(0),
@@ -12993,6 +13195,7 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_read_tls_buffered: AtomicU64::new(0),
                 stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_tls_connect: AtomicU64::new(0),
@@ -13502,6 +13705,20 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_write_tls_record(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamWriteTlsRecord,
+        ) {
+            self.stream_write_tls_record.fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_read_flushed(
             &self,
             _context: &Self::ConnectionContext,
@@ -13623,6 +13840,21 @@ pub mod testing {
             event: &api::StreamReadSocketErrored,
         ) {
             self.stream_read_socket_errored
+                .fetch_add(1, Ordering::Relaxed);
+            if self.location.is_some() {
+                let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
+                let event = crate::event::snapshot::Fmt::to_snapshot(event);
+                let out = format!("{meta:?} {event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_tls_buffered(
+            &self,
+            _context: &Self::ConnectionContext,
+            meta: &api::ConnectionMeta,
+            event: &api::StreamReadTlsBuffered,
+        ) {
+            self.stream_read_tls_buffered
                 .fetch_add(1, Ordering::Relaxed);
             if self.location.is_some() {
                 let meta = crate::event::snapshot::Fmt::to_snapshot(meta);
@@ -14373,6 +14605,7 @@ pub mod testing {
         pub stream_write_socket_flushed: AtomicU64,
         pub stream_write_socket_blocked: AtomicU64,
         pub stream_write_socket_errored: AtomicU64,
+        pub stream_write_tls_record: AtomicU64,
         pub stream_read_flushed: AtomicU64,
         pub stream_read_fin_flushed: AtomicU64,
         pub stream_read_blocked: AtomicU64,
@@ -14382,6 +14615,7 @@ pub mod testing {
         pub stream_read_socket_flushed: AtomicU64,
         pub stream_read_socket_blocked: AtomicU64,
         pub stream_read_socket_errored: AtomicU64,
+        pub stream_read_tls_buffered: AtomicU64,
         pub stream_decrypt_packet: AtomicU64,
         pub stream_tcp_connect: AtomicU64,
         pub stream_tls_connect: AtomicU64,
@@ -14496,6 +14730,7 @@ pub mod testing {
                 stream_write_socket_flushed: AtomicU64::new(0),
                 stream_write_socket_blocked: AtomicU64::new(0),
                 stream_write_socket_errored: AtomicU64::new(0),
+                stream_write_tls_record: AtomicU64::new(0),
                 stream_read_flushed: AtomicU64::new(0),
                 stream_read_fin_flushed: AtomicU64::new(0),
                 stream_read_blocked: AtomicU64::new(0),
@@ -14505,6 +14740,7 @@ pub mod testing {
                 stream_read_socket_flushed: AtomicU64::new(0),
                 stream_read_socket_blocked: AtomicU64::new(0),
                 stream_read_socket_errored: AtomicU64::new(0),
+                stream_read_tls_buffered: AtomicU64::new(0),
                 stream_decrypt_packet: AtomicU64::new(0),
                 stream_tcp_connect: AtomicU64::new(0),
                 stream_tls_connect: AtomicU64::new(0),
@@ -15262,6 +15498,15 @@ pub mod testing {
                 self.output.lock().unwrap().push(out);
             }
         }
+        fn on_stream_write_tls_record(&self, event: builder::StreamWriteTlsRecord) {
+            self.stream_write_tls_record.fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
         fn on_stream_read_flushed(&self, event: builder::StreamReadFlushed) {
             self.stream_read_flushed.fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
@@ -15338,6 +15583,16 @@ pub mod testing {
         }
         fn on_stream_read_socket_errored(&self, event: builder::StreamReadSocketErrored) {
             self.stream_read_socket_errored
+                .fetch_add(1, Ordering::Relaxed);
+            let event = event.into_event();
+            if self.location.is_some() {
+                let event = crate::event::snapshot::Fmt::to_snapshot(&event);
+                let out = format!("{event:?}");
+                self.output.lock().unwrap().push(out);
+            }
+        }
+        fn on_stream_read_tls_buffered(&self, event: builder::StreamReadTlsBuffered) {
+            self.stream_read_tls_buffered
                 .fetch_add(1, Ordering::Relaxed);
             let event = event.into_event();
             if self.location.is_some() {

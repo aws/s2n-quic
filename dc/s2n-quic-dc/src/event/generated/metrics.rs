@@ -36,6 +36,7 @@ pub struct Context<R: Recorder> {
     stream_write_socket_flushed: AtomicU64,
     stream_write_socket_blocked: AtomicU64,
     stream_write_socket_errored: AtomicU64,
+    stream_write_tls_record: AtomicU64,
     stream_read_flushed: AtomicU64,
     stream_read_fin_flushed: AtomicU64,
     stream_read_blocked: AtomicU64,
@@ -45,6 +46,7 @@ pub struct Context<R: Recorder> {
     stream_read_socket_flushed: AtomicU64,
     stream_read_socket_blocked: AtomicU64,
     stream_read_socket_errored: AtomicU64,
+    stream_read_tls_buffered: AtomicU64,
     stream_decrypt_packet: AtomicU64,
     stream_packet_transmitted: AtomicU64,
     stream_probe_transmitted: AtomicU64,
@@ -90,6 +92,7 @@ where
             stream_write_socket_flushed: AtomicU64::new(0),
             stream_write_socket_blocked: AtomicU64::new(0),
             stream_write_socket_errored: AtomicU64::new(0),
+            stream_write_tls_record: AtomicU64::new(0),
             stream_read_flushed: AtomicU64::new(0),
             stream_read_fin_flushed: AtomicU64::new(0),
             stream_read_blocked: AtomicU64::new(0),
@@ -99,6 +102,7 @@ where
             stream_read_socket_flushed: AtomicU64::new(0),
             stream_read_socket_blocked: AtomicU64::new(0),
             stream_read_socket_errored: AtomicU64::new(0),
+            stream_read_tls_buffered: AtomicU64::new(0),
             stream_decrypt_packet: AtomicU64::new(0),
             stream_packet_transmitted: AtomicU64::new(0),
             stream_probe_transmitted: AtomicU64::new(0),
@@ -240,6 +244,19 @@ where
             .on_stream_write_socket_errored(&context.recorder, meta, event);
     }
     #[inline]
+    fn on_stream_write_tls_record(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamWriteTlsRecord,
+    ) {
+        context
+            .stream_write_tls_record
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_write_tls_record(&context.recorder, meta, event);
+    }
+    #[inline]
     fn on_stream_read_flushed(
         &self,
         context: &Self::ConnectionContext,
@@ -347,6 +364,19 @@ where
             .fetch_add(1, Ordering::Relaxed);
         self.subscriber
             .on_stream_read_socket_errored(&context.recorder, meta, event);
+    }
+    #[inline]
+    fn on_stream_read_tls_buffered(
+        &self,
+        context: &Self::ConnectionContext,
+        meta: &api::ConnectionMeta,
+        event: &api::StreamReadTlsBuffered,
+    ) {
+        context
+            .stream_read_tls_buffered
+            .fetch_add(1, Ordering::Relaxed);
+        self.subscriber
+            .on_stream_read_tls_buffered(&context.recorder, meta, event);
     }
     #[inline]
     fn on_stream_decrypt_packet(
@@ -568,6 +598,10 @@ impl<R: Recorder> Drop for Context<R> {
             self.stream_write_socket_errored.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
+            "stream_write_tls_record",
+            self.stream_write_tls_record.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
             "stream_read_flushed",
             self.stream_read_flushed.load(Ordering::Relaxed) as _,
         );
@@ -602,6 +636,10 @@ impl<R: Recorder> Drop for Context<R> {
         self.recorder.increment_counter(
             "stream_read_socket_errored",
             self.stream_read_socket_errored.load(Ordering::Relaxed) as _,
+        );
+        self.recorder.increment_counter(
+            "stream_read_tls_buffered",
+            self.stream_read_tls_buffered.load(Ordering::Relaxed) as _,
         );
         self.recorder.increment_counter(
             "stream_decrypt_packet",
