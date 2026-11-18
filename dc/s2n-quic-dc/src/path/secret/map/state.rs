@@ -732,7 +732,7 @@ where
                 },
             );
 
-        let Some(callback) = self.local_endpoints.get(entry.created_by()?) else {
+        let Some(callback) = self.local_endpoints.get(entry.initiated_by()?) else {
             // No endpoints are registered: evict, unless this is a periodic refresh of a still-valid
             // secret.
             if !matches!(reason, event::builder::HandshakeReason::Periodic) {
