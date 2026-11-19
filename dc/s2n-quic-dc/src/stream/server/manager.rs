@@ -26,6 +26,7 @@ use s2n_quic_core::ensure;
 use std::{
     io,
     net::SocketAddr,
+    os::unix::net::UnixDatagram,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -136,6 +137,11 @@ impl Builder {
             ))
         );
 
+        let socket_path = self.socket_path.ok_or(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Unix domain socket path is required",
+        ))?;
+
         #[expect(
             clippy::unwrap_used,
             reason = "converting the constant 1 to NonZeroUsize is infallible since 1 is non-zero"
@@ -147,6 +153,41 @@ impl Builder {
         });
 
         let backlog: usize = self.backlog.map(NonZeroU16::get).unwrap_or(DEFAULT_BACKLOG) as usize;
+
+        // If we've not enabled UDP support, clamp the # of threads we spawn to the TCP worker
+        // count. No reason to spawn extra threads that would largely just sit idle.
+        let acceptor_concurrency = if self.enable_udp {
+            concurrency
+        } else {
+            concurrency.clamp(1, MAX_TCP_WORKERS)
+        };
+
+        // split the backlog between all of the workers
+        // this is only used in TCP, so clamp division to maximum TCP worker concurrency
+        let backlog = backlog
+            .div_ceil(acceptor_concurrency.clamp(0, MAX_TCP_WORKERS))
+            .max(1);
+
+        if self.enable_tcp {
+            // Each TCP acceptor connects its own sender in `spawn_tcp`, which needs a runtime to
+            // register with. Connecting a probe here reports a missing or unbound receiver
+            // socket before any runtime exists.
+            let probe = UnixDatagram::unbound()?;
+            probe.connect(&socket_path)?;
+        }
+
+        let mut bind = Bind {
+            enable_tcp: self.enable_tcp,
+            enable_udp: self.enable_udp,
+            concurrency: acceptor_concurrency,
+            local_addr: self.acceptor_addr,
+            send_buffer: self.send_buffer,
+            recv_buffer: self.recv_buffer,
+            reuse_addr: self.reuse_addr.unwrap_or(false),
+            udp_sockets: Vec::new(),
+            tcp_listeners: Vec::new(),
+        };
+        bind.bind()?;
 
         // FIXME: This is configuring runtimes that likely won't be used as the manager doesn't do
         // dataplane I/O. For now, do the easy thing and configure just one thread per threadpool.
@@ -167,13 +208,6 @@ impl Builder {
             // TODO UDP
         }
 
-        // If we've not enabled UDP support, clamp the # of threads we spawn to the TCP worker
-        // count. No reason to spawn extra threads that would largely just sit idle.
-        let acceptor_concurrency = if self.enable_udp {
-            concurrency
-        } else {
-            concurrency.clamp(1, MAX_TCP_WORKERS)
-        };
         let acceptor_rt: runtime::Shared<S> = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .thread_name("mgr-acceptor")
@@ -188,101 +222,74 @@ impl Builder {
         }
 
         let mut server = Server {
-            local_addr: self.acceptor_addr,
+            local_addr: bind.local_addr,
             handshake,
             env,
             acceptor_rt,
         };
 
-        // split the backlog between all of the workers
-        // this is only used in TCP, so clamp division to maximum TCP worker concurrency
-        let backlog = backlog
-            .div_ceil(acceptor_concurrency.clamp(0, MAX_TCP_WORKERS))
-            .max(1);
-        let path = self.socket_path.ok_or(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "Unix domain socket path is required",
-        ))?;
-
         Start {
-            enable_tcp: self.enable_tcp,
-            enable_udp: self.enable_udp,
             accept_flavor: self.accept_flavor,
             linger: self.linger,
             backlog,
-            concurrency: acceptor_concurrency,
             server: &mut server,
             span,
             next_id: 0,
-            send_buffer: self.send_buffer,
-            recv_buffer: self.recv_buffer,
-            reuse_addr: self.reuse_addr.unwrap_or(false),
-            socket_path: path,
+            socket_path,
         }
-        .start()?;
+        .start(bind.udp_sockets, bind.tcp_listeners)?;
 
         Ok(server)
     }
 }
 
-struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
+/// Binds the acceptor sockets, which doesn't need a runtime.
+struct Bind {
     enable_tcp: bool,
     enable_udp: bool,
-    accept_flavor: accept::Flavor,
-    backlog: usize,
     concurrency: usize,
-    server: &'a mut Server<H, S>,
-    span: tracing::Span,
-    next_id: usize,
-    linger: Option<Duration>,
+    local_addr: SocketAddr,
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: bool,
-    socket_path: PathBuf,
+    udp_sockets: Vec<std::net::UdpSocket>,
+    tcp_listeners: Vec<std::net::TcpListener>,
 }
 
-impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
+impl Bind {
     #[inline]
-    fn start(&mut self) -> io::Result<()> {
-        let _acceptor = self.server.acceptor_rt.enter();
-
+    fn bind(&mut self) -> io::Result<()> {
         // check if we need to find a port for which both types are free
-        if self.enable_tcp && self.enable_udp && self.server.local_addr.port() == 0 {
-            // find a port and spawn the initial listeners
-            self.spawn_initial_wildcard_pair()?;
-            // spawn the rest of the concurrency
-            self.spawn_count(self.concurrency - 1, 1)?;
+        if self.enable_tcp && self.enable_udp && self.local_addr.port() == 0 {
+            // find a port and bind the initial listeners
+            self.bind_initial_wildcard_pair()?;
+            // bind the rest of the concurrency
+            self.bind_count(self.concurrency - 1, 1)?;
         } else {
-            // otherwise spawn things as normal
-            self.spawn_count(self.concurrency, 0)?;
+            // otherwise bind things as normal
+            self.bind_count(self.concurrency, 0)?;
         }
 
-        debug_assert_ne!(
-            self.server.local_addr.port(),
-            0,
-            "a port should be selected"
-        );
+        debug_assert_ne!(self.local_addr.port(), 0, "a port should be selected");
 
         Ok(())
     }
 
     #[inline]
-    fn spawn_initial_wildcard_pair(&mut self) -> io::Result<()> {
+    fn bind_initial_wildcard_pair(&mut self) -> io::Result<()> {
         debug_assert!(self.enable_tcp);
         debug_assert!(self.enable_udp);
 
         let (local_addr, udp_socket, tcp_socket) =
-            super::spawn_initial_wildcard_pair(self.server.local_addr, |addr| {
-                self.socket_opts(addr)
-            })?;
-        self.server.local_addr = local_addr;
-        self.spawn_udp(udp_socket)?;
-        self.spawn_tcp(tcp_socket)?;
+            super::spawn_initial_wildcard_pair(self.local_addr, |addr| self.socket_opts(addr))?;
+        self.local_addr = local_addr;
+        self.udp_sockets.push(udp_socket);
+        self.push_tcp(tcp_socket)?;
         Ok(())
     }
 
     #[inline]
-    fn spawn_count(&mut self, count: usize, already_running: usize) -> io::Result<()> {
+    fn bind_count(&mut self, count: usize, already_running: usize) -> io::Result<()> {
         for protocol in [socket::Protocol::Udp, socket::Protocol::Tcp] {
             match protocol {
                 socket::Protocol::Udp => ensure!(self.enable_udp, continue),
@@ -293,24 +300,33 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
             for idx in 0..count {
                 match protocol {
                     socket::Protocol::Udp => {
-                        let socket = self.socket_opts(self.server.local_addr).build_udp()?;
-                        self.spawn_udp(socket)?;
+                        let socket = self.socket_opts(self.local_addr).build_udp()?;
+                        self.udp_sockets.push(socket);
                     }
                     socket::Protocol::Tcp => {
                         if idx + already_running >= MAX_TCP_WORKERS {
                             continue;
                         }
 
-                        let socket = self
-                            .socket_opts(self.server.local_addr)
-                            .build_tcp_listener()?;
-                        self.spawn_tcp(socket)?;
+                        let socket = self.socket_opts(self.local_addr).build_tcp_listener()?;
+                        self.push_tcp(socket)?;
                     }
                     _ => continue,
                 }
             }
         }
 
+        Ok(())
+    }
+
+    #[inline]
+    fn push_tcp(&mut self, socket: std::net::TcpListener) -> io::Result<()> {
+        // if this is the first socket being bound then update the local address
+        if self.local_addr.port() == 0 {
+            self.local_addr = socket.local_addr()?;
+        }
+
+        self.tcp_listeners.push(socket);
         Ok(())
     }
 
@@ -341,6 +357,38 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
 
         options
     }
+}
+
+/// Spawns the acceptors for sockets bound by [`Bind`] onto the server's runtimes.
+struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
+    accept_flavor: accept::Flavor,
+    backlog: usize,
+    server: &'a mut Server<H, S>,
+    span: tracing::Span,
+    next_id: usize,
+    linger: Option<Duration>,
+    socket_path: PathBuf,
+}
+
+impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
+    #[inline]
+    fn start(
+        &mut self,
+        udp_sockets: Vec<std::net::UdpSocket>,
+        tcp_listeners: Vec<std::net::TcpListener>,
+    ) -> io::Result<()> {
+        let _acceptor = self.server.acceptor_rt.enter();
+
+        for socket in udp_sockets {
+            self.spawn_udp(socket)?;
+        }
+
+        for socket in tcp_listeners {
+            self.spawn_tcp(socket)?;
+        }
+
+        Ok(())
+    }
 
     #[inline]
     fn spawn_udp(&mut self, _socket: std::net::UdpSocket) -> io::Result<()> {
@@ -351,11 +399,6 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
 
     #[inline]
     fn spawn_tcp(&mut self, socket: std::net::TcpListener) -> io::Result<()> {
-        // if this is the first socket being spawned then update the local address
-        if self.server.local_addr.port() == 0 {
-            self.server.local_addr = socket.local_addr()?;
-        }
-
         let socket = unsafe {
             // SAFETY: `socket` is owned by the AsyncFd, so its fd is stable until drop.
             tokio::io::unix::AsyncFd::register(socket)
