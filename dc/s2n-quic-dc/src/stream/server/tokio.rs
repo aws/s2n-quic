@@ -149,6 +149,7 @@ pub struct Builder {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: Option<bool>,
+    bind_device: Option<Vec<u8>>,
     tls: Option<tcp::tls::Builder>,
     attach_reuseport_ebpf: Option<Arc<OwnedFd>>,
 }
@@ -173,6 +174,7 @@ impl Default for Builder {
             send_buffer: None,
             recv_buffer: None,
             reuse_addr: None,
+            bind_device: None,
             tls: None,
             attach_reuseport_ebpf: None,
         }
@@ -239,6 +241,15 @@ macro_rules! manager_builder_methods {
 
         pub fn with_recv_buffer(mut self, bytes: usize) -> Self {
             self.recv_buffer = Some(bytes);
+            self
+        }
+
+        /// Binds each socket created by the server to a single network
+        /// interface, named by `interface` (for example `b"eth0"`).
+        ///
+        /// See `SO_BINDTODEVICE` for more information.
+        pub fn with_bind_device(mut self, interface: Vec<u8>) -> Self {
+            self.bind_device = Some(interface);
             self
         }
 
@@ -314,6 +325,7 @@ impl Builder {
 
             options.send_buffer = self.send_buffer;
             options.recv_buffer = self.recv_buffer;
+            options.bind_to_device = self.bind_device.clone();
 
             env = env.with_socket_options(options);
 
@@ -417,6 +429,7 @@ impl Builder {
             send_buffer: self.send_buffer,
             recv_buffer: self.recv_buffer,
             reuse_addr: self.reuse_addr.unwrap_or(false),
+            bind_device: self.bind_device,
             attach_reuseport_ebpf: self.attach_reuseport_ebpf,
         }
         .start()?;
@@ -440,6 +453,7 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: bool,
+    bind_device: Option<Vec<u8>>,
     attach_reuseport_ebpf: Option<Arc<OwnedFd>>,
 }
 
@@ -531,6 +545,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
         options.send_buffer = self.send_buffer;
         options.recv_buffer = self.recv_buffer;
         options.reuse_address = self.reuse_addr;
+        options.bind_to_device = self.bind_device.clone();
 
         // if we have more than one thread then we'll need to use reuse port
         // SO_REUSEPORT is also required for SO_ATTACH_REUSEPORT_EBPF

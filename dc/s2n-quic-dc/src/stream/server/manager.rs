@@ -87,6 +87,7 @@ pub struct Builder {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: Option<bool>,
+    bind_device: Option<Vec<u8>>,
     socket_path: Option<PathBuf>,
 }
 
@@ -109,6 +110,7 @@ impl Default for Builder {
             send_buffer: None,
             recv_buffer: None,
             reuse_addr: None,
+            bind_device: None,
             socket_path: None,
         }
     }
@@ -217,6 +219,7 @@ impl Builder {
             send_buffer: self.send_buffer,
             recv_buffer: self.recv_buffer,
             reuse_addr: self.reuse_addr.unwrap_or(false),
+            bind_device: self.bind_device,
             socket_path: path,
         }
         .start()?;
@@ -238,6 +241,7 @@ struct Start<'a, H: Handshake + Clone, S: event::Subscriber + Clone> {
     send_buffer: Option<usize>,
     recv_buffer: Option<usize>,
     reuse_addr: bool,
+    bind_device: Option<Vec<u8>>,
     socket_path: PathBuf,
 }
 
@@ -327,6 +331,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Start<'_, H, S> {
         options.send_buffer = self.send_buffer;
         options.recv_buffer = self.recv_buffer;
         options.reuse_address = self.reuse_addr;
+        options.bind_to_device = self.bind_device.clone();
 
         // if we have more than one thread then we'll need to use reuse port
         if self.concurrency > 1 {
