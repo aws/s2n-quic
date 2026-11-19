@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 aya = "0.14"
-aya-log = "0.3.0"
+aya-log = "0.4.0"
 clap = { version = "4.1", features = ["derive"] }
 anyhow = "1.0.68"
 env_logger = "0.11"
