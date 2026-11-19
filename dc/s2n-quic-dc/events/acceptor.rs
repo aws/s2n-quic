@@ -463,6 +463,75 @@ struct AcceptorUdpStreamEnqueued<'a> {
     stream_id: u64,
 }
 
+/// Emitted when a manager hands a new UDP stream off to an application over a Unix domain socket
+#[event("acceptor:udp:stream_handed_off")]
+#[subject(endpoint)]
+struct AcceptorUdpStreamHandedOff<'a> {
+    /// The address of the stream's peer
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The credential ID of the stream
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    /// The ID of the stream
+    stream_id: u64,
+
+    /// The size of the Unix domain socket message
+    #[measure("payload_len", Bytes)]
+    payload_len: usize,
+}
+
+/// Emitted when a manager forwards a later packet for an already handed-off UDP stream
+#[event("acceptor:udp:packet_forwarded")]
+#[subject(endpoint)]
+struct AcceptorUdpPacketForwarded<'a> {
+    /// The address of the stream's peer
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The credential ID of the stream
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    /// The ID of the stream
+    stream_id: u64,
+}
+
+/// Emitted when an application receives a UDP stream handed off from a manager
+#[event("acceptor:udp:stream_received")]
+#[subject(endpoint)]
+struct AcceptorUdpStreamReceived<'a> {
+    /// The address of the stream's peer
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// The credential ID of the stream
+    #[snapshot("[HIDDEN]")]
+    credential_id: &'a [u8],
+
+    /// The ID of the stream
+    stream_id: u64,
+
+    /// The amount of time taken from the manager's send to the application's receive
+    #[timer("transfer_time")]
+    transfer_time: core::time::Duration,
+}
+
+/// Emitted when an application accepts a handed-off UDP stream without its application data
+#[event("acceptor:udp:application_data_dropped")]
+#[subject(endpoint)]
+struct AcceptorUdpApplicationDataDropped<'a> {
+    /// The address of the stream's peer
+    #[builder(&'a s2n_quic_core::inet::SocketAddress)]
+    remote_address: SocketAddress<'a>,
+
+    /// Why the application data was dropped
+    #[nominal_counter("reason")]
+    reason: AcceptorTcpApplicationDataDropReason,
+}
+
 /// Emitted when the UDP acceptor encounters an IO error
 #[event("acceptor:udp:io_error")]
 #[subject(endpoint)]

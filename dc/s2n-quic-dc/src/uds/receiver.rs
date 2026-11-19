@@ -43,15 +43,14 @@ impl Receiver {
         })
     }
 
-    pub async fn receive_msg(&self) -> Result<(Vec<u8>, OwnedFd), std::io::Error> {
-        let res = self
-            .socket_fd
+    /// Receives a packet and the file descriptor passed with it, if any.
+    pub async fn receive_msg(&self) -> Result<(Vec<u8>, Option<OwnedFd>), std::io::Error> {
+        self.socket_fd
             .async_io(Interest::READABLE, |_inner| self.try_receive_nonblocking())
-            .await?;
-        Ok(res)
+            .await
     }
 
-    fn try_receive_nonblocking(&self) -> Result<(Vec<u8>, OwnedFd), std::io::Error> {
+    fn try_receive_nonblocking(&self) -> Result<(Vec<u8>, Option<OwnedFd>), std::io::Error> {
         let mut buffer = [0u8; BUFFER_SIZE];
         let mut cmsg_buffer = nix::cmsg_space!([RawFd; 1]);
         let mut iov = [std::io::IoSliceMut::new(&mut buffer)];
@@ -93,11 +92,11 @@ impl Receiver {
                         use nix::fcntl::{fcntl, FcntlArg, FdFlag};
                         fcntl(&fd, FcntlArg::F_SETFD(FdFlag::FD_CLOEXEC))?;
                     }
-                    return Ok((packet_data, fd));
+                    return Ok((packet_data, Some(fd)));
                 }
             }
         }
-        Err(std::io::Error::from(nix::Error::EINVAL)) // No file descriptor found
+        Ok((packet_data, None))
     }
 }
 
@@ -154,7 +153,7 @@ mod tests {
         match result {
             Ok(((received_data, received_fd), ())) => {
                 assert_eq!(received_data, packet_data);
-                let mut received_file = std::fs::File::from(received_fd);
+                let mut received_file = std::fs::File::from(received_fd.unwrap());
                 let mut read_buffer = Vec::new();
                 received_file.read_to_end(&mut read_buffer).unwrap();
                 assert_eq!(read_buffer, test_data);
@@ -165,6 +164,30 @@ mod tests {
         }
 
         tokio::fs::remove_file(file_path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_receive_without_fd() {
+        let receiver_path = Path::new("/tmp/receiver_without_fd.sock");
+
+        let receiver = Receiver::new(receiver_path).unwrap();
+        let sender = Sender::new(receiver_path).unwrap();
+
+        let packet_data = b"packet without a descriptor";
+        let send_future = SendMsg::without_fd(sender, packet_data.to_vec());
+
+        let ((received_data, received_fd), ()) = tokio::try_join!(
+            async {
+                timeout(Duration::from_secs(5), receiver.receive_msg())
+                    .await
+                    .unwrap()
+            },
+            send_future
+        )
+        .unwrap();
+
+        assert_eq!(received_data, packet_data);
+        assert!(received_fd.is_none());
     }
 
     #[tokio::test]
