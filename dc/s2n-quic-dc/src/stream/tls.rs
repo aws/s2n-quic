@@ -147,9 +147,11 @@ impl S2nTlsConnection {
                         }
                     }
 
-                    self.cert_chain = Some(CertificateChain::new(
-                        (**s2n_connection).as_mut().peer_cert_chain()?,
-                    )?);
+                    self.cert_chain = match (**s2n_connection).as_mut().peer_cert_chain() {
+                        Ok(chain) => Some(CertificateChain::new(chain)?),
+                        Err(error) if error.name() == "S2N_ERR_CERT_NOT_VALIDATED" => None,
+                        Err(error) => return Poll::Ready(Err(error.into())),
+                    };
 
                     Poll::Ready(Ok(()))
                 }
