@@ -4,6 +4,7 @@
 // some platforms contain empty implementations so disable any warnings from those
 #![allow(unused_variables, unused_macros, unused_mut, clippy::let_and_return)]
 
+#[cfg(unix)]
 use crate::socket::stats;
 use core::ops::ControlFlow;
 use socket2::{Domain, Protocol, Socket, Type};
@@ -25,6 +26,8 @@ macro_rules! libc {
 pub mod mmsg;
 #[cfg(s2n_quic_platform_socket_msg)]
 pub mod msg;
+#[cfg(s2n_quic_platform_socket_wsamsg)]
+pub mod win;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)] // this isn't constructed on some platforms
@@ -147,7 +150,21 @@ pub fn configure_mtu_disc(tx_socket: &Socket) -> bool {
     //# processing of outgoing packets that enforces a PMTU
     //# [RFC1191][RFC8201] for each flow utilizing DPLPMTUD and instead use
     //# DPLPMTUD to control the size of packets that are sent by a flow.
-    #[cfg(s2n_quic_platform_mtu_disc)]
+
+    // Windows spells `IP_PMTUDISC_PROBE` the same way but reaches it through a
+    // different sockopt namespace, and falls back to plain DF on versions that
+    // don't implement it. See `win::configure_mtu_disc`.
+    #[cfg(all(windows, s2n_quic_platform_mtu_disc))]
+    {
+        use std::os::windows::io::AsRawSocket;
+
+        success |= win::configure_mtu_disc(tx_socket.as_raw_socket() as _);
+    }
+
+    #[cfg(all(
+        any(target_os = "linux", target_os = "android"),
+        s2n_quic_platform_mtu_disc
+    ))]
     {
         use std::os::unix::io::AsRawFd;
 
@@ -180,6 +197,18 @@ pub fn configure_mtu_disc(tx_socket: &Socket) -> bool {
 /// Configures the socket to return TOS/ECN information as part of the ancillary data
 pub fn configure_tos(rx_socket: &Socket) -> bool {
     let mut success = false;
+
+    // Windows exposes the ECN bits directly (`IP_RECVECN`) rather than the full
+    // TOS byte, so there is no `tos_v4`/`tos_v6` sockopt table to consult; the
+    // levels are set unconditionally and the result reports which stuck. The
+    // per-level detail is re-derived on the TX socket by `task::win::TxSocket`,
+    // which needs it to decide whether the ECN cmsg is safe to send.
+    #[cfg(s2n_quic_platform_socket_wsamsg)]
+    {
+        use std::os::windows::io::AsRawSocket;
+
+        success |= win::configure_ecn(rx_socket.as_raw_socket() as _).is_any();
+    }
 
     #[cfg(unix)]
     {
@@ -217,6 +246,13 @@ pub fn configure_tos(rx_socket: &Socket) -> bool {
 pub fn configure_pktinfo(rx_socket: &Socket) -> bool {
     let mut success = false;
 
+    #[cfg(s2n_quic_platform_socket_wsamsg)]
+    {
+        use std::os::windows::io::AsRawSocket;
+
+        success |= win::configure_pktinfo(rx_socket.as_raw_socket() as _);
+    }
+
     // Set up the RX socket to pass information about the local address and interface
     #[cfg(unix)]
     {
@@ -249,8 +285,53 @@ pub fn configure_pktinfo(rx_socket: &Socket) -> bool {
     success
 }
 
+/// Returns if the socket can segment a single send into multiple datagrams
+///
+/// On Windows this is called UDP Send Segmentation Offload (USO) and needs to be
+/// probed, since it is only available on Windows 10 2004+/Server 2022+. On unix
+/// the capability is known at compile time.
+///
+/// Note that unlike the other `configure_*` helpers this does not enable
+/// anything: USO is requested per send via a control message, so the probe is a
+/// harmless no-op write of segment size 0.
+pub fn supports_gso(tx_socket: &Socket) -> bool {
+    cfg_if::cfg_if! {
+        if #[cfg(s2n_quic_platform_socket_wsamsg)] {
+            use std::os::windows::io::AsRawSocket;
+
+            win::supports_uso(tx_socket.as_raw_socket() as _)
+        } else {
+            crate::features::gso::IS_SUPPORTED
+        }
+    }
+}
+
+/// Configures the socket to coalesce multiple datagrams into a single receive
+///
+/// On Windows this is called UDP Receive Segment Coalescing Offload (URO).
+///
+/// Returning `true` makes `io::tokio` size each RX ring entry at `u16::MAX` so a
+/// fully coalesced read always fits; on unix that sizing is a performance choice
+/// (the kernel simply stops coalescing when the buffer is full), while on Windows
+/// it is a correctness requirement (see `win::enable_uro`).
 pub fn configure_gro(rx_socket: &Socket) -> bool {
     let mut success = false;
+
+    // Winsock coalesces up to the configured size regardless of the buffer
+    // passed to `WSARecvMsg`, so the maximum is used here and the caller sizes
+    // the receive buffers to match, based on the result.
+    #[cfg(s2n_quic_platform_socket_wsamsg)]
+    {
+        use std::os::windows::io::AsRawSocket;
+
+        let sock = rx_socket.as_raw_socket() as _;
+
+        // The coalesced segment size is only reported in the `WSARecvMsg` control
+        // messages. Without that extension the receive path falls back to
+        // `recv_from`, which has no way of splitting a coalesced datagram back
+        // apart, so coalescing must stay disabled.
+        success |= win::load_wsarecvmsg(sock).is_some() && win::enable_uro(sock, u16::MAX as _);
+    }
 
     #[cfg(unix)]
     if let Some((level, ty)) = crate::features::gro::SOCKOPT {

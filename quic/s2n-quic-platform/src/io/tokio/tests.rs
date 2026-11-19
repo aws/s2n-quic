@@ -141,8 +141,9 @@ impl<const IS_SERVER: bool> Endpoint for TestEndpoint<IS_SERVER> {
 async fn runtime<A: ToSocketAddrs>(
     receive_addr: A,
     send_addr: Option<A>,
+    wsa_enabled: bool,
 ) -> io::Result<(super::Io, SocketAddress)> {
-    let mut io_builder = Io::builder();
+    let mut io_builder = Io::builder().with_wsa(wsa_enabled)?;
 
     let rx_socket = syscall::bind_udp(receive_addr, false, false, false)?;
     rx_socket.set_nonblocking(true)?;
@@ -180,8 +181,33 @@ async fn test<A: ToSocketAddrs>(
     client_rx_addr: A,
     client_tx_addr: Option<A>,
 ) -> io::Result<()> {
-    let (server_io, server_addr) = runtime(server_rx_addr, server_tx_addr).await?;
-    let (client_io, client_addr) = runtime(client_rx_addr, client_tx_addr).await?;
+    test_with_wsa(
+        server_rx_addr,
+        server_tx_addr,
+        true,
+        client_rx_addr,
+        client_tx_addr,
+        true,
+    )
+    .await
+}
+
+/// Same as [`test`], but configures `Builder::with_wsa` for each side.
+///
+/// On Windows, disabling WSA exercises the plain `send_to`/`recv_from` fallback; on other
+/// platforms the flag has no effect.
+async fn test_with_wsa<A: ToSocketAddrs>(
+    server_rx_addr: A,
+    server_tx_addr: Option<A>,
+    server_wsa_enabled: bool,
+    client_rx_addr: A,
+    client_tx_addr: Option<A>,
+    client_wsa_enabled: bool,
+) -> io::Result<()> {
+    let (server_io, server_addr) =
+        runtime(server_rx_addr, server_tx_addr, server_wsa_enabled).await?;
+    let (client_io, client_addr) =
+        runtime(client_rx_addr, client_tx_addr, client_wsa_enabled).await?;
 
     let server_endpoint = {
         let mut handle = PathHandle::from_remote_address(client_addr.into());
@@ -227,6 +253,18 @@ async fn ipv4_two_socket_test() -> io::Result<()> {
         Some(IPV4_LOCALHOST),
     )
     .await
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn ipv4_wsa_disabled_test() -> io::Result<()> {
+    test_with_wsa(IPV4_LOCALHOST, None, false, IPV4_LOCALHOST, None, false).await
+}
+
+#[tokio::test]
+#[cfg_attr(miri, ignore)]
+async fn ipv4_wsa_mixed_test() -> io::Result<()> {
+    test_with_wsa(IPV4_LOCALHOST, None, true, IPV4_LOCALHOST, None, false).await
 }
 
 #[tokio::test]
