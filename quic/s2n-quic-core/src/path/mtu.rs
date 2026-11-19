@@ -161,7 +161,7 @@ const MINIMUM_MTU: u16 = MINIMUM_MAX_DATAGRAM_SIZE
 
 macro_rules! impl_mtu {
     ($name:ident, $default:expr) => {
-        #[derive(Clone, Copy, Debug, PartialEq)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
         pub struct $name(NonZeroU16);
 
         impl $name {
@@ -242,6 +242,29 @@ impl Display for MtuError {
 
 impl core::error::Error for MtuError {}
 
+/// Error returned when runtime MTU configuration validation fails
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MtuConfigError {
+    /// The remote address for which the configuration was requested
+    pub remote_addr: inet::SocketAddress,
+    /// The connection-specific MTU config that was invalid
+    pub conn_config: Config,
+    /// The endpoint's MTU config for comparison
+    pub endpoint_config: Config,
+}
+
+impl Display for MtuConfigError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Invalid MTU configuration for {}: conn_config={:?}, endpoint_config={:?}",
+            self.remote_addr, self.conn_config, self.endpoint_config
+        )
+    }
+}
+
+impl core::error::Error for MtuConfigError {}
+
 /// Information about the path that may be used when generating MTU configuration.
 #[non_exhaustive]
 pub struct PathInfo<'a> {
@@ -275,13 +298,27 @@ impl<E: mtu::Endpoint> Manager<E> {
         }
     }
 
-    pub fn config(&mut self, remote_address: &inet::SocketAddress) -> Result<Config, MtuError> {
+    pub fn config(
+        &mut self,
+        remote_address: &inet::SocketAddress,
+    ) -> Result<Config, MtuConfigError> {
         let info = mtu::PathInfo::new(remote_address);
         if let Some(conn_config) = self.provider.on_path(&info, self.endpoint_mtu_config) {
-            ensure!(conn_config.is_valid(), Err(MtuError));
             ensure!(
-                u16::from(conn_config.max_mtu) <= u16::from(self.endpoint_mtu_config.max_mtu()),
-                Err(MtuError)
+                conn_config.is_valid(),
+                Err(MtuConfigError {
+                    remote_addr: *remote_address,
+                    conn_config,
+                    endpoint_config: self.endpoint_mtu_config,
+                })
+            );
+            ensure!(
+                conn_config.max_mtu <= self.endpoint_mtu_config.max_mtu(),
+                Err(MtuConfigError {
+                    remote_addr: *remote_address,
+                    conn_config,
+                    endpoint_config: self.endpoint_mtu_config,
+                })
             );
 
             Ok(conn_config)
@@ -327,7 +364,7 @@ impl Endpoint for Inherit {
 }
 
 /// MTU configuration.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Config {
     initial_mtu: InitialMtu,
     base_mtu: BaseMtu,
