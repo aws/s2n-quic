@@ -5,8 +5,7 @@ use crate::{
     allocator::Allocator,
     clock,
     credentials::Credentials,
-    crypto::{self, UninitSlice},
-    event,
+    crypto, event,
     packet::{control, stream},
     stream::{
         recv::{
@@ -348,8 +347,6 @@ impl State {
         B: buffer::Duplex<Error = core::convert::Infallible>,
         Pub: event::ConnectionPublisher,
     {
-        use buffer::reader::Storage as _;
-
         self.precheck_stream_packet_impl(credentials, packet)?;
 
         let is_max_data_ok = self.ensure_max_data(packet);
@@ -358,7 +355,7 @@ impl State {
         let mut packet = packet::Packet {
             packet: &mut *packet,
             payload_cursor: 0,
-            is_decrypted_in_place: false,
+            decryption: packet::Decryption::Pending,
             ecn,
             clock,
             opener,
@@ -370,7 +367,7 @@ impl State {
 
         if !is_max_data_ok {
             // ensure the packet is authentic before resetting the stream
-            let _ = packet.read_chunk(usize::MAX)?;
+            packet.authenticate()?;
 
             tracing::error!(
                 message = "max data exceeded",
@@ -395,10 +392,13 @@ impl State {
             //
             // Note that this may reset the stream regardless (depending on stream type), but it
             // ensures that we reset with the right error code (e.g., crypto error vs invalid fin).
-            let _ = packet.read_chunk(0)?;
+            packet.authenticate()?;
 
             return Err(e.into());
         }
+
+        // Reassembly may skip payload bytes that are already buffered.
+        packet.authenticate()?;
 
         // update the expected stream offset for contiguity enforcement
         if packet.receiver.features.is_stream() {
@@ -426,9 +426,9 @@ impl State {
             }
 
             publisher.on_stream_decrypt_packet(event::builder::StreamDecryptPacket {
-                decrypted_in_place: packet.is_decrypted_in_place,
-                forced_copy: if packet.is_decrypted_in_place {
-                    packet.packet.payload().len()
+                decrypted_in_place: packet.decryption == packet::Decryption::InPlace,
+                forced_copy: if packet.decryption == packet::Decryption::InPlace {
+                    packet.copied_len
                 } else {
                     // Any new bytes buffered into the `out_buf` means they are going to need to be
                     // copied out into the application buffer.
@@ -449,55 +449,6 @@ impl State {
     }
 
     #[inline]
-    pub(super) fn on_stream_packet_in_place<D, C, Clk, Pub>(
-        &mut self,
-        crypto: &D,
-        control: &C,
-        packet: &mut stream::decoder::Packet,
-        ecn: ExplicitCongestionNotification,
-        clock: &Clk,
-        publisher: &Pub,
-    ) -> Result<(), Error>
-    where
-        D: crypto::open::Application,
-        C: crypto::open::control::Stream,
-        Clk: Clock + ?Sized,
-        Pub: event::ConnectionPublisher,
-    {
-        // ensure the packet is authentic before processing it
-        let res = packet.decrypt_in_place(crypto, control);
-
-        res?;
-
-        self.on_cleartext_stream_packet(packet, ecn, clock, publisher)
-    }
-
-    #[inline]
-    pub(super) fn on_stream_packet_copy<D, C, Clk, Pub>(
-        &mut self,
-        crypto: &D,
-        control: &C,
-        packet: &mut stream::decoder::Packet,
-        ecn: ExplicitCongestionNotification,
-        payload_out: &mut UninitSlice,
-        clock: &Clk,
-        publisher: &Pub,
-    ) -> Result<(), Error>
-    where
-        D: crypto::open::Application,
-        C: crypto::open::control::Stream,
-        Clk: Clock + ?Sized,
-        Pub: event::ConnectionPublisher,
-    {
-        // ensure the packet is authentic before processing it
-        let res = packet.decrypt(crypto, control, payload_out);
-
-        res?;
-
-        self.on_cleartext_stream_packet(packet, ecn, clock, publisher)
-    }
-
-    #[inline]
     fn ensure_max_data(&self, packet: &stream::decoder::Packet) -> bool {
         // we only need to enforce flow control for non-controlled transport
         ensure!(!self.features.is_flow_controlled(), true);
@@ -510,7 +461,7 @@ impl State {
     }
 
     #[inline]
-    fn on_cleartext_stream_packet<Clk, Pub>(
+    pub(super) fn on_cleartext_stream_packet<Clk, Pub>(
         &mut self,
         packet: &mut stream::decoder::Packet,
         ecn: ExplicitCongestionNotification,
