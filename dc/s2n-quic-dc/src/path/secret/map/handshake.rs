@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{entry::ApplicationData, Entry, Map};
+use super::{entry::ApplicationData, Entry, LocalEndpointId, Map};
 use crate::{
     packet::secret_control as control,
     path::secret::{receiver, schedule, sender},
@@ -32,12 +32,17 @@ struct HandshakingPathInner {
     entry: Option<Arc<Entry>>,
     application_data: Option<ApplicationData>,
     map: Map,
+    initiated_by: Option<LocalEndpointId>,
 
     error: Option<Box<dyn Error + Send + Sync>>,
 }
 
 impl HandshakingPath {
-    fn new(connection_info: &dc::ConnectionInfo, map: Map) -> Self {
+    fn new(
+        connection_info: &dc::ConnectionInfo,
+        map: Map,
+        initiated_by: Option<LocalEndpointId>,
+    ) -> Self {
         let endpoint_type = match connection_info.endpoint_type {
             event::api::EndpointType::Server { .. } => endpoint::Type::Server,
             event::api::EndpointType::Client { .. } => endpoint::Type::Client,
@@ -53,6 +58,7 @@ impl HandshakingPath {
                 entry: None,
                 application_data: None,
                 map,
+                initiated_by,
                 error: None,
             })),
         }
@@ -71,7 +77,7 @@ impl dc::Endpoint for Map {
     type Path = HandshakingPath;
 
     fn new_path(&mut self, connection_info: &dc::ConnectionInfo) -> Option<Self::Path> {
-        Some(HandshakingPath::new(connection_info, self.clone()))
+        Some(HandshakingPath::new(connection_info, self.clone(), None))
     }
 
     fn on_possible_secret_control_packet(
@@ -95,6 +101,43 @@ impl dc::Endpoint for Map {
             }
             Err(_) => false,
         }
+    }
+}
+
+/// The dc endpoint of a local client. [`Map`] can be 'shared' by clients and servers either directly
+/// or via `clone`, etc. This represents state specific to clients to avoid influencing servers in
+/// these cases.
+pub(crate) struct ClientEndpoint {
+    map: Map,
+    local_endpoint: Option<LocalEndpointId>,
+}
+
+impl ClientEndpoint {
+    pub(crate) fn new(map: Map, local_endpoint: Option<LocalEndpointId>) -> Self {
+        Self {
+            map,
+            local_endpoint,
+        }
+    }
+}
+
+impl dc::Endpoint for ClientEndpoint {
+    type Path = HandshakingPath;
+
+    fn new_path(&mut self, connection_info: &dc::ConnectionInfo) -> Option<Self::Path> {
+        Some(HandshakingPath::new(
+            connection_info,
+            self.map.clone(),
+            self.local_endpoint,
+        ))
+    }
+
+    fn on_possible_secret_control_packet(
+        &mut self,
+        datagram_info: &DatagramInfo,
+        payload: &mut [u8],
+    ) -> bool {
+        dc::Endpoint::on_possible_secret_control_packet(&mut self.map, datagram_info, payload)
     }
 }
 
@@ -247,7 +290,8 @@ impl HandshakingPathInner {
             self.parameters.clone(),
             self.map.store.rehandshake_period(),
             self.application_data.take(),
-        );
+        )
+        .with_initiated_by(self.initiated_by);
         let entry = Arc::new(entry);
         self.entry = Some(entry.clone());
         self.map.store.on_new_path_secrets(entry);

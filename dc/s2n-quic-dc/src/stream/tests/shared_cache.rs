@@ -528,3 +528,73 @@ async fn test_large_payload_through_shared_cache() {
         data_exchange_result.err()
     );
 }
+
+/// Several handshake clients can share one map: each handshakes through its own socket, and each
+/// reuses the secrets the others negotiated.
+#[tokio::test]
+async fn multiple_handshake_clients_share_map() {
+    use crate::path::secret::HandshakeKind;
+
+    init_tracing();
+
+    let server_a = create_handshake_server().await;
+    let server_b = create_handshake_server().await;
+
+    let tls_materials_provider = TestTlsProvider {};
+    let test_event_subscriber = NoopSubscriber {};
+    let client_map = Map::new(
+        Signer::new(b"default"),
+        100,
+        false,
+        StdClock::default(),
+        test_event_subscriber.clone(),
+    );
+    let start_client = || {
+        ClientProvider::builder()
+            .start(
+                "127.0.0.1:0".parse().unwrap(),
+                client_map.clone(),
+                tls_materials_provider.clone(),
+                test_event_subscriber.clone(),
+                server_name(),
+            )
+            .unwrap()
+    };
+    let client_a = start_client();
+    let client_b = start_client();
+
+    let kind = client_a
+        .handshake_with(server_a.local_addr(), server_name())
+        .await
+        .unwrap();
+    assert_eq!(kind, HandshakeKind::Fresh);
+    let kind = client_b
+        .handshake_with(server_b.local_addr(), server_name())
+        .await
+        .unwrap();
+    assert_eq!(kind, HandshakeKind::Fresh);
+
+    let kind = client_b
+        .handshake_with(server_a.local_addr(), server_name())
+        .await
+        .unwrap();
+    assert_eq!(kind, HandshakeKind::Cached);
+    let kind = client_a
+        .handshake_with(server_b.local_addr(), server_name())
+        .await
+        .unwrap();
+    assert_eq!(kind, HandshakeKind::Cached);
+
+    // Each server holds the secret under the address of the client that handshaked with it. The
+    // server can record it slightly after the client's handshake returns.
+    for (server, client) in [(&server_a, &client_a), (&server_b, &client_b)] {
+        let client_addr = client.local_addr().unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while !server.map().contains(&client_addr) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("server records the client's path secret");
+    }
+}

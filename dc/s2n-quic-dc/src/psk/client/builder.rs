@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    path::secret,
+    path::secret::{self, map::LocalEndpointId},
     psk::io::{
         HandshakeQueueConfig, Result, DEFAULT_IDLE_TIMEOUT, DEFAULT_MAX_DATA,
         DEFAULT_PTO_JITTER_PERCENTAGE,
@@ -25,6 +25,7 @@ pub struct Builder<
     pub(crate) max_idle_timeout: Duration,
     pub(crate) pto_jitter_percentage: u8,
     pub(crate) handshake_queue: HandshakeQueueConfig,
+    pub(crate) local_endpoint: Option<LocalEndpointId>,
 }
 
 impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
@@ -36,6 +37,7 @@ impl Default for Builder<s2n_quic::provider::event::default::Subscriber> {
             max_idle_timeout: DEFAULT_IDLE_TIMEOUT,
             pto_jitter_percentage: DEFAULT_PTO_JITTER_PERCENTAGE,
             handshake_queue: Default::default(),
+            local_endpoint: None,
         }
     }
 }
@@ -53,6 +55,7 @@ impl<Event: s2n_quic::provider::event::Subscriber> Builder<Event> {
             max_idle_timeout: self.max_idle_timeout,
             pto_jitter_percentage: self.pto_jitter_percentage,
             handshake_queue: self.handshake_queue,
+            local_endpoint: self.local_endpoint,
         }
     }
 
