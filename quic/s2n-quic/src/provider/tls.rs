@@ -3,9 +3,13 @@
 
 //! Provides TLS support for an endpoint
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 use cfg_if::cfg_if;
 use s2n_quic_core::crypto;
-
 pub use s2n_quic_core::crypto::tls::ConnectionInfo;
 
 pub trait Provider {
@@ -22,6 +26,52 @@ pub trait Provider {
 
 impl_provider_utils!();
 
+#[cfg(not(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+)))]
+pub(crate) mod state {
+    pub use super::Default;
+
+    pub trait Provider {}
+
+    impl<T: super::Provider> Provider for T {}
+
+    impl Provider for Default {}
+
+    pub trait TryInto {
+        type Provider: Provider;
+        type Error: 'static + core::fmt::Display + Send + Sync;
+
+        fn try_into(self) -> Result<Self::Provider, Self::Error>;
+    }
+
+    impl<T> TryInto for T
+    where
+        T: super::TryInto,
+        T::Provider: super::Provider,
+    {
+        type Provider = T::Provider;
+        type Error = T::Error;
+
+        fn try_into(self) -> Result<Self::Provider, Self::Error> {
+            <T as super::TryInto>::try_into(self)
+        }
+    }
+
+    pub trait With<T: Provider> {
+        type Output;
+
+        fn with(self, provider: T) -> Self::Output;
+    }
+}
+
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 cfg_if! {
     if #[cfg(feature = "provider-tls-default")] {
         #[cfg_attr(docsrs, doc(cfg(feature = "provider-tls-default")))]
@@ -44,6 +94,11 @@ cfg_if! {
 #[derive(Debug, Default)]
 pub struct Default;
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for Default {
     type Server = default::Server;
     type Client = default::Client;
@@ -58,6 +113,11 @@ impl Provider for Default {
     }
 }
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for (&std::path::Path, &std::path::Path) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -81,6 +141,11 @@ impl Provider for (&std::path::Path, &std::path::Path) {
     }
 }
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for &std::path::Path {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -102,6 +167,11 @@ impl Provider for &std::path::Path {
     }
 }
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for (&[u8], &[u8]) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -125,6 +195,11 @@ impl Provider for (&[u8], &[u8]) {
     }
 }
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for &[u8] {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -146,6 +221,11 @@ impl Provider for &[u8] {
     }
 }
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for (&str, &str) {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -169,6 +249,11 @@ impl Provider for (&str, &str) {
     }
 }
 
+#[cfg(any(
+    feature = "provider-tls-default",
+    feature = "provider-tls-s2n",
+    feature = "provider-tls-rustls"
+))]
 impl Provider for &str {
     type Server = <Default as Provider>::Server;
     type Client = <Default as Provider>::Client;
@@ -434,5 +519,35 @@ pub mod offload {
                 self.channel_capacity,
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Provider;
+    use core::convert::Infallible;
+    use s2n_quic_core::crypto::tls::testing::Endpoint;
+
+    #[derive(Debug)]
+    struct Custom;
+
+    impl Provider for Custom {
+        type Server = Endpoint;
+        type Client = Endpoint;
+        type Error = Infallible;
+
+        fn start_server(self) -> Result<Self::Server, Self::Error> {
+            Ok(Endpoint)
+        }
+
+        fn start_client(self) -> Result<Self::Client, Self::Error> {
+            Ok(Endpoint)
+        }
+    }
+
+    #[test]
+    fn custom_provider_replaces_default() {
+        let _client = crate::Client::builder().with_tls(Custom).unwrap();
+        let _server = crate::Server::builder().with_tls(Custom).unwrap();
     }
 }
