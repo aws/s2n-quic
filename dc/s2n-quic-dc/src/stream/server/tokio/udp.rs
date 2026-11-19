@@ -32,6 +32,7 @@ where
     socket: S,
     recv_buffer: msg::recv::Message,
     handshake: server::handshake::Map,
+    authenticator: server::Authenticator,
     env: Environment<Sub>,
     secrets: secret::Map,
     accept_flavor: accept::Flavor,
@@ -60,6 +61,7 @@ where
             socket,
             recv_buffer: msg::recv::Message::new(9000.try_into().unwrap()),
             handshake: Default::default(),
+            authenticator: Default::default(),
             env: env.clone(),
             secrets: secrets.clone(),
             accept_flavor,
@@ -97,31 +99,16 @@ where
         let now = self.env.clock().get_time();
         let publisher = self.env.endpoint_publisher_with_time(now);
 
-        let server::handshake::Outcome::Created {
-            receiver: handshake,
-        } = self.handshake.handle(&packet, &mut self.recv_buffer)
-        else {
+        // Packets whose credentials already belong to a stream are that stream's to authenticate,
+        // so forward them without touching the crypto here.
+        if self.handshake.try_forward(&packet, &mut self.recv_buffer) {
             return Ok(ControlFlow::Continue(()));
-        };
+        }
 
         let remote_addr = self.recv_buffer.remote_address();
 
-        let meta = event::api::ConnectionMeta {
-            id: 0, // TODO use an actual connection ID
-            timestamp: now.into_event(),
-        };
-        let info = event::api::ConnectionInfo {};
-
-        let subscriber_ctx = self
-            .env
-            .subscriber()
-            .create_connection_context(&meta, &info);
-
-        let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
-        let recv_buffer = Either::A(recv_buffer);
-
-        let peer = env::udp::Owned(remote_addr, recv_buffer);
-
+        // Derive the stream's keys first. Note that this only establishes that we hold a path
+        // secret for the credential id. It does not authenticate the packet.
         let mut secret_control = vec![];
         let (crypto, parameters, application_data) = match endpoint::derive_stream_credentials(
             &packet,
@@ -140,6 +127,51 @@ where
                 return Err(error);
             }
         };
+
+        // Authenticate before claiming the routing slot for these credentials or pinning the
+        // stream's peer address.
+        //
+        // Nothing is sent back on failure, since the sender has not proven it holds the key.
+        let is_authentic = match self.recv_buffer.peek_segments().next() {
+            Some(segment) => self
+                .authenticator
+                .authenticate_first_packet(&crypto, segment),
+            // unreachable - `recv_packet` only returns after peeking this same segment
+            None => false,
+        };
+
+        if !is_authentic {
+            debug!(
+                credentials = ?packet.credentials,
+                ?remote_addr,
+                "dropping unauthenticated packet"
+            );
+            publisher.on_acceptor_udp_packet_dropped(event::builder::AcceptorUdpPacketDropped {
+                remote_address: &remote_addr,
+                reason: event::builder::AcceptorPacketDropReason::AuthenticationFailed,
+            });
+            return Ok(ControlFlow::Continue(()));
+        }
+
+        let Some(handshake) = self.handshake.claim(&packet) else {
+            return Ok(ControlFlow::Continue(()));
+        };
+
+        let meta = event::api::ConnectionMeta {
+            id: 0, // TODO use an actual connection ID
+            timestamp: now.into_event(),
+        };
+        let info = event::api::ConnectionInfo {};
+
+        let subscriber_ctx = self
+            .env
+            .subscriber()
+            .create_connection_context(&meta, &info);
+
+        let recv_buffer = recv::buffer::Local::new(self.recv_buffer.take(), Some(handshake));
+        let recv_buffer = Either::A(recv_buffer);
+
+        let peer = env::udp::Owned(remote_addr, recv_buffer);
 
         let stream = match endpoint::accept_stream(
             now,
