@@ -288,15 +288,7 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         server_name: Name,
         config: &impl crate::stream::TlsConnectionBuilder,
     ) -> io::Result<Stream<S>> {
-        let stream = client::connect_tls(
-            addr,
-            server_name,
-            config,
-            &self.env,
-            self.linger,
-            self.handshake.map(),
-        )
-        .await?;
+        let stream = client::connect_tls(addr, server_name, config, &self.env, self.linger).await?;
         Ok(stream)
     }
 
@@ -330,15 +322,8 @@ impl<H: Handshake + Clone, S: event::Subscriber + Clone> Client<H, S> {
         server_name: Name,
         config: &impl crate::stream::TlsConnectionBuilder,
     ) -> io::Result<Stream<S>> {
-        let stream = client::connect_tls_with(
-            stream,
-            server_name,
-            config,
-            &self.env,
-            self.linger,
-            self.handshake.map(),
-        )
-        .await?;
+        let stream =
+            client::connect_tls_with(stream, server_name, config, &self.env, self.linger).await?;
         Ok(stream)
     }
 
@@ -739,8 +724,6 @@ pub async fn connect_tls<Sub>(
     config: &impl crate::stream::TlsConnectionBuilder,
     env: &Environment<Sub>,
     linger: Option<Duration>,
-    // FIXME: Do we really need the map for this?
-    map: &crate::path::secret::Map,
 ) -> io::Result<Stream<Sub>>
 where
     Sub: event::Subscriber + Clone,
@@ -778,7 +761,6 @@ where
         config,
         env,
         linger,
-        map,
         start,
         kernel_start_time,
         guard,
@@ -797,8 +779,6 @@ pub async fn connect_tls_with<Sub>(
     config: &impl crate::stream::TlsConnectionBuilder,
     env: &Environment<Sub>,
     linger: Option<Duration>,
-    // FIXME: Do we really need the map for this?
-    map: &crate::path::secret::Map,
 ) -> io::Result<Stream<Sub>>
 where
     Sub: event::Subscriber + Clone,
@@ -825,7 +805,6 @@ where
         config,
         env,
         linger,
-        map,
         start,
         // The TCP connection was established before this call, so there is no TCP connect step to
         // time: using `start` as the kernel start time reports a zero TCP latency for the TLS
@@ -859,8 +838,6 @@ where
     env: &'a Environment<Sub>,
     /// `SO_LINGER` to apply to `socket`, if any.
     linger: Option<Duration>,
-    // FIXME: Do we really need the map for this?
-    map: &'a crate::path::secret::Map,
     /// When the connect attempt began.
     start: Timestamp,
     /// When the TCP connection was established. Equal to `start` when the socket was already
@@ -883,7 +860,6 @@ where
             config,
             env,
             linger,
-            map,
             start,
             kernel_start_time,
             mut guard,
@@ -942,7 +918,6 @@ where
             socket,
             connection,
             env,
-            map,
             s2n_quic_core::endpoint::Type::Client,
         )?
         .build()

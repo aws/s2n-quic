@@ -498,9 +498,9 @@ where
             };
 
             {
-                let remote_address: SocketAddress = stream_builder.shared.remote_addr();
+                let remote_address: SocketAddress = stream_builder.common().remote_addr();
                 let remote_address = &remote_address;
-                let creds = stream_builder.shared.credentials();
+                let creds = stream_builder.common().credentials();
                 let credential_id = &*creds.id;
                 let stream_id = creds.key_id.as_u64();
                 let sojourn_time = clock.get_time().saturating_duration_since(queue_time);

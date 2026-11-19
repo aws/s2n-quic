@@ -5,9 +5,9 @@ use crate::{
     clock::Timer,
     event, msg,
     stream::{
-        recv::application::{Inner, LocalState, Reader},
+        recv::application::{Inner, LocalState, Reader, TlsInner},
         runtime,
-        shared::ArcShared,
+        shared::{ArcShared, ArcTlsShared},
         socket,
         transport::Transport,
     },
@@ -66,8 +66,7 @@ where
             endpoint::Type::Server => LocalState::Reading,
         };
 
-        let is_tls = shared.common.s2n_connection.is_some();
-        let transport = Transport::variant(&*sockets, is_tls);
+        let transport = Transport::variant(&*sockets);
 
         Reader(ManuallyDrop::new(Box::new(transport(Inner {
             shared,
@@ -76,6 +75,29 @@ where
             read_mode,
             ack_mode,
             timer,
+            local_state,
+            runtime,
+        }))))
+    }
+
+    #[inline]
+    pub(crate) fn build_tls(
+        self,
+        shared: ArcTlsShared<Sub>,
+        sockets: socket::ArcApplication,
+    ) -> Reader<Sub> {
+        let Self { endpoint, runtime } = self;
+
+        let local_state = match endpoint {
+            endpoint::Type::Client => LocalState::Ready,
+            // the server acceptor already read from the socket at least once
+            endpoint::Type::Server => LocalState::Reading,
+        };
+
+        Reader(ManuallyDrop::new(Box::new(Transport::Tls(TlsInner {
+            shared,
+            sockets,
+            read_mode: ReadMode::Once,
             local_state,
             runtime,
         }))))

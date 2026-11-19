@@ -373,14 +373,9 @@ impl Builder {
         }
 
         let mut server = Server {
-            tls: self.tls.map(|t| {
-                t.build(
-                    stream_sender.clone(),
-                    env.clone(),
-                    handshake.map().clone(),
-                    self.accept_flavor,
-                )
-            }),
+            tls: self
+                .tls
+                .map(|t| t.build(stream_sender.clone(), env.clone(), self.accept_flavor)),
             streams: stream_receiver,
             local_addr: self.acceptor_addr,
             handshake,
