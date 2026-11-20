@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
+    persist::{InsertPersistedError, RestoreParams},
     ApplicationData, ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats,
 };
 use crate::{
@@ -30,6 +31,13 @@ pub trait Store: 'static + Send + Sync {
     fn on_new_path_secrets(&self, entry: Arc<Entry>);
 
     fn on_handshake_complete(&self, entry: Arc<Entry>);
+
+    fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<Entry>, InsertPersistedError>;
 
     fn contains(&self, peer: &SocketAddr) -> bool;
 
@@ -113,8 +121,10 @@ pub trait Store: 'static + Send + Sync {
         self.on_handshake_complete(entry);
     }
 
-    /// Stops the cleaner thread
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
+    fn run_cleaner_once(&self);
+
+    #[cfg(any(test, feature = "testing"))]
     fn test_stop_cleaner(&self);
 
     #[inline]

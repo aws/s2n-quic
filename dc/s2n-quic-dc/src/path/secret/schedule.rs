@@ -197,6 +197,11 @@ impl Secret {
     }
 
     #[inline]
+    pub fn endpoint(&self) -> endpoint::Type {
+        self.endpoint
+    }
+
+    #[inline]
     pub fn application_pair(
         &self,
         key_id: VarInt,

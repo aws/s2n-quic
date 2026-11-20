@@ -20,10 +20,12 @@ use std::{net::SocketAddr, sync::Arc};
 use tokio::task::JoinHandle;
 
 mod cleaner;
+mod collector;
 mod disk;
 mod entry;
 pub mod handshake;
 mod peer;
+mod persist;
 mod proactive_unknown_path_secret;
 mod rehandshake;
 mod size_of;
@@ -40,8 +42,12 @@ mod event_tests;
 #[cfg(test)]
 mod tests;
 
+#[cfg(any(test, feature = "testing"))]
+pub use collector::CollectedBuilder;
+pub use collector::{CollectRequest, Collected, EntryConsumer};
 pub use disk::{deserialize, DiskEntry, Entries, Serializer, SerializerBuilder};
 pub use entry::Entry;
+pub use persist::{InsertPersistedError, PersistedReport, RestoreDisposition, RestoreParams};
 pub use proactive_unknown_path_secret::SendStats;
 use state::StateBuilderError;
 use store::Store;
@@ -158,6 +164,26 @@ where
         self
     }
 
+    /// At most one per map; a second call replaces the first.
+    pub fn with_entry_consumer(mut self, consumer: Arc<dyn EntryConsumer>) -> Self {
+        self.inner = self.inner.with_entry_consumer(consumer);
+        self
+    }
+
+    /// Pre-populates the map with entries restored from persistence, oldest first. See
+    /// `StateBuilder::with_entries` for the invariants the caller owns, and [`Entry::restore`] for
+    /// producing them. A second call replaces the first.
+    pub fn with_entries(mut self, entries: Vec<Arc<Entry>>) -> Self {
+        self.inner = self.inner.with_entries(entries);
+        self
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    pub fn without_cleaner_thread(mut self) -> Self {
+        self.inner = self.inner.without_cleaner_thread();
+        self
+    }
+
     /// Builds the [`Map`].
     pub fn build(self) -> Result<Map, MapBuilderError> {
         Ok(Map {
@@ -224,6 +250,15 @@ impl Map {
 
     pub fn drop_state(&self) {
         self.store.drop_state();
+    }
+
+    pub fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<entry::Entry>, InsertPersistedError> {
+        self.store.insert_persisted(bytes, application_data, params)
     }
 
     /// Serializes the current map to disk using the serializer configured at construction.
@@ -545,6 +580,16 @@ impl Map {
         self.store.test_stop_cleaner();
     }
 
+    #[cfg(any(test, feature = "testing"))]
+    pub fn stop_cleaner(&self) {
+        self.store.test_stop_cleaner();
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    pub fn run_cleaner_once(&self) {
+        self.store.run_cleaner_once();
+    }
+
     #[doc(hidden)]
     #[cfg(test)]
     pub fn reset_all_senders(&self) {
@@ -553,10 +598,11 @@ impl Map {
 
     #[doc(hidden)]
     #[cfg(any(test, feature = "testing"))]
-    pub fn test_insert(&self, peer: SocketAddr) {
+    pub fn test_insert(&self, peer: SocketAddr) -> Arc<entry::Entry> {
         let receiver = super::receiver::State::new();
         let entry = Entry::fake(peer, Some(receiver));
-        self.store.test_insert(entry);
+        self.store.test_insert(entry.clone());
+        entry
     }
 
     #[cfg(any(test, feature = "testing"))]

@@ -61,12 +61,55 @@ pub enum Error {
     Unknown,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum RestoreError {
+    #[error("restored receiver key id was the reserved sentinel value")]
+    Sentinel,
+
+    #[error("restored receiver key id would overflow")]
+    Overflow,
+}
+
 impl State {
     pub fn new() -> State {
         State {
             max_seen_key_id: AtomicU64::new(u64::MAX),
             seen: Default::default(),
         }
+    }
+
+    pub fn max_seen_key_id(&self) -> Option<u64> {
+        match self.max_seen_key_id.load(Ordering::Relaxed) {
+            u64::MAX => None,
+            seen => Some(seen),
+        }
+    }
+
+    pub fn restore(persisted_max_seen: u64, advance: u64) -> Result<State, RestoreError> {
+        if persisted_max_seen == u64::MAX {
+            return Err(RestoreError::Sentinel);
+        }
+
+        let advanced = persisted_max_seen
+            .checked_add(advance)
+            .filter(|max| *max != u64::MAX)
+            .ok_or(RestoreError::Overflow)?;
+
+        Ok(State {
+            max_seen_key_id: AtomicU64::new(advanced),
+            seen: Default::default(),
+        })
+    }
+
+    /// Advances from a base of 0, so an id accepted after a record that had seen nothing is not
+    /// accepted again. An `advance` of 0 keeps it fresh, which is how `inspect_persisted_bytes`
+    /// reports "nothing seen" rather than `Some(0)`.
+    pub fn restore_unseen(advance: u64) -> Result<State, RestoreError> {
+        if advance == 0 {
+            return Ok(Self::new());
+        }
+
+        Self::restore(0, advance)
     }
 
     pub fn pre_authentication(&self, identity: &Credentials) -> Result<(), Error> {
