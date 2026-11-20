@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    transport::parameters::{InitialMaxStreamsBidi, InitialMaxStreamsUni, ValidationError},
+    transport::parameters::{
+        InitialMaxStreamsBidi, InitialMaxStreamsUni, ValidationError, MAX_STREAMS_MAX_VALUE,
+    },
     varint::VarInt,
 };
 
@@ -30,6 +32,10 @@ pub struct Limits {
     /// is not communicated to the peer, it is only used for limiting
     /// concurrent streams opened locally by the application.
     pub max_open_local_bidirectional_streams: LocalBidirectional,
+    /// Maximum cumulative number of bidirectional streams the remote peer may open.
+    pub max_total_remote_bidirectional_streams: TotalRemoteBidirectional,
+    /// Maximum cumulative number of unidirectional streams the remote peer may open.
+    pub max_total_remote_unidirectional_streams: TotalRemoteUnidirectional,
 }
 
 impl Default for Limits {
@@ -43,27 +49,22 @@ impl Limits {
         max_send_buffer_size: MaxSendBufferSize::RECOMMENDED,
         max_open_local_unidirectional_streams: LocalUnidirectional::RECOMMENDED,
         max_open_local_bidirectional_streams: LocalBidirectional::RECOMMENDED,
+        max_total_remote_bidirectional_streams: TotalRemoteBidirectional::RECOMMENDED,
+        max_total_remote_unidirectional_streams: TotalRemoteUnidirectional::RECOMMENDED,
     };
 }
 
-macro_rules! local_limits {
+macro_rules! limits {
     ($name:ident($encodable_type:ty)) => {
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
         pub struct $name($encodable_type);
     };
 }
 
-// VarInt specific functionality
-macro_rules! varint_local_limits {
-    ($name:ident($encodable_type:ty)) => {
-        local_limits!($name($encodable_type));
-
-        impl LocalLimits for $name {
-            #[inline]
-            fn as_varint(&self) -> VarInt {
-                self.0
-            }
-        }
+// VarInt-specific functionality. An optional `$max` bounds accepted values.
+macro_rules! varint_limits {
+    ($name:ident($encodable_type:ty) $(, $max:expr)?) => {
+        limits!($name($encodable_type));
 
         impl TryFrom<u64> for $name {
             type Error = ValidationError;
@@ -71,13 +72,49 @@ macro_rules! varint_local_limits {
             #[inline]
             fn try_from(value: u64) -> Result<Self, Self::Error> {
                 let value = VarInt::new(value)?;
+                $(
+                    if value > $max {
+                        return Err(ValidationError(concat!(
+                            stringify!($name),
+                            " exceeds its maximum value"
+                        )));
+                    }
+                )?
                 Ok(Self(value))
             }
         }
     };
 }
 
-local_limits!(MaxSendBufferSize(u32));
+// Limits for streams opened locally.
+macro_rules! varint_local_limits {
+    ($name:ident($encodable_type:ty)) => {
+        varint_limits!($name($encodable_type));
+
+        impl LocalLimits for $name {
+            #[inline]
+            fn as_varint(&self) -> VarInt {
+                self.0
+            }
+        }
+    };
+}
+
+// Limits for streams opened by the peer.
+macro_rules! varint_remote_limits {
+    ($name:ident($encodable_type:ty), $max:expr) => {
+        varint_limits!($name($encodable_type), $max);
+
+        impl $name {
+            #[inline]
+            pub const fn as_varint(self) -> VarInt {
+                self.0
+            }
+        }
+    };
+}
+
+limits!(MaxSendBufferSize(u32));
 
 impl MaxSendBufferSize {
     pub const RECOMMENDED: Self = Self(DEFAULT_STREAM_MAX_SEND_BUFFER_SIZE);
@@ -113,4 +150,18 @@ impl From<InitialMaxStreamsBidi> for LocalBidirectional {
     fn from(value: InitialMaxStreamsBidi) -> Self {
         Self(value.as_varint())
     }
+}
+
+// Cumulative remote stream limits are bounded by `MAX_STREAMS_MAX_VALUE`, the
+// largest cumulative count a MAX_STREAMS frame can carry.
+varint_remote_limits!(TotalRemoteUnidirectional(VarInt), MAX_STREAMS_MAX_VALUE);
+
+impl TotalRemoteUnidirectional {
+    pub const RECOMMENDED: Self = Self(MAX_STREAMS_MAX_VALUE);
+}
+
+varint_remote_limits!(TotalRemoteBidirectional(VarInt), MAX_STREAMS_MAX_VALUE);
+
+impl TotalRemoteBidirectional {
+    pub const RECOMMENDED: Self = Self(MAX_STREAMS_MAX_VALUE);
 }

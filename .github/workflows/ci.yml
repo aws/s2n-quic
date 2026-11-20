@@ -282,7 +282,13 @@ jobs:
             # s2n-quic-dc tests are too slow to be emulated with QEMU
             exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
           - rust: stable
-            os: ubuntu-latest
+            # Docker 29.4.2 on the ubuntu-26.04 image denies socketcall(2) in its default
+            # seccomp profile, which breaks socket creation for i386 glibc in the cross
+            # container (https://github.com/actions/runner-images/issues/14790). Stay on
+            # 24.04 until the 26.04 image ships Docker 29.4.3 or later. Setting
+            # `env: CROSS_CONTAINER_OPTS="--security-opt seccomp=unconfined"` on this entry
+            # also works on ubuntu-latest.
+            os: ubuntu-24.04
             target: i686-unknown-linux-gnu
             # s2n-quic-dc requires a large number of threads for testing, which isn't supported on i686
             exclude: --exclude s2n-quic-dc --exclude s2n-quic-dc-benches --exclude s2n-quic-dc-metrics
@@ -1107,6 +1113,18 @@ jobs:
       - name: Generate bindings
         working-directory: dc/wireshark
         run: cargo xtask bindings
+
+      # Ubuntu 26.04 confines tshark with an AppArmor profile that cannot read the
+      # workspace, so tshark silently skips the plugin in WIRESHARK_PLUGIN_DIR
+      # (https://bugs.launchpad.net/apparmor/+bug/2173933). Allow reads under the
+      # workspace through the profile's local override.
+      - name: Allow tshark to read the workspace
+        if: runner.os == 'Linux'
+        run: |
+          if [ -f /etc/apparmor.d/tshark ]; then
+            echo "\"$GITHUB_WORKSPACE/**\" mr," | sudo tee -a /etc/apparmor.d/local/tshark
+            sudo apparmor_parser -r /etc/apparmor.d/tshark
+          fi
 
       - name: Run cargo fmt
         working-directory: dc/wireshark

@@ -226,12 +226,8 @@ impl State {
             self.cycle_phase == CyclePhase::Down || self.cycle_phase == CyclePhase::Cruise
         );
 
-        if self.has_elapsed_in_phase(self.bw_probe_wait, now)
+        self.has_elapsed_in_phase(self.bw_probe_wait, now)
             || self.is_reno_coexistence_probe_time(target_inflight, max_data_size)
-        {
-            return true;
-        }
-        false
     }
 
     /// Probe for possible increases in bandwidth

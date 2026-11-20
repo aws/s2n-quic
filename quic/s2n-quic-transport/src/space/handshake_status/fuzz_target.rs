@@ -41,11 +41,7 @@ impl Oracle {
     fn can_transmit(&self) -> bool {
         // if the server endpoint is complete but has not yet
         // delivered the HANDSHAKE_DONE
-        if self.endpoint_type.is_server() && self.complete && !self.handshake_done_delivered {
-            return true;
-        }
-
-        false
+        self.endpoint_type.is_server() && self.complete && !self.handshake_done_delivered
     }
 
     fn on_handshake_complete(&mut self) {

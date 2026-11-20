@@ -1,0 +1,550 @@
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: Apache-2.0
+
+use super::*;
+use bach::time::timeout;
+use bytes::Bytes;
+use s2n_quic::{
+    server::{self, ServerProviders},
+    stream::{BidirectionalStream, SendStream},
+    Connection,
+};
+use s2n_quic_core::{
+    connection::limits::{ConnectionInfo, HandshakeInfo, Limiter, Limits, UpdatableLimits},
+    transport::parameters::MAX_STREAMS_MAX_VALUE,
+};
+use tokio::sync::oneshot;
+
+const CONCURRENT_BIDI: u64 = 5;
+const CONCURRENT_UNI: u64 = 4;
+const TOTAL_BIDI: u64 = 12;
+const TOTAL_UNI: u64 = 9;
+
+// Keep the block timeout below the idle timeout so the connection remains open.
+const BLOCKED_TIMEOUT: Duration = Duration::from_secs(100);
+
+const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Notifies tests when the server receives `STREAMS_BLOCKED` for either
+/// stream direction.
+struct StreamsBlockedDetector {
+    bidi_sender: Option<oneshot::Sender<u64>>,
+    uni_sender: Option<oneshot::Sender<u64>>,
+}
+
+impl StreamsBlockedDetector {
+    fn new() -> (Self, oneshot::Receiver<u64>, oneshot::Receiver<u64>) {
+        let (bidi_tx, bidi_rx) = oneshot::channel();
+        let (uni_tx, uni_rx) = oneshot::channel();
+        (
+            Self {
+                bidi_sender: Some(bidi_tx),
+                uni_sender: Some(uni_tx),
+            },
+            bidi_rx,
+            uni_rx,
+        )
+    }
+}
+
+impl events::Subscriber for StreamsBlockedDetector {
+    type ConnectionContext = ();
+
+    fn create_connection_context(
+        &mut self,
+        _meta: &events::ConnectionMeta,
+        _info: &events::ConnectionInfo,
+    ) -> Self::ConnectionContext {
+    }
+
+    fn on_frame_received(
+        &mut self,
+        _context: &mut Self::ConnectionContext,
+        _meta: &events::ConnectionMeta,
+        event: &events::FrameReceived,
+    ) {
+        match event.frame {
+            events::Frame::StreamsBlocked {
+                stream_type: events::StreamType::Bidirectional { .. },
+                stream_limit,
+                ..
+            } => {
+                if let Some(tx) = self.bidi_sender.take() {
+                    let _ = tx.send(stream_limit);
+                }
+            }
+            events::Frame::StreamsBlocked {
+                stream_type: events::StreamType::Unidirectional { .. },
+                stream_limit,
+                ..
+            } => {
+                if let Some(tx) = self.uni_sender.take() {
+                    let _ = tx.send(stream_limit);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Builds a server with shared IO, TLS, event, and RNG providers.
+fn base_server(
+    handle: &Handle,
+    model: Model,
+    subscriber: impl events::Subscriber,
+) -> Result<server::Builder<impl ServerProviders>> {
+    Ok(Server::builder()
+        .with_io(handle.builder().build()?)?
+        .with_tls(SERVER_CERTS)?
+        .with_event((tracing_events(true, model), subscriber))?
+        .with_random(Random::with_seed(456))?)
+}
+
+/// Builds a client with the idle timeout used by these tests.
+fn test_client(handle: &Handle, model: Model) -> Result<Client> {
+    Ok(Client::builder()
+        .with_io(handle.builder().build()?)?
+        .with_tls(certificates::CERT_PEM)?
+        .with_event(tracing_events(true, model))?
+        .with_random(Random::with_seed(123))?
+        .with_limits(
+            provider::limits::Limits::default()
+                .with_max_idle_timeout(IDLE_TIMEOUT)
+                .unwrap(),
+        )?
+        .start()?)
+}
+
+/// Opens `count` bidirectional streams, sends a payload on each, and verifies
+/// the echoed data matches.
+async fn open_bidi_streams(connection: &mut Connection, count: u64) {
+    for i in 0..count {
+        let payload = Bytes::from(format!("stream {i}"));
+        let result = connection.open_bidirectional_stream().await;
+        assert!(
+            result.is_ok(),
+            "bidi stream {i} should open within cap of {count}"
+        );
+        let mut stream = result.unwrap();
+        stream.send(payload.clone()).await.unwrap();
+        stream.finish().unwrap();
+
+        let mut received = Vec::new();
+        while let Ok(Some(chunk)) = stream.receive().await {
+            received.extend_from_slice(&chunk);
+        }
+        assert_eq!(
+            received,
+            payload.as_ref(),
+            "echoed data mismatch on bidi stream {i}"
+        );
+        bach::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Opens `count` unidirectional (send-only) streams with a payload on each.
+async fn open_uni_streams(connection: &mut Connection, count: u64) {
+    for i in 0..count {
+        let result = connection.open_send_stream().await;
+        assert!(
+            result.is_ok(),
+            "uni stream {i} should open within cap of {count}"
+        );
+        let mut stream = result.unwrap();
+        stream
+            .send(Bytes::from(format!("stream {i}")))
+            .await
+            .unwrap();
+        stream.finish().unwrap();
+        bach::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+
+/// Opens and returns `count` unfinished bidirectional streams.
+async fn open_bidi_streams_held(
+    connection: &mut Connection,
+    count: u64,
+) -> Vec<BidirectionalStream> {
+    let mut streams = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let result = connection.open_bidirectional_stream().await;
+        assert!(
+            result.is_ok(),
+            "bidi stream {i} should open within concurrent limit of {count}"
+        );
+        streams.push(result.unwrap());
+    }
+    streams
+}
+
+/// Opens and returns `count` unfinished unidirectional streams.
+async fn open_uni_streams_held(connection: &mut Connection, count: u64) -> Vec<SendStream> {
+    let mut streams = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let result = connection.open_send_stream().await;
+        assert!(
+            result.is_ok(),
+            "uni stream {i} should open within concurrent limit of {count}"
+        );
+        streams.push(result.unwrap());
+    }
+    streams
+}
+
+/// Asserts the next bidirectional stream open blocks (times out) and the server
+/// received a `STREAMS_BLOCKED` frame at `expected_cap`.
+async fn assert_stream_blocked_bidi(
+    connection: &mut Connection,
+    blocked_rx: oneshot::Receiver<u64>,
+    expected_cap: u64,
+) {
+    match timeout(BLOCKED_TIMEOUT, connection.open_bidirectional_stream()).await {
+        Err(_) => {} // timed out — stream correctly blocked
+        Ok(Ok(_)) => panic!("bidi stream opened beyond cap of {expected_cap}"),
+        Ok(Err(err)) => panic!("connection error before bidi block timeout: {err}"),
+    }
+    let limit = timeout(Duration::from_secs(5), blocked_rx)
+        .await
+        .expect("server should have received bidi STREAMS_BLOCKED (timed out)")
+        .expect("bidi STREAMS_BLOCKED oneshot closed");
+    assert_eq!(limit, expected_cap, "bidi STREAMS_BLOCKED limit");
+}
+
+/// Asserts the next unidirectional stream open blocks (times out) and the
+/// server received a `STREAMS_BLOCKED` frame at `expected_cap`.
+async fn assert_stream_blocked_uni(
+    connection: &mut Connection,
+    blocked_rx: oneshot::Receiver<u64>,
+    expected_cap: u64,
+) {
+    match timeout(BLOCKED_TIMEOUT, connection.open_send_stream()).await {
+        Err(_) => {} // timed out — stream correctly blocked
+        Ok(Ok(_)) => panic!("uni stream opened beyond cap of {expected_cap}"),
+        Ok(Err(err)) => panic!("connection error before uni block timeout: {err}"),
+    }
+    let limit = timeout(Duration::from_secs(5), blocked_rx)
+        .await
+        .expect("server should have received uni STREAMS_BLOCKED (timed out)")
+        .expect("uni STREAMS_BLOCKED oneshot closed");
+    assert_eq!(limit, expected_cap, "uni STREAMS_BLOCKED limit");
+}
+
+/// Verifies close-driven replenishment stops at the cumulative cap for both
+/// stream directions.
+#[test]
+fn cumulative_stream_cap() {
+    let model = Model::default();
+    let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
+
+    test(model.clone(), move |handle| {
+        // Concurrent limits are below total, so reaching the cap requires
+        // close-driven refill.
+        let server = base_server(handle, model.clone(), detector)?
+            .with_limits(
+                provider::limits::Limits::default()
+                    .with_max_idle_timeout(IDLE_TIMEOUT)
+                    .unwrap()
+                    .with_max_open_remote_bidirectional_streams(CONCURRENT_BIDI)
+                    .unwrap()
+                    .with_max_total_remote_bidirectional_streams(TOTAL_BIDI)
+                    .unwrap()
+                    .with_max_open_remote_unidirectional_streams(CONCURRENT_UNI)
+                    .unwrap()
+                    .with_max_total_remote_unidirectional_streams(TOTAL_UNI)
+                    .unwrap(),
+            )?
+            .start()?;
+        let server_addr = start_server(server)?;
+
+        let client = test_client(handle, model.clone())?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let mut connection = client.connect(connect).await.unwrap();
+
+            // The client sends STREAMS_BLOCKED only when other frames trigger a
+            // transmission, so hold the last stream open with data sent on it.
+            open_uni_streams(&mut connection, TOTAL_UNI - 1).await;
+            let mut held_uni = connection.open_send_stream().await.unwrap();
+            held_uni.send(Bytes::from("held uni stream")).await.unwrap();
+            assert_stream_blocked_uni(&mut connection, uni_blocked_rx, TOTAL_UNI).await;
+            held_uni.finish().unwrap();
+
+            open_bidi_streams(&mut connection, TOTAL_BIDI - 1).await;
+            let mut held_bidi = connection.open_bidirectional_stream().await.unwrap();
+            held_bidi
+                .send(Bytes::from("held bidi stream"))
+                .await
+                .unwrap();
+            assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, TOTAL_BIDI).await;
+            held_bidi.finish().unwrap();
+        });
+
+        Ok(())
+    })
+    .unwrap();
+}
+
+/// Limits for one stream type across both `Limiter` stages.
+struct StreamCapConfig {
+    connection_open: u64,
+    connection_total: u64,
+    handshake_open: u64,
+    handshake_total: u64,
+}
+
+impl Default for StreamCapConfig {
+    fn default() -> Self {
+        Self {
+            connection_open: 100,
+            connection_total: MAX_STREAMS_MAX_VALUE.as_u64(),
+            handshake_open: 100,
+            handshake_total: MAX_STREAMS_MAX_VALUE.as_u64(),
+        }
+    }
+}
+
+/// Sets initial stream caps in `on_connection`, raises them per-SNI in
+/// `on_post_handshake`.
+struct PostHandshakeLimiter {
+    bidi: StreamCapConfig,
+    uni: StreamCapConfig,
+}
+
+impl Limiter for PostHandshakeLimiter {
+    fn on_connection(&mut self, _info: &ConnectionInfo) -> Limits {
+        Limits::default()
+            .with_max_idle_timeout(IDLE_TIMEOUT)
+            .unwrap()
+            .with_max_open_remote_bidirectional_streams(self.bidi.connection_open)
+            .unwrap()
+            .with_max_total_remote_bidirectional_streams(self.bidi.connection_total)
+            .unwrap()
+            .with_max_open_remote_unidirectional_streams(self.uni.connection_open)
+            .unwrap()
+            .with_max_total_remote_unidirectional_streams(self.uni.connection_total)
+            .unwrap()
+    }
+
+    fn on_post_handshake(&mut self, info: &HandshakeInfo, limits: &mut UpdatableLimits) {
+        if let Some(sni) = info.server_name {
+            if &**sni == "localhost" {
+                limits
+                    .with_max_open_remote_bidirectional_streams(self.bidi.handshake_open)
+                    .unwrap();
+                limits
+                    .with_max_total_remote_bidirectional_streams(self.bidi.handshake_total)
+                    .unwrap();
+                limits
+                    .with_max_open_remote_unidirectional_streams(self.uni.handshake_open)
+                    .unwrap();
+                limits
+                    .with_max_total_remote_unidirectional_streams(self.uni.handshake_total)
+                    .unwrap();
+            }
+        }
+    }
+}
+
+/// Verifies post-handshake cumulative-limit raises let the peer open the
+/// newly permitted streams.
+#[test]
+fn post_handshake_raises_total_limit() {
+    let connection_total_bidi = 3u64;
+    let connection_total_uni = 2u64;
+    let raised_total_bidi = TOTAL_BIDI;
+    let raised_total_uni = TOTAL_UNI;
+
+    let model = Model::default();
+    let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
+
+    test(model.clone(), move |handle| {
+        let server = base_server(handle, model.clone(), detector)?
+            .with_limits(PostHandshakeLimiter {
+                bidi: StreamCapConfig {
+                    connection_total: connection_total_bidi,
+                    handshake_total: raised_total_bidi,
+                    ..StreamCapConfig::default()
+                },
+                uni: StreamCapConfig {
+                    connection_total: connection_total_uni,
+                    handshake_total: raised_total_uni,
+                    ..StreamCapConfig::default()
+                },
+            })?
+            .start()?;
+        let server_addr = start_server(server)?;
+
+        let client = test_client(handle, model.clone())?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let mut connection = client.connect(connect).await.unwrap();
+
+            // Hold the final stream open so the next blocked attempt transmits
+            // `STREAMS_BLOCKED`.
+            open_uni_streams(&mut connection, raised_total_uni - 1).await;
+            let mut held_uni = connection.open_send_stream().await.unwrap();
+            held_uni.send(Bytes::from("held uni stream")).await.unwrap();
+            assert_stream_blocked_uni(&mut connection, uni_blocked_rx, raised_total_uni).await;
+            held_uni.finish().unwrap();
+
+            open_bidi_streams(&mut connection, raised_total_bidi - 1).await;
+            let mut held_bidi = connection.open_bidirectional_stream().await.unwrap();
+            held_bidi
+                .send(Bytes::from("held bidi stream"))
+                .await
+                .unwrap();
+            assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, raised_total_bidi).await;
+            held_bidi.finish().unwrap();
+        });
+
+        Ok(())
+    })
+    .unwrap();
+}
+
+/// Verifies raising only the larger of the open and total limits does not send
+/// `MAX_STREAMS` because `min(open, total)` is unchanged.
+#[test]
+fn post_handshake_effective_limit_unchanged() {
+    let effective_limit = 5u64;
+    let initial_larger_limit = 10u64;
+    let raised_larger_limit = 20u64;
+
+    for (connection_open, connection_total, handshake_open, handshake_total, label) in [
+        (
+            effective_limit,
+            initial_larger_limit,
+            effective_limit,
+            raised_larger_limit,
+            "total raised above the open limit",
+        ),
+        (
+            initial_larger_limit,
+            effective_limit,
+            raised_larger_limit,
+            effective_limit,
+            "open raised above the total limit",
+        ),
+    ] {
+        let caps = || StreamCapConfig {
+            connection_open,
+            connection_total,
+            handshake_open,
+            handshake_total,
+        };
+        let model = Model::default();
+        let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
+        let frame_recorder = recorder::FrameSent::new();
+        let sent_frames = frame_recorder.events();
+
+        test(model.clone(), move |handle| {
+            let server = base_server(handle, model.clone(), (detector, frame_recorder))?
+                .with_limits(PostHandshakeLimiter {
+                    bidi: caps(),
+                    uni: caps(),
+                })?
+                .start()?;
+            let server_addr = start_server(server)?;
+
+            let client = test_client(handle, model.clone())?;
+
+            primary::spawn(async move {
+                let connect = Connect::new(server_addr).with_server_name("localhost");
+                let mut connection = client.connect(connect).await.unwrap();
+
+                // Wait until any post-handshake update would have been sent.
+                bach::time::sleep(Duration::from_secs(1)).await;
+                assert!(
+                    !sent_frames
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|event| matches!(event.frame, events::Frame::MaxStreams { .. })),
+                    "{label}: MAX_STREAMS sent after the post-handshake raise"
+                );
+
+                // Keep streams open so replenishment cannot change the limit.
+                // Sending on the last stream transmits `STREAMS_BLOCKED`.
+                let mut uni_streams = open_uni_streams_held(&mut connection, effective_limit).await;
+                let held_uni = uni_streams
+                    .last_mut()
+                    .expect("effective_limit uni streams are held");
+                held_uni.send(Bytes::from("held uni stream")).await.unwrap();
+                assert_stream_blocked_uni(&mut connection, uni_blocked_rx, effective_limit).await;
+
+                let mut bidi_streams =
+                    open_bidi_streams_held(&mut connection, effective_limit).await;
+                let held_bidi = bidi_streams
+                    .last_mut()
+                    .expect("effective_limit bidi streams are held");
+                held_bidi
+                    .send(Bytes::from("held bidi stream"))
+                    .await
+                    .unwrap();
+                assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, effective_limit).await;
+            });
+
+            Ok(())
+        })
+        .unwrap_or_else(|err| panic!("{label}: {err}"));
+    }
+}
+
+/// Verifies a small post-handshake increase reaches the peer, allowing exactly
+/// one additional stream of each type.
+#[test]
+fn post_handshake_small_raise_grants_one_stream() {
+    let initial_open_limit = 20u64;
+    let raised_open_limit = initial_open_limit + 1;
+
+    let model = Model::default();
+    let (detector, bidi_blocked_rx, uni_blocked_rx) = StreamsBlockedDetector::new();
+
+    test(model.clone(), move |handle| {
+        // The total limits stay at the default maximum, so the open limit is
+        // the effective limit and the raise changes it.
+        let caps = || StreamCapConfig {
+            connection_open: initial_open_limit,
+            handshake_open: raised_open_limit,
+            ..StreamCapConfig::default()
+        };
+        let server = base_server(handle, model.clone(), detector)?
+            .with_limits(PostHandshakeLimiter {
+                bidi: caps(),
+                uni: caps(),
+            })?
+            .start()?;
+        let server_addr = start_server(server)?;
+
+        let client = test_client(handle, model.clone())?;
+
+        primary::spawn(async move {
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let mut connection = client.connect(connect).await.unwrap();
+
+            // Keep streams open so replenishment cannot change the limit.
+            // Sending on the last stream transmits `STREAMS_BLOCKED`.
+            let mut uni_streams = open_uni_streams_held(&mut connection, raised_open_limit).await;
+            let held_uni = uni_streams
+                .last_mut()
+                .expect("raised_open_limit uni streams are held");
+            held_uni.send(Bytes::from("held uni stream")).await.unwrap();
+            assert_stream_blocked_uni(&mut connection, uni_blocked_rx, raised_open_limit).await;
+
+            let mut bidi_streams = open_bidi_streams_held(&mut connection, raised_open_limit).await;
+            let held_bidi = bidi_streams
+                .last_mut()
+                .expect("raised_open_limit bidi streams are held");
+            held_bidi
+                .send(Bytes::from("held bidi stream"))
+                .await
+                .unwrap();
+            assert_stream_blocked_bidi(&mut connection, bidi_blocked_rx, raised_open_limit).await;
+        });
+
+        Ok(())
+    })
+    .unwrap();
+}

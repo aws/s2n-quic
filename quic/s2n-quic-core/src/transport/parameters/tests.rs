@@ -368,3 +368,76 @@ fn mtu_probing_complete_support_encoding() {
         );
     }
 }
+
+/// Verifies both endpoint types advertise `min(max_open, max_total)` for
+/// bidirectional and unidirectional streams across boundary cases.
+#[test]
+fn advertised_stream_limits_use_min_of_open_and_total() {
+    for (open_bidi, total_bidi, open_uni, total_uni, expected_bidi, expected_uni, label) in [
+        (10, 20, 10, 20, 10, 10, "open < total"),
+        (20, 10, 20, 10, 10, 10, "open > total"),
+        (15, 15, 15, 15, 15, 15, "open == total"),
+        (
+            100,
+            MAX_STREAMS_MAX_VALUE.as_u64(),
+            80,
+            MAX_STREAMS_MAX_VALUE.as_u64(),
+            100,
+            80,
+            "no total cap (default)",
+        ),
+        (0, 10, 0, 10, 0, 0, "zero open"),
+        (10, 0, 10, 0, 0, 0, "zero total"),
+    ] {
+        let limits = crate::connection::limits::Limits::default()
+            .with_max_open_remote_bidirectional_streams(open_bidi)
+            .unwrap()
+            .with_max_total_remote_bidirectional_streams(total_bidi)
+            .unwrap()
+            .with_max_open_remote_unidirectional_streams(open_uni)
+            .unwrap()
+            .with_max_total_remote_unidirectional_streams(total_uni)
+            .unwrap();
+
+        let helper = limits.advertised_flow_control_limits();
+
+        assert_eq!(
+            helper.max_open_remote_bidirectional_streams.as_u64(),
+            expected_bidi,
+            "{label}: helper bidi"
+        );
+        assert_eq!(
+            helper.max_open_remote_unidirectional_streams.as_u64(),
+            expected_uni,
+            "{label}: helper uni"
+        );
+
+        let mut server_params = ServerTransportParameters::default();
+        server_params.load_limits(&limits);
+
+        assert_eq!(
+            server_params.initial_max_streams_bidi.as_varint().as_u64(),
+            expected_bidi,
+            "{label}: server bidi"
+        );
+        assert_eq!(
+            server_params.initial_max_streams_uni.as_varint().as_u64(),
+            expected_uni,
+            "{label}: server uni"
+        );
+
+        let mut client_params = ClientTransportParameters::default();
+        client_params.load_limits(&limits);
+
+        assert_eq!(
+            client_params.initial_max_streams_bidi.as_varint().as_u64(),
+            expected_bidi,
+            "{label}: client bidi"
+        );
+        assert_eq!(
+            client_params.initial_max_streams_uni.as_varint().as_u64(),
+            expected_uni,
+            "{label}: client uni"
+        );
+    }
+}

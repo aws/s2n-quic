@@ -26,11 +26,17 @@ fn client_config() -> s2n_tls::config::Config {
 }
 
 fn server_config() -> s2n_tls::config::Config {
+    server_config_with_client_auth(s2n_tls::enums::ClientAuthType::Required)
+}
+
+fn server_config_with_client_auth(
+    client_auth: s2n_tls::enums::ClientAuthType,
+) -> s2n_tls::config::Config {
     let mut server_config = s2n_tls::config::Builder::new();
     server_config
         .with_system_certs(false)
         .unwrap()
-        .set_client_auth_type(s2n_tls::enums::ClientAuthType::Required)
+        .set_client_auth_type(client_auth)
         .unwrap()
         .set_verify_host_callback(VerifyHostNameClientCertVerifier::new("qlaws.qlaws"))
         .unwrap()
@@ -143,6 +149,12 @@ fn dc_client() -> Client<crate::psk::client::Provider, crate::event::tracing::Su
 
 async fn dc_server(
 ) -> crate::stream::server::tokio::Server<DummyHandshake, crate::event::tracing::Subscriber> {
+    dc_server_with_config(server_config()).await
+}
+
+async fn dc_server_with_config(
+    config: s2n_tls::config::Config,
+) -> crate::stream::server::tokio::Server<DummyHandshake, crate::event::tracing::Subscriber> {
     let map = crate::path::secret::Map::new(
         crate::path::secret::stateless_reset::Signer::new(b"default"),
         50,
@@ -171,7 +183,7 @@ async fn dc_server(
                     .build()
                     .unwrap(),
             ),
-            Arc::new(server_config()),
+            Arc::new(config),
         ))
         .build(handshake, crate::event::tracing::Subscriber::default())
         .unwrap()
@@ -770,4 +782,31 @@ impl VerifyHostNameClientCertVerifier {
             host_name: host_name.to_string(),
         }
     }
+}
+
+#[tokio::test]
+async fn tls_without_client_certificate() {
+    let endpoint = dc_server_with_config(server_config_with_client_auth(
+        s2n_tls::enums::ClientAuthType::None,
+    ))
+    .await;
+    let client = dc_client();
+    let config = client_config();
+    let (client, server) = tokio::join!(
+        client.connect_tls(
+            endpoint.acceptor_addr().unwrap(),
+            Name::from_static("qlaws.qlaws"),
+            &config,
+        ),
+        endpoint.accept(),
+    );
+    let mut client = client.unwrap();
+    let (mut server, _) = server.unwrap();
+    assert!(client.peer_cert_chain().is_some());
+    assert!(server.peer_cert_chain().is_none());
+
+    client.write_all(b"hello").await.unwrap();
+    let mut received = [0; 5];
+    server.read_exact(&mut received).await.unwrap();
+    assert_eq!(&received, b"hello");
 }

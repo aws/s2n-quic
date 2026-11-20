@@ -12,4 +12,4 @@ anyhow = "1.0.68"
 env_logger = "0.11"
 log = "0.4"
 s2n-quic-xdp = { path = "../s2n-quic-xdp" }
-tokio = { version = "1.24", features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1.53.3", features = ["macros", "rt", "rt-multi-thread", "net", "signal"] }

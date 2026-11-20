@@ -27,7 +27,7 @@ zerocopy = { version = "0.8", features = ["derive"] }
 
 # quiche depends on BoringSSL, which builds on unix and on Windows MSVC, but not with the Windows MinGW-family toolchains.
 [target.'cfg(not(all(target_os = "windows", not(target_env = "msvc"))))'.dependencies]
-quiche = "0.29"
+quiche = "0.30"
 
 [target.'cfg(any(unix, all(target_os = "windows", target_env = "gnu")))'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-tls-s2n", "unstable_client_hello"] }

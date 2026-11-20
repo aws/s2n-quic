@@ -91,9 +91,7 @@ macro_rules! impl_jmp {
     ($lower:ident, $x:ident, $upper:ident, $invert:expr) => {
         pub const fn $lower(value: u32, mut jt: u8, mut jf: u8) -> Instruction {
             if $invert {
-                let tmp = jt;
-                jt = jf;
-                jf = tmp;
+                core::mem::swap(&mut jt, &mut jf);
             }
 
             Instruction::raw(
@@ -106,9 +104,7 @@ macro_rules! impl_jmp {
 
         pub const fn $x(mut jt: u8, mut jf: u8) -> Instruction {
             if $invert {
-                let tmp = jt;
-                jt = jf;
-                jf = tmp;
+                core::mem::swap(&mut jt, &mut jf);
             }
 
             Instruction::raw(
