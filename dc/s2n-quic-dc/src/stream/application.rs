@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
+    clock::Clock,
     credentials::Id,
     event::{self, EndpointPublisher as _},
     path::secret::map::ApplicationData,
     stream::{
         recv::application::{self as recv, Reader},
         send::application::{self as send, Writer},
-        shared::ArcShared,
+        shared::{ArcShared, ArcTlsShared, Common},
         socket,
+        transport::Transport,
     },
 };
 use core::{fmt, time::Duration};
@@ -19,7 +21,7 @@ use std::{io, net::SocketAddr};
 pub struct Builder<Sub: event::Subscriber> {
     pub read: recv::Builder<Sub>,
     pub write: send::Builder<Sub>,
-    pub shared: ArcShared<Sub>,
+    pub(crate) shared: Transport<ArcShared<Sub>, ArcShared<Sub>, ArcTlsShared<Sub>>,
     pub sockets: Box<dyn socket::application::Builder>,
     /// Timestamp of accept(2)/connect(2) syscall -- either end of that call or start, depending on
     /// the details of our internal implementation.
@@ -42,6 +44,14 @@ impl<Sub> Builder<Sub>
 where
     Sub: event::Subscriber,
 {
+    #[inline]
+    pub(crate) fn common(&self) -> &Common<Sub, dyn Clock> {
+        match &self.shared {
+            Transport::DcUdp(shared) | Transport::DcTcp(shared) => &shared.common,
+            Transport::Tls(shared) => &shared.common,
+        }
+    }
+
     /// Builds the stream and emits an event indicating that the stream was built
     #[inline]
     #[allow(
@@ -51,24 +61,25 @@ where
     pub(crate) fn accept(self) -> io::Result<(Stream<Sub>, AcceptInfo)> {
         let kernel_start_time = self.kernel_start_time;
         let app_queue_time = self.app_queue_time.expect("set by accept_stream");
-        let remote_address = self.shared.remote_addr();
+        let common = self.common();
+        let remote_address = common.remote_addr();
         let remote_address = &remote_address;
-        let creds = self.shared.credentials();
+        let creds = common.credentials();
         let credential_id = &*creds.id;
         let stream_id = creds.key_id.as_u64();
-        let now = self.shared.common.clock.get_time();
+        let now = common.clock.get_time();
         let total_sojourn_time = now.saturating_duration_since(self.kernel_start_time);
         let queue_sojourn_time = now.saturating_duration_since(app_queue_time);
 
-        self.shared
-            .endpoint_publisher(now)
-            .on_acceptor_stream_dequeued(event::builder::AcceptorStreamDequeued {
+        common.endpoint_publisher(now).on_acceptor_stream_dequeued(
+            event::builder::AcceptorStreamDequeued {
                 remote_address,
                 credential_id,
                 stream_id,
                 sojourn_time: total_sojourn_time,
                 queue_sojourn_time,
-            });
+            },
+        );
 
         self.build().map(|stream| {
             (
@@ -101,37 +112,53 @@ where
         // TODO emit event
 
         let sockets = sockets.build()?;
-        let read = read.build(shared.clone(), sockets.clone());
-        let write = write.build(shared, sockets);
+        let (read, write) = match shared {
+            Transport::DcUdp(shared) | Transport::DcTcp(shared) => (
+                read.build(shared.clone(), sockets.clone()),
+                write.build(shared, sockets),
+            ),
+            Transport::Tls(shared) => (
+                read.build_tls(shared.clone(), sockets.clone()),
+                write.build_tls(shared, sockets),
+            ),
+        };
         Ok(Stream { read, write })
     }
 
     /// Emits an event indicating that the stream was pruned
     #[inline]
     pub(crate) fn prune(self, reason: event::builder::AcceptorStreamPruneReason) {
-        let now = self.shared.clock.get_time();
-        let remote_address = self.shared.remote_addr();
+        let common = self.common();
+        let now = common.clock.get_time();
+        let remote_address = common.remote_addr();
         let remote_address = &remote_address;
-        let creds = self.shared.credentials();
+        let creds = common.credentials();
         let credential_id = &*creds.id;
         let stream_id = creds.key_id.as_u64();
         let sojourn_time = now
             .saturating_duration_since(self.app_queue_time.expect("only called on server streams"));
 
-        self.shared
-            .endpoint_publisher(now)
-            .on_acceptor_stream_pruned(event::builder::AcceptorStreamPruned {
+        common.endpoint_publisher(now).on_acceptor_stream_pruned(
+            event::builder::AcceptorStreamPruned {
                 remote_address,
                 credential_id,
                 stream_id,
                 sojourn_time,
                 reason,
-            });
+            },
+        );
 
-        let publisher = self.shared.publisher_with_timestamp(now);
-
-        self.shared.receiver.on_prune(&publisher);
-        self.shared.sender.on_prune();
+        match &self.shared {
+            Transport::DcUdp(shared) | Transport::DcTcp(shared) => {
+                let publisher = shared.publisher_with_timestamp(now);
+                shared.receiver.on_prune(&publisher);
+                shared.sender.on_prune();
+            }
+            Transport::Tls(shared) => {
+                let publisher = shared.publisher_with_timestamp(now);
+                shared.receiver.on_prune(&publisher);
+            }
+        }
     }
 }
 

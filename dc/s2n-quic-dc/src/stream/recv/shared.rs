@@ -9,7 +9,7 @@ use crate::{
     packet::{stream, Packet},
     stream::{
         recv::{self, buffer::Buffer as _},
-        shared::{self, handshake, AcceptState, ArcShared, ShutdownKind},
+        shared::{self, handshake, AcceptState, ArcShared, ArcTlsShared, ShutdownKind},
         socket::{self, Socket},
         Actor, TransportFeatures,
     },
@@ -161,6 +161,25 @@ impl State {
     where
         Sub: event::Subscriber,
     {
+        self.guard(Some(Ack {
+            mode: ack_mode,
+            send_buffer,
+            shared,
+            sockets,
+        }))
+    }
+
+    pub fn application_guard_without_ack<Sub>(&self) -> io::Result<AppGuard<'_, Sub>>
+    where
+        Sub: event::Subscriber,
+    {
+        self.guard(None)
+    }
+
+    fn guard<'a, Sub>(&'a self, ack: Option<Ack<'a, Sub>>) -> io::Result<AppGuard<'a, Sub>>
+    where
+        Sub: event::Subscriber,
+    {
         // increment the epoch at which we acquired the guard
         self.application_epoch.fetch_add(1, Ordering::AcqRel);
 
@@ -175,10 +194,8 @@ impl State {
 
         Ok(AppGuard {
             inner,
-            ack_mode,
-            send_buffer,
-            shared,
-            sockets,
+            state: self,
+            ack,
             initial_state,
         })
     }
@@ -263,11 +280,19 @@ where
     Sub: event::Subscriber,
 {
     inner: ManuallyDrop<MutexGuard<'a, Inner>>,
-    ack_mode: AckMode,
+    state: &'a State,
+    ack: Option<Ack<'a, Sub>>,
+    initial_state: state::Receiver,
+}
+
+struct Ack<'a, Sub>
+where
+    Sub: event::Subscriber,
+{
+    mode: AckMode,
     send_buffer: &'a mut msg::send::Message,
     shared: &'a ArcShared<Sub>,
     sockets: &'a dyn socket::Application,
-    initial_state: state::Receiver,
 }
 
 impl<Sub> AppGuard<'_, Sub>
@@ -277,30 +302,33 @@ where
     /// Returns `true` if the read worker should be woken
     #[inline]
     fn send_ack(&mut self) -> bool {
+        let Some(ack) = &mut self.ack else {
+            return false;
+        };
+
         // we only send ACKs for unreliable protocols
-        ensure!(!self.sockets.features().is_reliable(), false);
+        ensure!(!ack.sockets.features().is_reliable(), false);
 
         // If we haven't completed the handshake then no need to send an ACK
         ensure!(
-            !matches!(self.handshake, handshake::State::ClientInit),
+            !matches!(self.inner.handshake, handshake::State::ClientInit),
             false
         );
 
-        match self.ack_mode {
+        match ack.mode {
             AckMode::Application => {
-                self.inner
-                    .fill_transmit_queue(self.shared, self.send_buffer);
+                self.inner.fill_transmit_queue(ack.shared, ack.send_buffer);
 
-                ensure!(!self.send_buffer.is_empty(), false);
+                ensure!(!ack.send_buffer.is_empty(), false);
 
-                let did_send = self
+                let did_send = ack
                     .sockets
                     .read_application()
-                    .try_send_buffer(self.send_buffer)
+                    .try_send_buffer(ack.send_buffer)
                     .is_ok();
 
                 // clear out the sender buffer if we didn't already
-                let _ = self.send_buffer.drain();
+                let _ = ack.send_buffer.drain();
 
                 // only wake the worker if we weren't able to transmit the ACK
                 !did_send
@@ -359,7 +387,7 @@ where
 
         // shut down the worker if we're in a terminal state
         if current_state.is_terminal() {
-            self.shared.receiver.shutdown(ShutdownKind::Normal);
+            self.state.shutdown(ShutdownKind::Normal);
         }
     }
 }
@@ -471,22 +499,11 @@ impl Inner {
             .on_read_buffer(&mut self.reassembler, out_buf, accept_state, clock);
 
         // check if we have any packets to process
-        let has_tls_buffered = shared.s2n_connection.as_ref().is_some_and(|conn| {
-            conn.buffered_plaintext_len() > 0 || conn.buffered_ciphertext_len() > 0
-        });
-        if !self.buffer.is_empty() || has_tls_buffered {
+        if !self.buffer.is_empty() {
             let res = {
                 let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
 
-                if let Some(conn) = &shared.s2n_connection {
-                    let res = conn.read(&mut self.buffer, &mut out_buf);
-
-                    if res.is_ok() && out_buf.final_offset().is_some() {
-                        let _ = self.receiver.state.on_receive_fin();
-                    }
-
-                    res
-                } else if features.is_stream() {
+                if features.is_stream() {
                     // this opener should never actually be used anywhere. any packets that try to use control
                     // authentication will result in stream closure.
                     let control_opener = &crate::crypto::open::control::stream::Reliable::default();
@@ -539,6 +556,50 @@ impl Inner {
 
         // indicate to the caller if we need to transmit an ACK
         self.receiver.should_transmit()
+    }
+
+    #[inline]
+    pub(crate) fn process_recv_buffer_tls<Sub>(
+        &mut self,
+        out_buf: &mut impl buffer::writer::Storage,
+        shared: &ArcTlsShared<Sub>,
+    ) where
+        Sub: event::Subscriber,
+    {
+        let clock = clock::Cached::new(&shared.clock);
+        let clock = &clock;
+        let publisher = shared.publisher_with_timestamp(clock.get_time());
+        let accept_state = AcceptState::Accepted;
+
+        // try copying data out of the reassembler into the application buffer
+        self.receiver
+            .on_read_buffer(&mut self.reassembler, out_buf, accept_state, clock);
+
+        let conn = &shared.connection;
+
+        // check if we have any records to process
+        let has_buffered = conn.buffered_plaintext_len() > 0 || conn.buffered_ciphertext_len() > 0;
+        if !self.buffer.is_empty() || has_buffered {
+            let res = {
+                let mut out_buf = buffer::duplex::Interposer::new(out_buf, &mut self.reassembler);
+
+                let res = conn.read(&mut self.buffer, &mut out_buf);
+
+                if res.is_ok() && out_buf.final_offset().is_some() {
+                    let _ = self.receiver.state.on_receive_fin();
+                }
+
+                res
+            };
+
+            if let Err(err) = res {
+                self.receiver.on_error(err, Location::Local, &publisher);
+            }
+
+            // if we processed records then we may have data to copy out
+            self.receiver
+                .on_read_buffer(&mut self.reassembler, out_buf, accept_state, clock);
+        }
     }
 }
 

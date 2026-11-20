@@ -18,7 +18,6 @@ use super::accept;
 use crate::{
     event,
     event::EndpointPublisher,
-    path::secret,
     stream::{
         environment::{tokio::Environment, Environment as _},
         TlsConnectionBuilder,
@@ -55,7 +54,6 @@ impl Builder {
         self,
         sender: accept::Sender<Sub>,
         env: Environment<Sub>,
-        map: secret::Map,
         accept_flavor: accept::Flavor,
     ) -> TlsServer<Sub>
     where
@@ -66,7 +64,6 @@ impl Builder {
             self.config,
             sender,
             env,
-            map,
             accept_flavor,
             self.timeout,
         )
@@ -82,7 +79,6 @@ where
     config: Arc<dyn TlsConnectionBuilder>,
     sender: accept::Sender<Sub>,
     env: Environment<Sub>,
-    map: secret::Map,
     accept_flavor: accept::Flavor,
     timeout: std::time::Duration,
 }
@@ -111,7 +107,6 @@ where
         config: Arc<dyn TlsConnectionBuilder>,
         sender: accept::Sender<Sub>,
         env: Environment<Sub>,
-        map: secret::Map,
         accept_flavor: accept::Flavor,
         timeout: Duration,
     ) -> Self {
@@ -120,7 +115,6 @@ where
             sender,
             config,
             env,
-            map,
             accept_flavor,
             timeout,
         }
@@ -176,7 +170,6 @@ where
         // (LIFO/FIFO/etc) more intelligently.
         let sender = self.sender.clone();
         let env = self.env.clone();
-        let map = self.map.clone();
         let flavor = self.accept_flavor;
         let timeout = self.timeout;
         #[expect(
@@ -192,7 +185,6 @@ where
                 conn,
                 sender,
                 &env,
-                map,
                 flavor,
                 kernel_accept_time,
             );
@@ -252,7 +244,6 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
     conn: crate::stream::TlsConnection,
     sender: accept::Sender<Sub>,
     env: &Environment<Sub>,
-    map: secret::Map,
     flavor: accept::Flavor,
     kernel_accept_time: Timestamp,
 ) -> std::io::Result<()> {
@@ -287,13 +278,12 @@ async fn accept_conn<Sub: event::Subscriber + Clone>(
         socket,
         connection,
         env,
-        &map,
         s2n_quic_core::endpoint::Type::Server,
     )?;
 
     {
         let remote_address: s2n_quic_core::inet::SocketAddress =
-            stream_builder.shared.remote_addr();
+            stream_builder.common().remote_addr();
         let remote_address = &remote_address;
         stream_builder.app_queue_time = Some(env.clock().get_time());
         env.endpoint_publisher()

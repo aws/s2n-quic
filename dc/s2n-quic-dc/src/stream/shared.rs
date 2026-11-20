@@ -9,7 +9,7 @@ use crate::{
     path::secret::map::ApplicationData,
     stream::{
         recv::shared as recv,
-        send::{application, shared as send},
+        send::{application, buffer as send_buffer, shared as send},
         tls::S2nTlsConnection,
     },
 };
@@ -65,6 +65,8 @@ pub enum AcceptState {
 }
 
 pub type ArcShared<Sub> = Arc<Shared<Sub, dyn Clock>>;
+
+pub(crate) type ArcTlsShared<Sub> = Arc<TlsShared<Sub, dyn Clock>>;
 
 pub struct Shared<Subscriber, Clk>
 where
@@ -167,27 +169,10 @@ where
     }
 
     #[inline]
-    pub fn remote_addr(&self) -> SocketAddress {
-        unsafe {
-            // SAFETY: the fixed information doesn't change for the lifetime of the stream
-            *self.common.fixed.remote_ip.get()
-        }
-        .with_port(self.remote_port.load(Ordering::Relaxed))
-    }
-
-    #[inline]
     pub fn application(&self) -> application::state::State {
         unsafe {
             // SAFETY: the fixed information doesn't change for the lifetime of the stream
             *self.common.fixed.application.get()
-        }
-    }
-
-    #[inline]
-    pub fn credentials(&self) -> &Credentials {
-        unsafe {
-            // SAFETY: the fixed information doesn't change for the lifetime of the stream
-            &*self.common.fixed.credentials.get()
         }
     }
 
@@ -198,6 +183,30 @@ where
 }
 
 impl<Sub, C> ops::Deref for Shared<Sub, C>
+where
+    Sub: event::Subscriber,
+    C: ?Sized + Clock,
+{
+    type Target = Common<Sub, C>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.common
+    }
+}
+
+pub(crate) struct TlsShared<Sub, Clk>
+where
+    Sub: event::Subscriber,
+    Clk: ?Sized + Clock,
+{
+    pub receiver: recv::State,
+    pub segment_alloc: send_buffer::Allocator,
+    pub connection: S2nTlsConnection,
+    pub common: Common<Sub, Clk>,
+}
+
+impl<Sub, C> ops::Deref for TlsShared<Sub, C>
 where
     Sub: event::Subscriber,
     C: ?Sized + Clock,
@@ -224,7 +233,6 @@ where
     pub last_peer_activity: AtomicU64,
     pub closed_halves: AtomicU8,
     pub subscriber: Subscriber<Sub>,
-    pub s2n_connection: Option<S2nTlsConnection>,
     pub clock: Clk,
 }
 
@@ -233,6 +241,23 @@ where
     Sub: event::Subscriber,
     Clk: ?Sized + Clock,
 {
+    #[inline]
+    pub fn remote_addr(&self) -> SocketAddress {
+        unsafe {
+            // SAFETY: the fixed information doesn't change for the lifetime of the stream
+            *self.fixed.remote_ip.get()
+        }
+        .with_port(self.remote_port.load(Ordering::Relaxed))
+    }
+
+    #[inline]
+    pub fn credentials(&self) -> &Credentials {
+        unsafe {
+            // SAFETY: the fixed information doesn't change for the lifetime of the stream
+            &*self.fixed.credentials.get()
+        }
+    }
+
     #[inline]
     pub fn ensure_open(&self) -> std::io::Result<()> {
         ensure!(
