@@ -153,6 +153,10 @@ impl super::map::SizeOf for Secret {
 }
 
 impl Secret {
+    pub(super) fn endpoint(&self) -> endpoint::Type {
+        self.endpoint
+    }
+
     #[inline]
     pub fn new(
         ciphersuite: Ciphersuite,

@@ -340,6 +340,10 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT__UTILIZATION,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
@@ -916,6 +920,14 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT__UTILIZATION: usize = InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT__UTILIZATION
+        as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER__UTILIZATION: usize = InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER__UTILIZATION
+        as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION
             as usize;
@@ -2099,7 +2111,9 @@ mod measure {
                     Self(acceptor_tcp_socket_sent__blocked_count_stream)
                 }
                 id::ACCEPTOR_TCP_SOCKET_SENT__LEN => Self(acceptor_tcp_socket_sent__len),
-                id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN => Self(acceptor_tcp_socket_received__len),
+                id::ACCEPTOR_TCP_SOCKET_RECEIVED__LEN => {
+                    Self(acceptor_tcp_socket_received__len)
+                }
                 id::ACCEPTOR_UDP_DATAGRAM_RECEIVED__LEN => {
                     Self(acceptor_udp_datagram_received__len)
                 }
@@ -2107,8 +2121,12 @@ mod measure {
                     Self(acceptor_udp_packet_received__payload_len)
                 }
                 id::STREAM_WRITE_FLUSHED__CONN => Self(stream_write_flushed__conn),
-                id::STREAM_WRITE_FLUSHED__PROVIDED => Self(stream_write_flushed__provided),
-                id::STREAM_WRITE_FLUSHED__COMMITTED => Self(stream_write_flushed__committed),
+                id::STREAM_WRITE_FLUSHED__PROVIDED => {
+                    Self(stream_write_flushed__provided)
+                }
+                id::STREAM_WRITE_FLUSHED__COMMITTED => {
+                    Self(stream_write_flushed__committed)
+                }
                 id::STREAM_WRITE_FLUSHED__COMMITTED__CONN => {
                     Self(stream_write_flushed__committed__conn)
                 }
@@ -2118,8 +2136,12 @@ mod measure {
                 id::STREAM_WRITE_FLUSHED__PROCESSING_DURATION__CONN => {
                     Self(stream_write_flushed__processing_duration__conn)
                 }
-                id::STREAM_WRITE_FIN_FLUSHED__CONN => Self(stream_write_fin_flushed__conn),
-                id::STREAM_WRITE_FIN_FLUSHED__PROVIDED => Self(stream_write_fin_flushed__provided),
+                id::STREAM_WRITE_FIN_FLUSHED__CONN => {
+                    Self(stream_write_fin_flushed__conn)
+                }
+                id::STREAM_WRITE_FIN_FLUSHED__PROVIDED => {
+                    Self(stream_write_fin_flushed__provided)
+                }
                 id::STREAM_WRITE_FIN_FLUSHED__COMMITTED => {
                     Self(stream_write_fin_flushed__committed)
                 }
@@ -2133,14 +2155,18 @@ mod measure {
                     Self(stream_write_fin_flushed__processing_duration__conn)
                 }
                 id::STREAM_WRITE_BLOCKED__CONN => Self(stream_write_blocked__conn),
-                id::STREAM_WRITE_BLOCKED__PROVIDED => Self(stream_write_blocked__provided),
+                id::STREAM_WRITE_BLOCKED__PROVIDED => {
+                    Self(stream_write_blocked__provided)
+                }
                 id::STREAM_WRITE_BLOCKED__PROCESSING_DURATION => {
                     Self(stream_write_blocked__processing_duration)
                 }
                 id::STREAM_WRITE_BLOCKED__PROCESSING_DURATION__CONN => {
                     Self(stream_write_blocked__processing_duration__conn)
                 }
-                id::STREAM_WRITE_ERRORED__PROVIDED => Self(stream_write_errored__provided),
+                id::STREAM_WRITE_ERRORED__PROVIDED => {
+                    Self(stream_write_errored__provided)
+                }
                 id::STREAM_WRITE_ERRORED__PROCESSING_DURATION => {
                     Self(stream_write_errored__processing_duration)
                 }
@@ -2154,8 +2180,12 @@ mod measure {
                 id::STREAM_WRITE_ALLOCATED__ALLOCATED_LEN__CONN => {
                     Self(stream_write_allocated__allocated_len__conn)
                 }
-                id::STREAM_WRITE_SHUTDOWN__BUFFER_LEN => Self(stream_write_shutdown__buffer_len),
-                id::STREAM_WRITE_SOCKET_FLUSHED__CONN => Self(stream_write_socket_flushed__conn),
+                id::STREAM_WRITE_SHUTDOWN__BUFFER_LEN => {
+                    Self(stream_write_shutdown__buffer_len)
+                }
+                id::STREAM_WRITE_SOCKET_FLUSHED__CONN => {
+                    Self(stream_write_socket_flushed__conn)
+                }
                 id::STREAM_WRITE_SOCKET_FLUSHED__PROVIDED => {
                     Self(stream_write_socket_flushed__provided)
                 }
@@ -2165,7 +2195,9 @@ mod measure {
                 id::STREAM_WRITE_SOCKET_FLUSHED__COMMITTED__CONN => {
                     Self(stream_write_socket_flushed__committed__conn)
                 }
-                id::STREAM_WRITE_SOCKET_BLOCKED__CONN => Self(stream_write_socket_blocked__conn),
+                id::STREAM_WRITE_SOCKET_BLOCKED__CONN => {
+                    Self(stream_write_socket_blocked__conn)
+                }
                 id::STREAM_WRITE_SOCKET_BLOCKED__PROVIDED => {
                     Self(stream_write_socket_blocked__provided)
                 }
@@ -2174,7 +2206,9 @@ mod measure {
                 }
                 id::STREAM_READ_FLUSHED__CONN => Self(stream_read_flushed__conn),
                 id::STREAM_READ_FLUSHED__CAPACITY => Self(stream_read_flushed__capacity),
-                id::STREAM_READ_FLUSHED__COMMITTED => Self(stream_read_flushed__committed),
+                id::STREAM_READ_FLUSHED__COMMITTED => {
+                    Self(stream_read_flushed__committed)
+                }
                 id::STREAM_READ_FLUSHED__COMMITTED__CONN => {
                     Self(stream_read_flushed__committed__conn)
                 }
@@ -2185,7 +2219,9 @@ mod measure {
                     Self(stream_read_flushed__processing_duration__conn)
                 }
                 id::STREAM_READ_FIN_FLUSHED__CONN => Self(stream_read_fin_flushed__conn),
-                id::STREAM_READ_FIN_FLUSHED__CAPACITY => Self(stream_read_fin_flushed__capacity),
+                id::STREAM_READ_FIN_FLUSHED__CAPACITY => {
+                    Self(stream_read_fin_flushed__capacity)
+                }
                 id::STREAM_READ_FIN_FLUSHED__PROCESSING_DURATION => {
                     Self(stream_read_fin_flushed__processing_duration)
                 }
@@ -2206,7 +2242,9 @@ mod measure {
                 id::STREAM_READ_ERRORED__PROCESSING_DURATION__CONN => {
                     Self(stream_read_errored__processing_duration__conn)
                 }
-                id::STREAM_READ_SOCKET_FLUSHED__CONN => Self(stream_read_socket_flushed__conn),
+                id::STREAM_READ_SOCKET_FLUSHED__CONN => {
+                    Self(stream_read_socket_flushed__conn)
+                }
                 id::STREAM_READ_SOCKET_FLUSHED__CAPACITY => {
                     Self(stream_read_socket_flushed__capacity)
                 }
@@ -2216,14 +2254,18 @@ mod measure {
                 id::STREAM_READ_SOCKET_FLUSHED__COMMITTED__CONN => {
                     Self(stream_read_socket_flushed__committed__conn)
                 }
-                id::STREAM_READ_SOCKET_BLOCKED__CONN => Self(stream_read_socket_blocked__conn),
+                id::STREAM_READ_SOCKET_BLOCKED__CONN => {
+                    Self(stream_read_socket_blocked__conn)
+                }
                 id::STREAM_READ_SOCKET_BLOCKED__CAPACITY => {
                     Self(stream_read_socket_blocked__capacity)
                 }
                 id::STREAM_READ_SOCKET_ERRORED__CAPACITY => {
                     Self(stream_read_socket_errored__capacity)
                 }
-                id::STREAM_DECRYPT_PACKET__FORCED_COPY => Self(stream_decrypt_packet__forced_copy),
+                id::STREAM_DECRYPT_PACKET__FORCED_COPY => {
+                    Self(stream_decrypt_packet__forced_copy)
+                }
                 id::STREAM_DECRYPT_PACKET__REQUIRED_APPLICATION_BUFFER => {
                     Self(stream_decrypt_packet__required_application_buffer)
                 }
@@ -2239,21 +2281,31 @@ mod measure {
                 id::STREAM_PROBE_TRANSMITTED__PACKET_LEN => {
                     Self(stream_probe_transmitted__packet_len)
                 }
-                id::STREAM_PACKET_RECEIVED__PACKET_LEN => Self(stream_packet_received__packet_len),
+                id::STREAM_PACKET_RECEIVED__PACKET_LEN => {
+                    Self(stream_packet_received__packet_len)
+                }
                 id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN => {
                     Self(stream_packet_received__payload_len)
                 }
                 id::STREAM_PACKET_RECEIVED__PAYLOAD_LEN__CONN => {
                     Self(stream_packet_received__payload_len__conn)
                 }
-                id::STREAM_PACKET_LOST__PACKET_LEN => Self(stream_packet_lost__packet_len),
-                id::STREAM_PACKET_LOST__PAYLOAD_LEN => Self(stream_packet_lost__payload_len),
+                id::STREAM_PACKET_LOST__PACKET_LEN => {
+                    Self(stream_packet_lost__packet_len)
+                }
+                id::STREAM_PACKET_LOST__PAYLOAD_LEN => {
+                    Self(stream_packet_lost__payload_len)
+                }
                 id::STREAM_PACKET_LOST__PAYLOAD_LEN__CONN => {
                     Self(stream_packet_lost__payload_len__conn)
                 }
                 id::STREAM_PACKET_LOST__LIFETIME => Self(stream_packet_lost__lifetime),
-                id::STREAM_PACKET_ACKED__PACKET_LEN => Self(stream_packet_acked__packet_len),
-                id::STREAM_PACKET_ACKED__PAYLOAD_LEN => Self(stream_packet_acked__payload_len),
+                id::STREAM_PACKET_ACKED__PACKET_LEN => {
+                    Self(stream_packet_acked__packet_len)
+                }
+                id::STREAM_PACKET_ACKED__PAYLOAD_LEN => {
+                    Self(stream_packet_acked__payload_len)
+                }
                 id::STREAM_PACKET_ACKED__PAYLOAD_LEN__CONN => {
                     Self(stream_packet_acked__payload_len__conn)
                 }
@@ -2267,7 +2319,9 @@ mod measure {
                 id::STREAM_PACKET_SPURIOUSLY_RETRANSMITTED__PAYLOAD_LEN__CONN => {
                     Self(stream_packet_spuriously_retransmitted__payload_len__conn)
                 }
-                id::STREAM_MAX_DATA_RECEIVED__INCREASE => Self(stream_max_data_received__increase),
+                id::STREAM_MAX_DATA_RECEIVED__INCREASE => {
+                    Self(stream_max_data_received__increase)
+                }
                 id::STREAM_CONTROL_PACKET_TRANSMITTED__PACKET_LEN => {
                     Self(stream_control_packet_transmitted__packet_len)
                 }
@@ -2315,7 +2369,9 @@ mod measure {
                 }
                 id::KEY_ACCEPTED__GAP => Self(key_accepted__gap),
                 id::KEY_ACCEPTED__FORWARD_SHIFT => Self(key_accepted__forward_shift),
-                id::REPLAY_POTENTIALLY_DETECTED__GAP => Self(replay_potentially_detected__gap),
+                id::REPLAY_POTENTIALLY_DETECTED__GAP => {
+                    Self(replay_potentially_detected__gap)
+                }
                 id::PATH_SECRET_MAP_ADDRESS_CACHE_ACCESSED_HIT__AGE => {
                     Self(path_secret_map_address_cache_accessed_hit__age)
                 }
@@ -2332,13 +2388,17 @@ mod measure {
                     Self(path_secret_map_cleaner_cycled__entries__id__active)
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__ACTIVE__UTILIZATION => {
-                    Self(path_secret_map_cleaner_cycled__entries__id__active__utilization)
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__active__utilization,
+                    )
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION => {
                     Self(path_secret_map_cleaner_cycled__entries__id__utilization)
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__UTILIZATION__INITIAL => {
-                    Self(path_secret_map_cleaner_cycled__entries__id__utilization__initial)
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__utilization__initial,
+                    )
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS => {
                     Self(path_secret_map_cleaner_cycled__entries__address)
@@ -2347,7 +2407,9 @@ mod measure {
                     Self(path_secret_map_cleaner_cycled__entries__address__active)
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__ACTIVE__UTILIZATION => {
-                    Self(path_secret_map_cleaner_cycled__entries__address__active__utilization)
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__address__active__utilization,
+                    )
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__RETIRED => {
                     Self(path_secret_map_cleaner_cycled__entries__address__retired)
@@ -2356,10 +2418,32 @@ mod measure {
                     Self(path_secret_map_cleaner_cycled__entries__address__utilization)
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ADDRESS__UTILIZATION__INITIAL => {
-                    Self(path_secret_map_cleaner_cycled__entries__address__utilization__initial)
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__address__utilization__initial,
+                    )
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD => {
                     Self(path_secret_map_cleaner_cycled__entries__id__in_last_hs_period)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT => {
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__client,
+                    )
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__CLIENT__UTILIZATION => {
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__client__utilization,
+                    )
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER => {
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__server,
+                    )
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__SERVER__UTILIZATION => {
+                    Self(
+                        path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__server__utilization,
+                    )
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__ID__IN_LAST_HS_PERIOD__UTILIZATION => {
                     Self(
@@ -2786,6 +2870,22 @@ mod measure {
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period]
             fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__client]
+            fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__client(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__client__utilization]
+            fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__client__utilization(
+                value: u64,
+            );
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__server]
+            fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__server(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__server__utilization]
+            fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__server__utilization(
+                value: u64,
+            );
             #[link_name =
         s2n_quic_dc__event__measure__path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__utilization]
             fn path_secret_map_cleaner_cycled__entries__id__in_last_hs_period__utilization(
