@@ -29,6 +29,7 @@ mod buffer_limit;
 mod close_all_stream_after_endpoint_drop;
 mod connection_limits;
 mod connection_migration;
+mod datagram;
 mod deduplicate;
 mod endpoint_limits;
 mod exporter;
