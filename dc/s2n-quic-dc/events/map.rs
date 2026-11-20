@@ -478,6 +478,22 @@ struct PathSecretMapCleanerCycled {
     #[measure("entries.id.in_last_hs_period")]
     id_entries_in_last_hs_period: usize,
 
+    /// The number of Path Secret ID entries created as a client within the last rehandshake period
+    #[measure("entries.id.in_last_hs_period.client")]
+    id_entries_in_last_hs_period_client: usize,
+
+    /// The percentage of cache capacity occupied by recent client Path Secret ID entries
+    #[measure("entries.id.in_last_hs_period.client.utilization", Percent)]
+    id_entries_in_last_hs_period_client_utilization: f32,
+
+    /// The number of Path Secret ID entries created as a server within the last rehandshake period
+    #[measure("entries.id.in_last_hs_period.server")]
+    id_entries_in_last_hs_period_server: usize,
+
+    /// The percentage of cache capacity occupied by recent server Path Secret ID entries
+    #[measure("entries.id.in_last_hs_period.server.utilization", Percent)]
+    id_entries_in_last_hs_period_server_utilization: f32,
+
     /// The utilization percentage of Path Secret ID entries created within the last rehandshake
     /// period (usually 24 hours)
     #[measure("entries.id.in_last_hs_period.utilization", Percent)]

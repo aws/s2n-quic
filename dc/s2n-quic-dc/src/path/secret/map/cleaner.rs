@@ -191,7 +191,8 @@ impl Cleaner {
         // Entries created within the last rehandshake period. This tracks how much of the cache
         // churns over a single rehandshake period, which is useful for understanding capacity
         // pressure relative to the rate at which we re-handshake peers.
-        let mut id_entries_in_last_hs_period = 0usize;
+        let mut id_entries_in_last_hs_period_client = 0usize;
+        let mut id_entries_in_last_hs_period_server = 0usize;
 
         // We want to avoid taking long lived locks which affect gets on the maps (where we want
         // p100 latency to be in microseconds at most).
@@ -242,7 +243,14 @@ impl Cleaner {
             }
 
             if in_rehandshake_period {
-                id_entries_in_last_hs_period += 1;
+                match entry.secret().endpoint() {
+                    s2n_quic_core::endpoint::Type::Client => {
+                        id_entries_in_last_hs_period_client += 1
+                    }
+                    s2n_quic_core::endpoint::Type::Server => {
+                        id_entries_in_last_hs_period_server += 1
+                    }
+                }
             }
 
             // Avoid double counting by making sure we have unique peer IPs.
@@ -308,6 +316,9 @@ impl Cleaner {
         let id_entries = state.ids.len();
         let address_entries = state.peers.len();
 
+        let id_entries_in_last_hs_period =
+            id_entries_in_last_hs_period_client + id_entries_in_last_hs_period_server;
+
         state.subscriber().on_path_secret_map_cleaner_cycled(
             event::builder::PathSecretMapCleanerCycled {
                 id_entries,
@@ -323,6 +334,14 @@ impl Cleaner {
                 address_entries_initial_utilization: utilization(address_entries_initial),
                 address_entries_retired,
                 id_entries_in_last_hs_period,
+                id_entries_in_last_hs_period_client,
+                id_entries_in_last_hs_period_client_utilization: utilization(
+                    id_entries_in_last_hs_period_client,
+                ),
+                id_entries_in_last_hs_period_server,
+                id_entries_in_last_hs_period_server_utilization: utilization(
+                    id_entries_in_last_hs_period_server,
+                ),
                 id_entries_in_last_hs_period_utilization: utilization(id_entries_in_last_hs_period),
                 handshake_requests,
                 handshake_requests_skipped,
