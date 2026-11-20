@@ -8,6 +8,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 type StatelessReset = [u8; secret_control::TAG_LEN];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum RestoreError {
+    /// Practically unreachable -- it needs a persisted counter within one advance of 2^62 -- but
+    /// restoring it verbatim would risk key-id reuse, so the entry is rejected instead.
+    #[error("restored sender counter would exceed the maximum key id")]
+    CounterOverflow,
+}
+
 #[derive(Debug)]
 pub struct State {
     current_id: AtomicU64,
@@ -32,6 +40,26 @@ impl State {
             current_id: AtomicU64::new(0),
             stateless_reset,
         }
+    }
+
+    pub fn restore(
+        persisted_current_id: u64,
+        stateless_reset: StatelessReset,
+        advance: u64,
+    ) -> Result<Self, RestoreError> {
+        let advanced = persisted_current_id
+            .checked_add(advance)
+            .filter(|id| *id < *VarInt::MAX)
+            .ok_or(RestoreError::CounterOverflow)?;
+
+        Ok(Self {
+            current_id: AtomicU64::new(advanced),
+            stateless_reset,
+        })
+    }
+
+    pub fn current_id(&self) -> u64 {
+        self.current_id.load(Ordering::Relaxed)
     }
 
     /// Returns the next key ID to send at, or `None` if available key id is exhausted.

@@ -348,6 +348,8 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED,
         PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
         PATH_SECRET_MAP_SERIALIZED,
         PATH_SECRET_MAP_SERIALIZED__ENTRIES,
@@ -929,6 +931,10 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION as usize;
     pub const PATH_SECRET_MAP_SERIALIZED: usize = InfoId::PATH_SECRET_MAP_SERIALIZED as usize;
@@ -1075,6 +1081,8 @@ mod id {
         COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED,
         COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT,
         COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED,
+        COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED,
+        COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED,
         COUNTERS_PATH_SECRET_MAP_SERIALIZED,
         COUNTERS_PATH_SECRET_MAP_ID_WRITE_LOCK,
         COUNTERS_PATH_SECRET_MAP_ADDRESS_WRITE_LOCK,
@@ -1290,6 +1298,10 @@ mod id {
         Counters::COUNTERS_PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT as usize;
     pub const COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED: usize =
         Counters::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED as usize;
+    pub const COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED: usize =
+        Counters::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED as usize;
+    pub const COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED: usize =
+        Counters::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED as usize;
     pub const COUNTERS_PATH_SECRET_MAP_SERIALIZED: usize =
         Counters::COUNTERS_PATH_SECRET_MAP_SERIALIZED as usize;
     pub const COUNTERS_PATH_SECRET_MAP_ID_WRITE_LOCK: usize =
@@ -2041,7 +2053,7 @@ mod id {
     pub const TIMERS_DC_HANDSHAKE_PROBE__LATENCY: usize =
         Timers::TIMERS_DC_HANDSHAKE_PROBE__LATENCY as usize;
 }
-static INFO: &[Info; 349usize] = &[
+static INFO: &[Info; 351usize] = &[
     info::Builder {
         id: id::ACCEPTOR_TCP_STARTED,
         name: Str::new("acceptor_tcp_started\0"),
@@ -4029,6 +4041,18 @@ static INFO: &[Info; 349usize] = &[
     }
     .build(),
     info::Builder {
+        id: id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.inserted\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
+        id: id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED,
+        name: Str::new("path_secret_map_cleaner_cycled.entries.journaled\0"),
+        units: Units::None,
+    }
+    .build(),
+    info::Builder {
         id: id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
         name: Str::new("path_secret_map_cleaner_cycled.total_duration\0"),
         units: Units::Duration,
@@ -4174,7 +4198,7 @@ pub struct ConnectionContext {
 }
 pub struct Subscriber<R: Registry> {
     #[allow(dead_code)]
-    counters: Box<[R::Counter; 116usize]>,
+    counters: Box<[R::Counter; 118usize]>,
     #[allow(dead_code)]
     bool_counters: Box<[R::BoolCounter; 25usize]>,
     #[allow(dead_code)]
@@ -4209,7 +4233,7 @@ impl<R: Registry> Subscriber<R> {
     #[allow(unused_mut)]
     #[inline]
     pub fn new(registry: R) -> Self {
-        let mut counters = Vec::with_capacity(116usize);
+        let mut counters = Vec::with_capacity(118usize);
         let mut bool_counters = Vec::with_capacity(25usize);
         let mut nominal_counters = Vec::with_capacity(41usize);
         let mut nominal_counter_offsets = Vec::with_capacity(41usize);
@@ -4345,6 +4369,13 @@ impl<R: Registry> Subscriber<R> {
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ID_CACHE_ACCESSED_HIT]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED]));
+        counters.push(
+            registry.register_counter(&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED]),
+        );
+        counters.push(
+            registry
+                .register_counter(&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED]),
+        );
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_SERIALIZED]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ID_WRITE_LOCK]));
         counters.push(registry.register_counter(&INFO[id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK]));
@@ -5602,6 +5633,14 @@ impl<R: Registry> Subscriber<R> {
                 id::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED => {
                     (&INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED], entry)
                 }
+                id::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED => (
+                    &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED],
+                    entry,
+                ),
+                id::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED => (
+                    &INFO[id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED],
+                    entry,
+                ),
                 id::COUNTERS_PATH_SECRET_MAP_SERIALIZED => {
                     (&INFO[id::PATH_SECRET_MAP_SERIALIZED], entry)
                 }
@@ -9801,6 +9840,16 @@ impl<R: Registry> event::Subscriber for Subscriber<R> {
             id::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
             id::MEASURES_PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
             event.handshake_lock_duration,
+        );
+        self.count(
+            id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED,
+            id::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED,
+            event.entries_inserted,
+        );
+        self.count(
+            id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED,
+            id::COUNTERS_PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED,
+            event.entries_journaled,
         );
         self.measure(
             id::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,

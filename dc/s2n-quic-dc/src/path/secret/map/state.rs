@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::{
-    cleaner::Cleaner, disk, proactive_unknown_path_secret, stateless_reset, ApplicationData,
-    ApplicationDataError, DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
+    cleaner::Cleaner,
+    collector::EntryConsumer,
+    disk,
+    persist::{InsertPersistedError, RestoreParams},
+    proactive_unknown_path_secret, stateless_reset, ApplicationData, ApplicationDataError,
+    DiskEntry, Entry, HandshakeProbeOutcome, SendStats, Store,
 };
 use crate::{
     credentials::{Credentials, Id},
@@ -24,7 +28,10 @@ use std::{
     hash::BuildHasher,
     mem::ManuallyDrop,
     net::SocketAddr,
-    sync::{Arc, Mutex, RwLock, Weak},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, RwLock, Weak,
+    },
     time::Duration,
 };
 use tokio::task::JoinHandle;
@@ -67,6 +74,9 @@ where
     clock: Option<C>,
     subscriber: Option<S>,
     serializer: Option<disk::Serializer>,
+    entry_consumer: Option<Arc<dyn EntryConsumer>>,
+    entries: Vec<Arc<Entry>>,
+    spawn_cleaner: bool,
 }
 
 impl<C, S> StateBuilder<C, S>
@@ -82,6 +92,9 @@ where
             clock: None,
             subscriber: None,
             serializer: None,
+            entry_consumer: None,
+            entries: Vec::new(),
+            spawn_cleaner: true,
         }
     }
 
@@ -111,6 +124,9 @@ where
             signer: self.signer,
             capacity: self.capacity,
             serializer: self.serializer,
+            entry_consumer: self.entry_consumer,
+            entries: self.entries,
+            spawn_cleaner: self.spawn_cleaner,
         }
     }
 
@@ -122,6 +138,9 @@ where
             signer: self.signer,
             capacity: self.capacity,
             serializer: self.serializer,
+            entry_consumer: self.entry_consumer,
+            entries: self.entries,
+            spawn_cleaner: self.spawn_cleaner,
         }
     }
 
@@ -132,6 +151,22 @@ where
     /// cleaner serializes the map periodically (jittered within the period).
     pub fn with_serializer(mut self, serializer: disk::Serializer) -> Self {
         self.serializer = Some(serializer);
+        self
+    }
+
+    pub fn with_entry_consumer(mut self, consumer: Arc<dyn EntryConsumer>) -> Self {
+        self.entry_consumer = Some(consumer);
+        self
+    }
+
+    pub fn with_entries(mut self, entries: Vec<Arc<Entry>>) -> Self {
+        self.entries = entries;
+        self
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    pub fn without_cleaner_thread(mut self) -> Self {
+        self.spawn_cleaner = false;
         self
     }
 
@@ -150,6 +185,9 @@ where
             clock,
             subscriber,
             self.serializer,
+            self.entry_consumer,
+            self.entries,
+            self.spawn_cleaner,
         )
         .map_err(StateBuilderError::Io)
     }
@@ -371,6 +409,20 @@ impl IdMap {
         entry.to_hash()
     }
 
+    pub(crate) fn insert_no_events(&self, entry: Arc<Entry>) -> Option<Arc<Entry>> {
+        let hash = self.hash(&entry);
+        let mut map = self.0.write();
+        match map.entry(hash, |other| other.id() == entry.id(), |e| self.hash(e)) {
+            hashbrown::hash_table::Entry::Occupied(mut o) => {
+                Some(std::mem::replace(o.get_mut(), entry))
+            }
+            hashbrown::hash_table::Entry::Vacant(v) => {
+                v.insert(entry);
+                None
+            }
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn contains_key(&self, id: &Id) -> bool {
         let hash = self.hash_key(id);
@@ -445,6 +497,10 @@ where
     // (via `serialize_to_disk`) and, when the serializer has background serialization enabled,
     // periodic serialization driven by the cleaner.
     pub(super) serializer: Option<disk::Serializer>,
+
+    pub(super) entry_consumer: Option<Arc<dyn EntryConsumer>>,
+
+    cumulative_entry_counter: AtomicU64,
 
     // Avoids allocating/deallocating on each cleaner run.
     // We use a PeerMap to save memory -- an Arc is 8 bytes, SocketAddr is 32 bytes.
@@ -553,6 +609,9 @@ where
         clock: C,
         subscriber: S,
         serializer: Option<disk::Serializer>,
+        entry_consumer: Option<Arc<dyn EntryConsumer>>,
+        entries: Vec<Arc<Entry>>,
+        spawn_cleaner: bool,
     ) -> std::io::Result<Arc<Self>> {
         let control_socket = control_socket();
 
@@ -572,6 +631,8 @@ where
             cleaner_peer_seen: Default::default(),
             cleaner: Cleaner::new(),
             serializer,
+            entry_consumer,
+            cumulative_entry_counter: AtomicU64::new(0),
             rehandshake: Mutex::new(super::rehandshake::RehandshakeState::new(
                 rehandshake_period,
             )?),
@@ -606,13 +667,50 @@ where
 
         let state = Arc::new(state);
 
-        state.cleaner.spawn_thread(state.clone())?;
+        state.populate_restored(entries);
+
+        if spawn_cleaner {
+            state.cleaner.spawn_thread(state.clone())?;
+        }
 
         state
             .subscriber()
             .on_path_secret_map_initialized(event::builder::PathSecretMapInitialized { capacity });
 
         Ok(state)
+    }
+
+    /// Inserts entries restored from persistence into a not-yet-live map.
+    fn populate_restored(&self, mut entries: Vec<Arc<Entry>>) {
+        if entries.is_empty() {
+            return;
+        }
+
+        if entries.len() > self.max_capacity {
+            let excess = entries.len() - self.max_capacity;
+            entries.drain(..excess);
+        }
+
+        let mut queue = self
+            .eviction_queue
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        for entry in entries {
+            queue.push_back(Arc::downgrade(&entry));
+
+            let same = self.ids.insert_no_events(entry.clone());
+            debug_assert!(
+                same.is_none(),
+                "restored entries must have unique credential ids"
+            );
+
+            let _prev = self.peers.insert_no_events(entry);
+        }
+    }
+
+    pub(super) fn cumulative_entry_counter(&self) -> u64 {
+        self.cumulative_entry_counter.load(Ordering::Relaxed)
     }
 
     /// Serializes the current map to disk using the configured [`disk::Serializer`].
@@ -861,6 +959,9 @@ where
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
 
+            self.cumulative_entry_counter
+                .fetch_add(1, Ordering::Relaxed);
+
             queue.push_back(Arc::downgrade(&entry));
 
             // We went beyond queue limit, need to prune some entries.
@@ -925,6 +1026,52 @@ where
                 peer_address: SocketAddress::from(peer).into_event(),
                 credential_id: id.into_event(),
             });
+    }
+
+    fn insert_persisted(
+        &self,
+        bytes: &[u8],
+        application_data: Option<ApplicationData>,
+        params: &RestoreParams,
+    ) -> Result<Arc<Entry>, InsertPersistedError> {
+        let entry = Arc::new(Entry::restore(bytes, application_data, params)?);
+        let id = *entry.id();
+
+        if self.ids.get(id).is_some() {
+            return Err(InsertPersistedError::DuplicateCredentialId);
+        }
+
+        let same = self.ids().insert(entry.clone());
+        debug_assert!(
+            same.is_none(),
+            "duplicate credential id slipped past the pre-check"
+        );
+
+        {
+            let mut queue = self
+                .eviction_queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+
+            queue.push_back(Arc::downgrade(&entry));
+
+            if queue.len() > self.max_capacity {
+                #[expect(
+                    clippy::unwrap_used,
+                    reason = "queue is non-empty here because its length was just checked to exceed max_capacity"
+                )]
+                let element = queue.pop_front().unwrap();
+                drop(queue);
+
+                if let Some(evicted) = element.upgrade() {
+                    self.evict(&evicted, event::builder::EvictionReason::Capacity);
+                }
+            }
+        }
+
+        let _prev = self.peers().insert(entry.clone());
+
+        Ok(entry)
     }
 
     fn register_request_handshake(
@@ -1392,9 +1539,14 @@ where
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "testing"))]
     fn test_stop_cleaner(&self) {
         self.cleaner.stop();
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn run_cleaner_once(&self) {
+        self.cleaner.clean(self, super::cleaner::EVICTION_CYCLES);
     }
 
     fn application_data(

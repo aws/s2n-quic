@@ -2703,6 +2703,10 @@ pub mod api {
         pub handshake_requests_skipped: usize,
         /// How long we kept the handshake lock held (this blocks completing handshakes).
         pub handshake_lock_duration: core::time::Duration,
+        /// Entries inserted since the previous cycle, or zero unless this cycle journaled
+        pub entries_inserted: u64,
+        /// Entries handed to the entry consumer, or zero unless this cycle journaled
+        pub entries_journaled: u64,
         /// Total duration of a cycle.
         pub duration: core::time::Duration,
     }
@@ -2751,6 +2755,8 @@ pub mod api {
                 &self.handshake_requests_skipped,
             );
             fmt.field("handshake_lock_duration", &self.handshake_lock_duration);
+            fmt.field("entries_inserted", &self.entries_inserted);
+            fmt.field("entries_journaled", &self.entries_journaled);
             fmt.field("duration", &self.duration);
             fmt.finish()
         }
@@ -4804,6 +4810,8 @@ pub mod tracing {
                 handshake_requests,
                 handshake_requests_skipped,
                 handshake_lock_duration,
+                entries_inserted,
+                entries_journaled,
                 duration,
             } = event;
             tracing::event!(
@@ -4833,7 +4841,9 @@ pub mod tracing {
                 handshake_requests_skipped =
                 tracing::field::debug(handshake_requests_skipped),
                 handshake_lock_duration = tracing::field::debug(handshake_lock_duration),
-                duration = tracing::field::debug(duration) }
+                entries_inserted = tracing::field::debug(entries_inserted),
+                entries_journaled = tracing::field::debug(entries_journaled), duration =
+                tracing::field::debug(duration) }
             );
         }
         #[inline]
@@ -7428,6 +7438,10 @@ pub mod builder {
         pub handshake_requests_skipped: usize,
         /// How long we kept the handshake lock held (this blocks completing handshakes).
         pub handshake_lock_duration: core::time::Duration,
+        /// Entries inserted since the previous cycle, or zero unless this cycle journaled
+        pub entries_inserted: u64,
+        /// Entries handed to the entry consumer, or zero unless this cycle journaled
+        pub entries_journaled: u64,
         /// Total duration of a cycle.
         pub duration: core::time::Duration,
     }
@@ -7452,6 +7466,8 @@ pub mod builder {
                 handshake_requests,
                 handshake_requests_skipped,
                 handshake_lock_duration,
+                entries_inserted,
+                entries_journaled,
                 duration,
             } = self;
             api::PathSecretMapCleanerCycled {
@@ -7474,6 +7490,8 @@ pub mod builder {
                 handshake_requests: handshake_requests.into_event(),
                 handshake_requests_skipped: handshake_requests_skipped.into_event(),
                 handshake_lock_duration: handshake_lock_duration.into_event(),
+                entries_inserted: entries_inserted.into_event(),
+                entries_journaled: entries_journaled.into_event(),
                 duration: duration.into_event(),
             }
         }

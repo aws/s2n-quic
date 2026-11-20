@@ -4,7 +4,7 @@
 use super::state::State;
 use crate::{
     event::{self, EndpointPublisher as _},
-    path::secret::map::store::Store,
+    path::secret::map::{collector, store::Store},
 };
 use rand::RngExt as _;
 use s2n_quic_core::time;
@@ -16,7 +16,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
+pub(super) const EVICTION_CYCLES: u64 = if cfg!(test) { 0 } else { 10 };
 
 /// The cleaner loop runs roughly once per this interval. Serialization periods are expressed as a
 /// number of these cycles, and the access-time epoch advances once per cycle.
@@ -119,6 +119,7 @@ impl Cleaner {
                 let mut cycle = 0u64;
                 let mut serialize_at =
                     serialize_cycles.map(|cycles| rand::rng().random_range(0..cycles));
+                let mut previous_entry_counter_value = 0u64;
 
                 loop {
                     // in tests, we should try and be as deterministic as possible
@@ -140,7 +141,11 @@ impl Cleaner {
                     if state.cleaner().should_stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    state.cleaner().clean(&state, EVICTION_CYCLES);
+                    previous_entry_counter_value = state.cleaner().clean_since(
+                        &state,
+                        EVICTION_CYCLES,
+                        previous_entry_counter_value,
+                    );
 
                     // Serialize the map in the chosen cycle of each window, then advance the cycle
                     // counter and re-roll at the window boundary.
@@ -177,6 +182,21 @@ impl Cleaner {
         C: 'static + time::Clock + Send + Sync,
         S: event::Subscriber,
     {
+        self.clean_since(state, eviction_cycles, 0);
+    }
+
+    /// Periodic maintenance, reporting insertions since `previous_entry_counter_value` and
+    /// returning the reading to pass to the next cycle.
+    pub(super) fn clean_since<C, S>(
+        &self,
+        state: &State<C, S>,
+        eviction_cycles: u64,
+        previous_entry_counter_value: u64,
+    ) -> u64
+    where
+        C: 'static + time::Clock + Send + Sync,
+        S: event::Subscriber,
+    {
         let start = state.clock.get_time();
         let current_epoch = self.epoch.fetch_add(1, Ordering::Relaxed);
 
@@ -193,6 +213,11 @@ impl Cleaner {
         // pressure relative to the rate at which we re-handshake peers.
         let mut id_entries_in_last_hs_period = 0usize;
 
+        let mut collecting = state
+            .entry_consumer
+            .as_ref()
+            .and_then(|c| collector::Collector::new(c.request(), state.ids.len()));
+
         // We want to avoid taking long lived locks which affect gets on the maps (where we want
         // p100 latency to be in microseconds at most).
         //
@@ -208,6 +233,10 @@ impl Cleaner {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let in_lock = state.clock.get_time();
+
+        let entry_counter = state.cumulative_entry_counter();
+        let inserted_since_last_collect =
+            entry_counter.saturating_sub(previous_entry_counter_value);
 
         // This map is only accessed with queue lock held and in cleaner, so it is in practice
         // single threaded. No concurrent access is permitted.
@@ -283,6 +312,13 @@ impl Cleaner {
                 return false;
             }
 
+            // collection must stay inside this walk: `retain` goes front to back, which is the only
+            // reason collection order is insertion order. A separate pass, or reordering here,
+            // breaks the `EntryConsumer` guarantee and silently points a peer at a retired secret.
+            if let Some(collecting) = &mut collecting {
+                collecting.push(entry);
+            }
+
             true
         });
 
@@ -291,6 +327,23 @@ impl Cleaner {
 
         drop(queue);
         let handshake_lock_duration = state.clock.get_time().saturating_duration_since(in_lock);
+
+        let collected = collecting.map(|collecting| collecting.finish());
+
+        let (entries_inserted, entries_journaled) = match collected.as_ref() {
+            Some(collected)
+                if matches!(
+                    collected.request(),
+                    collector::CollectRequest::Journal { .. }
+                ) =>
+            {
+                (
+                    inserted_since_last_collect,
+                    collected.entries().len() as u64,
+                )
+            }
+            _ => (0, 0),
+        };
 
         if refill_rehandshakes {
             rehandshake.adjust_post_refill();
@@ -327,9 +380,25 @@ impl Cleaner {
                 handshake_requests,
                 handshake_requests_skipped,
                 handshake_lock_duration,
+                entries_inserted,
+                entries_journaled,
                 duration: state.clock.get_time().saturating_duration_since(start),
             },
         );
+
+        let collected = match (collected, state.entry_consumer.as_ref()) {
+            (Some(collected), Some(entry_consumer)) => {
+                entry_consumer.consume(collected);
+                true
+            }
+            _ => false,
+        };
+
+        if collected {
+            entry_counter
+        } else {
+            previous_entry_counter_value
+        }
     }
 
     pub fn epoch(&self) -> Epoch {

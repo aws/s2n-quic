@@ -344,6 +344,8 @@ mod id {
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED,
         PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED,
+        PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED,
         PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION,
         PATH_SECRET_MAP_SERIALIZED,
         PATH_SECRET_MAP_SERIALIZED__ENTRIES,
@@ -925,6 +927,10 @@ mod id {
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_REQUESTS__SKIPPED as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__HANDSHAKE_LOCK_DURATION as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED as usize;
+    pub const PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED: usize =
+        InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED as usize;
     pub const PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION: usize =
         InfoId::PATH_SECRET_MAP_CLEANER_CYCLED__TOTAL_DURATION as usize;
     pub const PATH_SECRET_MAP_SERIALIZED: usize = InfoId::PATH_SECRET_MAP_SERIALIZED as usize;
@@ -1125,6 +1131,12 @@ mod counter {
                     Self(path_secret_map_id_cache_accessed_hit)
                 }
                 id::PATH_SECRET_MAP_CLEANER_CYCLED => Self(path_secret_map_cleaner_cycled),
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__INSERTED => {
+                    Self(path_secret_map_cleaner_cycled__entries__inserted)
+                }
+                id::PATH_SECRET_MAP_CLEANER_CYCLED__ENTRIES__JOURNALED => {
+                    Self(path_secret_map_cleaner_cycled__entries__journaled)
+                }
                 id::PATH_SECRET_MAP_SERIALIZED => Self(path_secret_map_serialized),
                 id::PATH_SECRET_MAP_ID_WRITE_LOCK => Self(path_secret_map_id_write_lock),
                 id::PATH_SECRET_MAP_ADDRESS_WRITE_LOCK => Self(path_secret_map_address_write_lock),
@@ -1464,6 +1476,12 @@ mod counter {
             #[link_name =
         s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled]
             fn path_secret_map_cleaner_cycled(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled__entries__inserted]
+            fn path_secret_map_cleaner_cycled__entries__inserted(value: u64);
+            #[link_name =
+        s2n_quic_dc__event__counter__path_secret_map_cleaner_cycled__entries__journaled]
+            fn path_secret_map_cleaner_cycled__entries__journaled(value: u64);
             #[link_name =
         s2n_quic_dc__event__counter__path_secret_map_serialized]
             fn path_secret_map_serialized(value: u64);

@@ -497,6 +497,14 @@ struct PathSecretMapCleanerCycled {
     #[measure("handshake_lock_duration", Duration)]
     handshake_lock_duration: core::time::Duration,
 
+    /// Entries inserted since the previous cycle, or zero unless this cycle journaled
+    #[counter("entries.inserted")]
+    entries_inserted: u64,
+
+    /// Entries handed to the entry consumer, or zero unless this cycle journaled
+    #[counter("entries.journaled")]
+    entries_journaled: u64,
+
     /// Total duration of a cycle.
     #[measure("total_duration", Duration)]
     duration: core::time::Duration,
