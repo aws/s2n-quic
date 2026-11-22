@@ -100,6 +100,7 @@ pub trait Store: 'static + Send + Sync {
         entry: &Entry,
         key_id: VarInt,
         queue_id: Option<VarInt>,
+        send_control: bool,
     ) -> crate::crypto::open::Result;
 
     /// Serializes the current map to disk using the configured serializer.
@@ -141,6 +142,42 @@ pub trait Store: 'static + Send + Sync {
         queue_id: Option<VarInt>,
         control_out: &mut Vec<u8>,
     ) -> Option<Arc<Entry>> {
+        let state = self.entry_for_credentials(identity, queue_id, control_out)?;
+
+        match state.receiver().pre_authentication(identity) {
+            Ok(()) => {}
+            Err(e) => {
+                self.send_control_error(&state, identity, queue_id, e);
+                return None;
+            }
+        }
+
+        Some(state)
+    }
+
+    /// Looks up a handoff candidate without sending replay or stale-key responses.
+    #[inline]
+    fn pre_authentication_for_handoff(
+        &self,
+        identity: &Credentials,
+        queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
+    ) -> Option<Arc<Entry>> {
+        let state = self.entry_for_credentials(identity, queue_id, control_out)?;
+        state
+            .receiver()
+            .pre_authentication_for_handoff(identity)
+            .ok()?;
+        Some(state)
+    }
+
+    #[inline]
+    fn entry_for_credentials(
+        &self,
+        identity: &Credentials,
+        queue_id: Option<VarInt>,
+        control_out: &mut Vec<u8>,
+    ) -> Option<Arc<Entry>> {
         let Some(state) = self.get_by_id_tracked(&identity.id) else {
             control_out.resize(control::UnknownPathSecret::MAX_PACKET_SIZE, 0);
             let len = super::encode_unknown_path_secret(
@@ -153,15 +190,7 @@ pub trait Store: 'static + Send + Sync {
             return None;
         };
 
-        match state.receiver().pre_authentication(identity) {
-            Ok(()) => {}
-            Err(e) => {
-                self.send_control_error(&state, identity, queue_id, e);
-                return None;
-            }
-        }
-
-        Some(state.clone())
+        Some(state)
     }
 
     #[allow(clippy::type_complexity)]

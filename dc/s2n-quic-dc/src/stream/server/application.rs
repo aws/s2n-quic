@@ -6,7 +6,7 @@
 use crate::{
     event,
     stream::{
-        environment::tokio as env,
+        environment::{tokio as env, udp::Config as PoolConfig},
         server::tokio::{
             common_builder_methods,
             uds::{self, ApplicationDataDeserializer},
@@ -59,6 +59,7 @@ pub struct Builder {
     span: Option<tracing::Span>,
     enable_udp: bool,
     enable_tcp: bool,
+    udp_address: SocketAddr,
     socket_path: Option<PathBuf>,
     application_data_deserializer: Option<ApplicationDataDeserializer>,
 }
@@ -67,8 +68,9 @@ impl Default for Builder {
     fn default() -> Self {
         Self {
             span: None,
-            enable_udp: true,
+            enable_udp: false,
             enable_tcp: false,
+            udp_address: SocketAddr::from((std::net::Ipv6Addr::UNSPECIFIED, 0)),
             socket_path: None,
             application_data_deserializer: None,
         }
@@ -84,6 +86,13 @@ impl Builder {
     /// are the responsibility of the application owner.
     pub fn with_socket_path(mut self, path: &Path) -> Self {
         self.socket_path = Some(path.to_path_buf());
+        self
+    }
+
+    /// Sets the application's UDP address (default: `[::]:0`).
+    /// Use the manager's IP and typically port `0`; clients follow replies only from that IP.
+    pub fn with_udp_address(mut self, addr: SocketAddr) -> Self {
+        self.udp_address = addr;
         self
     }
 
@@ -109,9 +118,16 @@ impl Builder {
             ))
         );
 
+        let map = uds::placeholder_map(subscriber.clone());
         let mut env = env::Builder::new(subscriber);
 
-        if !self.enable_udp {
+        if self.enable_udp {
+            let mut pool = PoolConfig::new(map.clone());
+            pool.route_by_credentials = true;
+            env = env
+                .with_socket_options(socket::Options::new(self.udp_address))
+                .with_pool(pool);
+        } else {
             // If we only have TCP, there shouldn't be significant load on the background worker
             // threads, so reduce thread count. Only the background shutdowns get sent there for
             // TCP workloads.
@@ -129,7 +145,7 @@ impl Builder {
             io::ErrorKind::InvalidInput,
             "Unix domain socket path is required",
         ))?;
-        let mut receiver = uds::Receiver::new(&path, &env)?;
+        let mut receiver = uds::Receiver::new_with_map(&path, &env, map)?;
         if let Some(deserializer) = self.application_data_deserializer {
             receiver = receiver.with_application_data_deserializer(deserializer);
         }

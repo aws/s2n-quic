@@ -49,6 +49,7 @@ struct DedupInit {
     key_id: VarInt,
     queue_id: Option<VarInt>,
     map: Map,
+    send_control: bool,
 }
 
 /// SAFETY: `init` cell is synchronized by `OnceCell`
@@ -62,6 +63,22 @@ impl Dedup {
         queue_id: Option<VarInt>,
         map: Map,
     ) -> Self {
+        Self::with_response(entry, key_id, queue_id, map, true)
+    }
+
+    /// Suppresses replay and stale-key responses while retaining the atomic replay check.
+    #[inline]
+    pub fn silent(entry: Arc<Entry>, key_id: VarInt, queue_id: Option<VarInt>, map: Map) -> Self {
+        Self::with_response(entry, key_id, queue_id, map, false)
+    }
+
+    fn with_response(
+        entry: Arc<Entry>,
+        key_id: VarInt,
+        queue_id: Option<VarInt>,
+        map: Map,
+        send_control: bool,
+    ) -> Self {
         // TODO potentially record a timestamp of when this was created to try and detect long
         // delays of processing the first packet.
         Self {
@@ -71,6 +88,7 @@ impl Dedup {
                 key_id,
                 queue_id,
                 map,
+                send_control,
             })),
         }
     }
@@ -91,7 +109,10 @@ impl Dedup {
                 key_id,
                 queue_id,
                 map,
-            }) => map.store.check_dedup(&entry, key_id, queue_id),
+                send_control,
+            }) => map
+                .store
+                .check_dedup(&entry, key_id, queue_id, send_control),
             None => Err(crypto::open::Error::ReplayPotentiallyDetected { gap: None }),
         })
     }
