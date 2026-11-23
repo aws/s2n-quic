@@ -10,6 +10,8 @@ Amazon Web Services (AWS) practices industry-standard Coordinated Vulnerability 
 
 For more details, visit the [AWS Vulnerability Reporting Page](http://aws.amazon.com/security/vulnerability-reporting/).
 
+Note that `dc` crates - while open source - are not intended for public consumption, so CVE's and Github Security Advisories are not published for those crates. We still appreciate and welcome security reports through the above mechanism.
+
 Thank you in advance for collaborating with us to help protect our customers.
 
 ## Threat Model
