@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::{stateless_reset, ApplicationData, ApplicationDataError, Map};
+use super::{stateless_reset, ApplicationData, ApplicationDataError, Entry, LocalEndpoint, Map};
 use s2n_quic_core::time::NoopClock;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
@@ -84,12 +84,9 @@ fn key_id_exhaustion_requests_rehandshake() {
     use std::net::SocketAddr;
 
     let map = test_map();
-    let peer_addr: SocketAddr = "127.0.0.1:1234".parse().expect("valid address literal");
-    map.test_insert(peer_addr);
-
     let requests = Arc::new(AtomicUsize::new(0));
     let requests_in_cb = requests.clone();
-    map.register_request_handshake(Box::new(move |_peer, reason| {
+    let endpoint = map.register_local_endpoint(Arc::new(move |_peer, reason| {
         assert!(
             matches!(reason, crate::psk::io::HandshakeReason::KeyIdExhaustion),
             "expected KeyIdExhaustion, got {reason:?}"
@@ -97,6 +94,13 @@ fn key_id_exhaustion_requests_rehandshake() {
         requests_in_cb.fetch_add(1, Ordering::Relaxed);
         None
     }));
+
+    let peer_addr: SocketAddr = "127.0.0.1:1234".parse().expect("valid address literal");
+    map.store.test_insert(Entry::fake_initiated_by(
+        peer_addr,
+        None,
+        Some(endpoint.id()),
+    ));
 
     let peer = map.get_tracked(peer_addr).expect("just inserted");
 
@@ -122,4 +126,242 @@ fn key_id_exhaustion_requests_rehandshake() {
 
     assert!(map.seal_once_id(*entry.id()).is_none());
     assert_eq!(requests.load(Ordering::Relaxed), 3);
+}
+
+/// Registers a local endpoint whose re-handshake callback records each peer it is asked to
+/// re-handshake.
+fn recording_endpoint(
+    map: &Map,
+) -> (
+    LocalEndpoint,
+    Arc<std::sync::Mutex<Vec<std::net::SocketAddr>>>,
+) {
+    let requested = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let requested_in_cb = requested.clone();
+    let endpoint = map.register_local_endpoint(Arc::new(move |peer, _reason| {
+        requested_in_cb
+            .lock()
+            .expect("lock is never poisoned in this test")
+            .push(peer);
+        None
+    }));
+    (endpoint, requested)
+}
+
+/// Several client endpoints can share one map. A re-handshake must leave from the endpoint that
+/// created the entry: servers key entries by client address, so a re-handshake from another
+/// endpoint's socket would leave the original entry behind on the server.
+#[test]
+fn rehandshake_goes_through_the_creating_endpoint() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (endpoint_a, requested_a) = recording_endpoint(&map);
+    let (endpoint_b, requested_b) = recording_endpoint(&map);
+
+    let peer_a: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    let peer_b: SocketAddr = "127.0.0.1:1002".parse().expect("valid address literal");
+    map.store.test_insert(Entry::fake_initiated_by(
+        peer_a,
+        None,
+        Some(endpoint_a.id()),
+    ));
+    map.store.test_insert(Entry::fake_initiated_by(
+        peer_b,
+        None,
+        Some(endpoint_b.id()),
+    ));
+
+    for peer in [peer_a, peer_b] {
+        let entry = map
+            .store
+            .get_by_addr_untracked(&peer)
+            .expect("just inserted");
+        map.store
+            .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+    }
+
+    assert_eq!(*requested_a.lock().expect("not poisoned"), vec![peer_a]);
+    assert_eq!(*requested_b.lock().expect("not poisoned"), vec![peer_b]);
+}
+
+/// Once the creating endpoint is gone, a remaining endpoint on the map re-handshakes its entries.
+#[test]
+fn rehandshake_with_dropped_endpoint_goes_through_remaining_endpoint() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (dropped, dropped_requested) = recording_endpoint(&map);
+    let (remaining, remaining_requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.store
+        .test_insert(Entry::fake_initiated_by(peer, None, Some(dropped.id())));
+    drop(dropped);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    map.store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(dropped_requested.lock().expect("not poisoned").is_empty());
+    assert_eq!(
+        *remaining_requested.lock().expect("not poisoned"),
+        vec![peer]
+    );
+    assert!(map.contains(&peer), "entry is kept");
+    drop(remaining);
+}
+
+/// With no endpoint left on the map, a secret that needs replacing is evicted instead, so the next
+/// connection attempt handshakes afresh.
+#[test]
+fn rehandshake_with_dropped_endpoint_evicts_entry() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (endpoint, requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.store
+        .test_insert(Entry::fake_initiated_by(peer, None, Some(endpoint.id())));
+    drop(endpoint);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    let handle = map
+        .store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Remote);
+
+    assert!(handle.is_none());
+    assert!(requested.lock().expect("not poisoned").is_empty());
+    assert!(
+        !map.contains(&peer),
+        "entry with a dropped endpoint is evicted"
+    );
+    assert!(map.store.get_by_id_untracked(entry.id()).is_none());
+}
+
+/// With no endpoint left on the map, a periodic refresh is skipped and the entry is not evicted.
+#[test]
+fn periodic_rehandshake_with_dropped_endpoint_keeps_entry() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let (endpoint, requested) = recording_endpoint(&map);
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.store
+        .test_insert(Entry::fake_initiated_by(peer, None, Some(endpoint.id())));
+    drop(endpoint);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    let handle = map
+        .store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(handle.is_none());
+    assert!(requested.lock().expect("not poisoned").is_empty());
+    assert!(map.contains(&peer), "entry with a dropped endpoint is kept");
+}
+
+/// Entries created by a remotely initiated handshake have no creating endpoint; re-handshaking them
+/// is the remote's job, so nothing is requested and the entry stays.
+#[test]
+fn rehandshake_without_endpoint_is_not_requested() {
+    use std::net::SocketAddr;
+
+    let map = test_map();
+    let peer: SocketAddr = "127.0.0.1:1001".parse().expect("valid address literal");
+    map.test_insert(peer);
+
+    let entry = map
+        .store
+        .get_by_addr_untracked(&peer)
+        .expect("just inserted");
+    let handle = map
+        .store
+        .request_handshake(&entry, crate::event::builder::HandshakeReason::Periodic);
+
+    assert!(handle.is_none());
+    assert!(
+        map.contains(&peer),
+        "entry without a creating endpoint is kept"
+    );
+}
+
+/// Entries from accepted handshakes record no local endpoint, even when the server shares a map
+/// handle obtained from a client, so the server never re-handshakes them.
+#[tokio::test]
+async fn accepted_entries_have_no_local_endpoint() {
+    use crate::{
+        psk::{client::Provider as ClientProvider, server::Provider as ServerProvider},
+        testing::{init_tracing, server_name, NoopSubscriber, TestTlsProvider},
+    };
+    use s2n_quic_core::time::StdClock;
+    use std::time::Duration;
+
+    init_tracing();
+
+    let new_map = || {
+        Map::new(
+            stateless_reset::Signer::random(),
+            100,
+            false,
+            StdClock::default(),
+            NoopSubscriber {},
+        )
+    };
+    let start_client = |map: &Map| {
+        ClientProvider::builder()
+            .start(
+                "127.0.0.1:0".parse().unwrap(),
+                map.clone(),
+                TestTlsProvider {},
+                NoopSubscriber {},
+                server_name(),
+            )
+            .unwrap()
+    };
+
+    let client_map = new_map();
+    let client = start_client(&client_map);
+    let server = ServerProvider::builder()
+        .start(
+            "127.0.0.1:0".parse().unwrap(),
+            TestTlsProvider {},
+            NoopSubscriber {},
+            client.map().clone(),
+        )
+        .await
+        .unwrap();
+
+    let dialer_map = new_map();
+    let dialer = start_client(&dialer_map);
+    dialer
+        .handshake_with(server.local_addr(), server_name())
+        .await
+        .unwrap();
+
+    let dialer_addr = dialer.local_addr().unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !client_map.contains(&dialer_addr) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("server records the dialer's path secret");
+
+    let initiated_by = |map: &Map, peer| {
+        map.store
+            .get_by_addr_untracked(&peer)
+            .expect("entry exists")
+            .initiated_by()
+    };
+    assert!(initiated_by(&client_map, dialer_addr).is_none());
+    assert!(initiated_by(&dialer_map, server.local_addr()).is_some());
 }

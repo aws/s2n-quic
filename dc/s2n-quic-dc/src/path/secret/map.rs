@@ -10,19 +10,18 @@ use crate::{
         schedule::{Ciphersuite, ExportSecret},
         seal, stateless_reset,
     },
-    psk::io::HandshakeReason,
     stream::TransportFeatures,
 };
 use core::fmt;
 use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{dc, time, varint::VarInt};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::task::JoinHandle;
 
 mod cleaner;
 mod disk;
 mod entry;
 pub mod handshake;
+mod local_endpoint;
 mod peer;
 mod proactive_unknown_path_secret;
 mod rehandshake;
@@ -50,7 +49,9 @@ pub(crate) use cleaner::Epoch;
 pub use entry::{
     ApplicationData, ApplicationDataError, ApplicationPair, Bidirectional, ControlPair,
 };
+pub(crate) use handshake::ClientEndpoint;
 pub use handshake::HandshakingPath;
+pub(crate) use local_endpoint::{LocalEndpoint, LocalEndpointId, RequestHandshake};
 pub use peer::Peer;
 
 pub(crate) use size_of::SizeOf;
@@ -274,11 +275,16 @@ impl Map {
         self.store.contains(peer)
     }
 
-    pub fn register_request_handshake(
+    /// Registers a local endpoint with this map. Dropping the returned registration unregisters
+    /// it.
+    pub(crate) fn register_local_endpoint(
         &self,
-        cb: Box<dyn Fn(SocketAddr, HandshakeReason) -> Option<JoinHandle<()>> + Send + Sync>,
-    ) {
-        self.store.register_request_handshake(cb);
+        rehandshake_callback: Arc<RequestHandshake>,
+    ) -> LocalEndpoint {
+        LocalEndpoint::new(
+            self.store.register_local_endpoint(rehandshake_callback),
+            self.store.clone(),
+        )
     }
 
     /// Gets the [`Peer`] entry for the given address
@@ -312,10 +318,8 @@ impl Map {
     pub fn seal_once_id(&self, id: Id) -> Option<(seal::Once, Credentials, dc::ApplicationParams)> {
         let entry = self.store.get_by_id_tracked(&id)?;
         let Some((sealer, credentials)) = entry.uni_sealer() else {
-            self.store.request_handshake(
-                *entry.peer(),
-                event::builder::HandshakeReason::KeyIdExhaustion,
-            );
+            self.store
+                .request_handshake(&entry, event::builder::HandshakeReason::KeyIdExhaustion);
             return None;
         };
         Some((sealer, credentials, entry.parameters()))
