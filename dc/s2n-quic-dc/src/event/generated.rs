@@ -2692,6 +2692,14 @@ pub mod api {
         /// The number of Path Secret ID entries created within the last rehandshake period (usually 24
         /// hours)
         pub id_entries_in_last_hs_period: usize,
+        /// The number of Path Secret ID entries created as a client within the last rehandshake period
+        pub id_entries_in_last_hs_period_client: usize,
+        /// The percentage of cache capacity occupied by recent client Path Secret ID entries
+        pub id_entries_in_last_hs_period_client_utilization: f32,
+        /// The number of Path Secret ID entries created as a server within the last rehandshake period
+        pub id_entries_in_last_hs_period_server: usize,
+        /// The percentage of cache capacity occupied by recent server Path Secret ID entries
+        pub id_entries_in_last_hs_period_server_utilization: f32,
         /// The utilization percentage of Path Secret ID entries created within the last rehandshake
         /// period (usually 24 hours)
         pub id_entries_in_last_hs_period_utilization: f32,
@@ -2740,6 +2748,22 @@ pub mod api {
             fmt.field(
                 "id_entries_in_last_hs_period",
                 &self.id_entries_in_last_hs_period,
+            );
+            fmt.field(
+                "id_entries_in_last_hs_period_client",
+                &self.id_entries_in_last_hs_period_client,
+            );
+            fmt.field(
+                "id_entries_in_last_hs_period_client_utilization",
+                &self.id_entries_in_last_hs_period_client_utilization,
+            );
+            fmt.field(
+                "id_entries_in_last_hs_period_server",
+                &self.id_entries_in_last_hs_period_server,
+            );
+            fmt.field(
+                "id_entries_in_last_hs_period_server_utilization",
+                &self.id_entries_in_last_hs_period_server_utilization,
             );
             fmt.field(
                 "id_entries_in_last_hs_period_utilization",
@@ -4800,6 +4824,10 @@ pub mod tracing {
                 address_entries_utilization,
                 address_entries_initial_utilization,
                 id_entries_in_last_hs_period,
+                id_entries_in_last_hs_period_client,
+                id_entries_in_last_hs_period_client_utilization,
+                id_entries_in_last_hs_period_server,
+                id_entries_in_last_hs_period_server_utilization,
                 id_entries_in_last_hs_period_utilization,
                 handshake_requests,
                 handshake_requests_skipped,
@@ -4827,6 +4855,14 @@ pub mod tracing {
                 tracing::field::debug(address_entries_initial_utilization),
                 id_entries_in_last_hs_period =
                 tracing::field::debug(id_entries_in_last_hs_period),
+                id_entries_in_last_hs_period_client =
+                tracing::field::debug(id_entries_in_last_hs_period_client),
+                id_entries_in_last_hs_period_client_utilization =
+                tracing::field::debug(id_entries_in_last_hs_period_client_utilization),
+                id_entries_in_last_hs_period_server =
+                tracing::field::debug(id_entries_in_last_hs_period_server),
+                id_entries_in_last_hs_period_server_utilization =
+                tracing::field::debug(id_entries_in_last_hs_period_server_utilization),
                 id_entries_in_last_hs_period_utilization =
                 tracing::field::debug(id_entries_in_last_hs_period_utilization),
                 handshake_requests = tracing::field::debug(handshake_requests),
@@ -7417,6 +7453,14 @@ pub mod builder {
         /// The number of Path Secret ID entries created within the last rehandshake period (usually 24
         /// hours)
         pub id_entries_in_last_hs_period: usize,
+        /// The number of Path Secret ID entries created as a client within the last rehandshake period
+        pub id_entries_in_last_hs_period_client: usize,
+        /// The percentage of cache capacity occupied by recent client Path Secret ID entries
+        pub id_entries_in_last_hs_period_client_utilization: f32,
+        /// The number of Path Secret ID entries created as a server within the last rehandshake period
+        pub id_entries_in_last_hs_period_server: usize,
+        /// The percentage of cache capacity occupied by recent server Path Secret ID entries
+        pub id_entries_in_last_hs_period_server_utilization: f32,
         /// The utilization percentage of Path Secret ID entries created within the last rehandshake
         /// period (usually 24 hours)
         pub id_entries_in_last_hs_period_utilization: f32,
@@ -7448,6 +7492,10 @@ pub mod builder {
                 address_entries_utilization,
                 address_entries_initial_utilization,
                 id_entries_in_last_hs_period,
+                id_entries_in_last_hs_period_client,
+                id_entries_in_last_hs_period_client_utilization,
+                id_entries_in_last_hs_period_server,
+                id_entries_in_last_hs_period_server_utilization,
                 id_entries_in_last_hs_period_utilization,
                 handshake_requests,
                 handshake_requests_skipped,
@@ -7469,6 +7517,14 @@ pub mod builder {
                 address_entries_initial_utilization: address_entries_initial_utilization
                     .into_event(),
                 id_entries_in_last_hs_period: id_entries_in_last_hs_period.into_event(),
+                id_entries_in_last_hs_period_client: id_entries_in_last_hs_period_client
+                    .into_event(),
+                id_entries_in_last_hs_period_client_utilization:
+                    id_entries_in_last_hs_period_client_utilization.into_event(),
+                id_entries_in_last_hs_period_server: id_entries_in_last_hs_period_server
+                    .into_event(),
+                id_entries_in_last_hs_period_server_utilization:
+                    id_entries_in_last_hs_period_server_utilization.into_event(),
                 id_entries_in_last_hs_period_utilization: id_entries_in_last_hs_period_utilization
                     .into_event(),
                 handshake_requests: handshake_requests.into_event(),
