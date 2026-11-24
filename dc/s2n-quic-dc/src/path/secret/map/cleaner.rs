@@ -24,9 +24,8 @@ pub(super) const CLEANER_CYCLE: Duration = Duration::from_secs(60);
 
 /// Converts a serialization `period` into a number of cleaner cycles (at least one).
 ///
-/// The cleaner already runs on a jittered ~once-per-minute cadence, so rather than jittering the
-/// serialization time separately we pick a random cycle within each window of this many cycles to
-/// serialize in. This spreads writes across processes for free.
+/// Pick a random cleaner cycle within each window of this many cycles to spread serialization
+/// across processes.
 fn period_in_cycles(period: Duration) -> u64 {
     (period.as_secs() / CLEANER_CYCLE.as_secs()).max(1)
 }
@@ -114,25 +113,22 @@ impl Cleaner {
                 // We serialize at most once per `serialize_cycles` window. `cycle` counts cleaner
                 // runs within the current window (wrapping back to 0 at the window boundary) and
                 // `serialize_at` is the randomly-chosen cycle within the window in which we write.
-                // Re-rolled each window so the cleaner's own jitter spreads writes across
-                // processes without a separate timer.
+                // Re-rolled each window to spread writes across processes.
                 let mut cycle = 0u64;
                 let mut serialize_at =
                     serialize_cycles.map(|cycles| rand::rng().random_range(0..cycles));
 
-                loop {
-                    // in tests, we should try and be as deterministic as possible
-                    let pause = if cfg!(test) {
-                        CLEANER_CYCLE.as_millis() as u64
-                    } else {
-                        rand::rng().random_range(
-                            Duration::from_secs(5).as_millis() as u64
-                                ..CLEANER_CYCLE.as_millis() as u64,
-                        )
-                    };
+                // Pick one offset for the lifetime of the cleaner. Keep the first delay
+                // deterministic in tests.
+                let initial_pause = if cfg!(test) {
+                    CLEANER_CYCLE
+                } else {
+                    rand::rng().random_range(Duration::from_secs(5)..CLEANER_CYCLE)
+                };
+                let mut next_start = Instant::now() + initial_pause;
 
-                    let next_start = Instant::now() + CLEANER_CYCLE;
-                    std::thread::park_timeout(Duration::from_millis(pause));
+                loop {
+                    std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
 
                     let Some(state) = state.upgrade() else {
                         break;
@@ -140,6 +136,11 @@ impl Cleaner {
                     if state.cleaner().should_stop.load(Ordering::Relaxed) {
                         break;
                     }
+                    if Instant::now() < next_start {
+                        // A park can wake early.
+                        continue;
+                    }
+
                     state.cleaner().clean(&state, EVICTION_CYCLES);
 
                     // Serialize the map in the chosen cycle of each window, then advance the cycle
@@ -158,8 +159,13 @@ impl Cleaner {
                         }
                     }
 
-                    // pause the rest of the time to run once a minute, not twice a minute
-                    std::thread::park_timeout(next_start.saturating_duration_since(Instant::now()));
+                    // Advance from the scheduled start to preserve the original offset.
+                    // Skip starts that elapsed during cleanup or serialization.
+                    next_start += CLEANER_CYCLE;
+                    let now = Instant::now();
+                    while next_start < now {
+                        next_start += CLEANER_CYCLE;
+                    }
                 }
             });
         let handle = handle?;
