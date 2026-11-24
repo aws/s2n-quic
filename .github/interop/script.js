@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* globals document, window, console, URLSearchParams, XMLHttpRequest, $, history */
+/* globals document, window, console, URL, URLSearchParams, XMLHttpRequest, $, history */
 
 (function() {
     "use strict";
@@ -19,11 +19,30 @@
         ].join(":").replace(/\b(\d)\b/g, "0$1");
     }
 
+    // Values from result.json are untrusted: render with textContent, or esc()
+    // where the surrounding markup is ours (the data-html tooltips).
+    const esc_map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" };
+
+    function esc(s) {
+        return String(s).replace(/[&<>"']/g, function(c) { return esc_map[c]; });
+    }
+
+    // Resolves url, returning it only if it is http(s).
+    function safeUrl(url) {
+        if (!url) return null;
+        try {
+            var u = new URL(url, window.location.href);
+            return (u.protocol === "http:" || u.protocol === "https:") ? u.href : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
     function getLogLink(log_dir, s2n_quic_log_dir, server, client, test, text, res) {
-        var ttip = "<b>Test:</b> " + test + "<br>" +
-            "<b>Client:</b> " + client + "<br>" +
-            "<b>Server:</b> " + server + "<br>" +
-            "<b>Result: <span class=\"text-" + color_type[res] + "\">" + res + "</span></b>";
+        var ttip = "<b>Test:</b> " + esc(test) + "<br>" +
+            "<b>Client:</b> " + esc(client) + "<br>" +
+            "<b>Server:</b> " + esc(server) + "<br>" +
+            "<b>Result: <span class=\"text-" + color_type[res] + "\">" + esc(res) + "</span></b>";
         var log_url_pattern = s2n_quic_log_dir[server];
 
         if (!log_url_pattern) {
@@ -47,9 +66,11 @@
         var a = document.createElement("a");
         a.className = "btn btn-xs btn-" + color_type[res] + " " + res + " test-" + text.toLowerCase();
         var ttip_target = a;
-        if (res !== "unsupported") {
-            a.href = log_url;
+        var safe_log_url = safeUrl(log_url);
+        if (res !== "unsupported" && safe_log_url) {
+            a.href = safe_log_url;
             a.target = "_blank";
+            a.rel = "noopener noreferrer";
             ttip += "<br><br>(Click for logs.)";
         } else {
             var s = document.createElement("span");
@@ -67,9 +88,12 @@
     }
 
     function makeClickable(e, url) {
-        e.title = url;
-        $(e).attr("role", "button").attr("data-href", url).attr("data-toggle", "tooltip").tooltip();
-        e.onclick = function(e) { window.open(e.target.getAttribute("data-href")); };
+        var safe = safeUrl(url);
+        if (!safe) return;
+        e.title = safe;
+        $(e).attr("role", "button").attr("data-href", safe).attr("data-toggle", "tooltip").tooltip();
+        // currentTarget: a click can land on a descendant node.
+        e.onclick = function(ev) { window.open(ev.currentTarget.getAttribute("data-href")); };
     }
 
     function makeColumnHeaders(t, result) {
@@ -88,7 +112,7 @@
             cell.className = "table-light server-" + result.servers[i];
             if (result.hasOwnProperty("urls"))
                 makeClickable(cell, result.urls[result.servers[i]]);
-            cell.innerHTML = result.servers[i];
+            cell.textContent = result.servers[i];
         }
     }
 
@@ -99,7 +123,7 @@
         cell.className = "table-light client-" + result.clients[i];
         if (result.hasOwnProperty("urls"))
             makeClickable(cell, result.urls[result.clients[i]]);
-        cell.innerHTML = result.clients[i];
+        cell.textContent = result.clients[i];
         row.appendChild(cell);
         return row;
     }
@@ -146,7 +170,7 @@
                     var measurement = res[k];
                     var link = getLogLink(result.log_dir, result.s2n_quic_log_dir, result.servers[j], result.clients[i], measurement.name, measurement.abbr, measurement.result);
                     if (measurement.result === "succeeded")
-                        link.innerHTML += ": " + measurement.details;
+                        link.appendChild(document.createTextNode(": " + measurement.details));
                     cell.appendChild(link);
                 }
                 index++;
@@ -264,7 +288,7 @@
         cell.className = "table-light col-sm-1 first-diff-col";
         if (result.hasOwnProperty("urls"))
             makeClickable(cell, result.urls[impl]);
-        cell.innerHTML = impl;
+        cell.textContent = impl;
         row.appendChild(cell);
         return row;
     }
@@ -275,7 +299,7 @@
 
     function makeButton(type, text, tooltip) {
         var b = document.createElement("button");
-        b.innerHTML = text;
+        b.textContent = text;
         b.id = type + "-" + text.toLowerCase();
         if (tooltip) {
             b.title = tooltip;
@@ -320,7 +344,7 @@
             Object.keys(count).map(c => {
                 e.appendChild(document.createElement("br"));
                 var b = document.createElement("span");
-                b.innerHTML = count[c];
+                b.textContent = count[c];
                 b.className = "btn btn-xs btn-" + color_type[c];
                 if (e.classList.contains("active") === false)
                     b.className += " disabled";
@@ -365,21 +389,35 @@
     }
 
     function makeTooltip(name, desc) {
-        return "<strong>" + name + "</strong>" + (desc === undefined ? "" : "<br>" + desc);
+        return "<strong>" + esc(name) + "</strong>" + (desc === undefined ? "" : "<br>" + esc(desc));
     }
+
+    function versionLink(url, name) {
+        var safe = safeUrl(url);
+        if (!safe) return document.createTextNode(name);
+        var a = document.createElement("a");
+        a.href = safe;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.textContent = name;
+        return a;
+    }
+
 
     function process(result) {
         var startTime = new Date(1000*result.start_time);
         var endTime = new Date(1000*result.end_time);
         var duration = result.end_time - result.start_time;
-        document.getElementById("lastrun-end").innerHTML = dateToString(endTime);
+        document.getElementById("lastrun-end").textContent = dateToString(endTime);
         document.getElementById("quic-vers").innerHTML =
-            "<tt>" + result.quic_version + "</tt> (\"draft-" + result.quic_draft + "\")";
+            "<tt>" + esc(result.quic_version) + "</tt> (\"draft-" + esc(result.quic_draft) + "\")";
 
         if (result['results_diff']) {
-            var prev_version_url = result.urls[result.prev_version];
-            var new_version_url = result.urls[result.new_version];
-            document.getElementById("diff-title").innerHTML = `Comparing <a href='${prev_version_url}' target='_blank'>${result.prev_version}</a> to <a href='${new_version_url}' target='_blank'>${result.new_version}</a>`;
+            var title = document.getElementById("diff-title");
+            title.textContent = "Comparing ";
+            title.appendChild(versionLink(result.urls[result.prev_version], result.prev_version));
+            title.appendChild(document.createTextNode(" to "));
+            title.appendChild(versionLink(result.urls[result.new_version], result.new_version));
             fillDiffTable(result);
         } else {
             $("#diff-title").hide();

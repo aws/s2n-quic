@@ -4,6 +4,101 @@
 from glob import glob
 import argparse
 import json
+import re
+import sys
+from urllib.parse import urlparse
+
+# Merged results come from sources we do not control, so validate every field the
+# report page renders. Names and abbreviations also become CSS class names and
+# element ids, hence the conservative character set.
+IDENT_RE = re.compile(r'\A[A-Za-z0-9._+-]{1,64}\Z')
+
+RESULTS = frozenset(['succeeded', 'unsupported', 'failed'])
+
+MAX_TEXT = 1024
+
+
+def reject(kind, value):
+    sys.exit("merge.py: refusing to merge %s: %r" % (kind, value))
+
+
+def ident(kind, value):
+    if not isinstance(value, str) or not IDENT_RE.match(value):
+        reject(kind, value)
+    return value
+
+
+def outcome(value):
+    if value not in RESULTS:
+        reject('test result', value)
+    return value
+
+
+def text(value):
+    # Prose, so no character allowlist. script.js escapes the rest on render.
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        reject('display text', value)
+    return re.sub(r'[<>]', '', value)[:MAX_TEXT]
+
+
+def safe_url(value):
+    # http(s) only.
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = urlparse(value)
+    except ValueError:
+        return None
+    if parsed.scheme in ('http', 'https') and parsed.netloc:
+        return value
+    return None
+
+
+def version_field(kind, value):
+    if value is None or isinstance(value, int):
+        return value
+    return ident(kind, value)
+
+
+def merge_tests(src):
+    # Allowlist the keys the report reads.
+    if not isinstance(src, dict):
+        reject('tests', src)
+    for abbr, t in src.items():
+        ident('test abbreviation', abbr)
+        if not isinstance(t, dict):
+            reject('test entry', t)
+        entry = {'name': text(t.get('name')) or abbr}
+        if t.get('desc') is not None:
+            entry['desc'] = text(t.get('desc'))
+        tests[abbr] = entry
+
+
+def merge_urls(src):
+    if not isinstance(src, dict):
+        reject('urls', src)
+    for name, url in src.items():
+        ident('implementation name', name)
+        url = safe_url(url)
+        if url:
+            urls[name] = url
+
+
+def merge_measurement(m):
+    if not isinstance(m, dict):
+        reject('measurement', m)
+    abbr = ident('measurement abbreviation', m.get('abbr'))
+    merged = {
+        'abbr': abbr,
+        'name': text(m.get('name')) or abbr,
+        'result': outcome(m.get('result')),
+    }
+    if m.get('details') is not None:
+        merged['details'] = text(m.get('details'))
+    return merged
+
 
 start_time = None
 end_time = None
@@ -77,10 +172,15 @@ for pattern in args.patterns:
             quic_draft = update_value(result, 'quic_draft', quic_draft, strict_eq)
             quic_version = update_value(result, 'quic_version', quic_version, strict_eq)
 
-            tests.update(result.get('tests', {}))
-            urls.update(result.get('urls', {}))
+            quic_draft = version_field('quic_draft', quic_draft)
+            quic_version = version_field('quic_version', quic_version)
+
+            merge_tests(result.get('tests', {}))
+            merge_urls(result.get('urls', {}))
 
             for client in result.get('clients', []):
+                ident('client name', client)
+
                 # Rename the new version of s2n-quic (used with pull requests)
                 if client == S2N_QUIC:
                     client = s2n_quic_new_version_name
@@ -91,6 +191,8 @@ for pattern in args.patterns:
                 clients.add(client)
 
                 for server in result.get('servers', []):
+                    ident('server name', server)
+
                     # Rename the new version of s2n-quic (used with pull requests)
                     if server == S2N_QUIC:
                         server = s2n_quic_new_version_name
@@ -101,9 +203,11 @@ for pattern in args.patterns:
                     measurements[client].setdefault(server, {})
 
                     for r in result['results'][index]:
-                        results[client][server][r['abbr']] = r['result']
+                        test = ident('test abbreviation', r['abbr'])
+                        results[client][server][test] = outcome(r['result'])
 
                     for m in result['measurements'][index]:
+                        m = merge_measurement(m)
                         measurements[client][server][m['abbr']] = m
 
                     index += 1
@@ -115,6 +219,9 @@ if args.prev_version:
         index = 0
 
         for client in result.get('clients', []):
+            # prev_result.json can carry names that originated upstream.
+            ident('client name', client)
+
             if client == S2N_QUIC:
                 results_diff.setdefault(S2N_QUIC, {})
 
@@ -125,6 +232,8 @@ if args.prev_version:
             clients.add(client)
 
             for server in result.get('servers', []):
+                ident('server name', server)
+
                 if server == S2N_QUIC:
                     results_diff[client].setdefault(S2N_QUIC, {})
 
@@ -140,8 +249,8 @@ if args.prev_version:
                 results_diff[client].setdefault(server, {})
 
                 for r in result['results'][index]:
-                    test = r['abbr']
-                    prev_result = r['result']
+                    test = ident('test abbreviation', r['abbr'])
+                    prev_result = outcome(r['result'])
                     diff_output = None
                     results[client][server][test] = prev_result
 
@@ -163,6 +272,7 @@ if args.prev_version:
                         regression = True
 
                 for m in result['measurements'][index]:
+                    m = merge_measurement(m)
                     measurements[client][server][m['abbr']] = m
                     # TODO diff measurements
 
