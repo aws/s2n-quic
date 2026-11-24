@@ -55,9 +55,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -118,9 +116,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -183,9 +179,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -250,9 +244,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -354,9 +346,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ]
+    "haproxy": []
   },
   "retry": {
     "aioquic": [
@@ -404,9 +394,7 @@
       "server"
     ],
     "xquic": [],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -469,9 +457,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -605,9 +591,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -699,9 +683,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -792,9 +774,7 @@
       "client",
       "server"
     ],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -971,9 +951,7 @@
     ],
     "s2n-quic-rustls": [],
     "xquic": [],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
@@ -1028,9 +1006,7 @@
     ],
     "xquic": [],
     "chrome": [],
-    "haproxy": [
-      "server"
-    ],
+    "haproxy": [],
     "nginx": [
       "server"
     ],
