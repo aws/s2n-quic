@@ -282,8 +282,14 @@ jobs:
           INTEROP_BASE_URL="https://interop.seemann.io/logs/"
           wget ${INTEROP_BASE_URL}latest/result.json || echo '{}' > result.json
           mv result.json latest.json
-          INTEROP_LOG_URL=${INTEROP_BASE_URL}$(jq --raw-output '.log_dir' latest.json)/SERVER_CLIENT/TEST/
-          echo "INTEROP_LOG_URL=$INTEROP_LOG_URL" >> $GITHUB_OUTPUT
+          # latest.json is untrusted input. [[ =~ ]] anchors the whole string; grep,
+          # being line oriented, would not.
+          LOG_DIR=$(jq --raw-output '.log_dir // ""' latest.json)
+          if [ -n "$LOG_DIR" ] && [[ ! "$LOG_DIR" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::unexpected log_dir from ${INTEROP_BASE_URL}: ${LOG_DIR}"
+            exit 1
+          fi
+          echo "INTEROP_LOG_URL=${INTEROP_BASE_URL}${LOG_DIR}/SERVER_CLIENT/TEST/" >> "$GITHUB_OUTPUT"
 
       - name: Get latest successful interop commit SHA on main branch
         id: mainsha
@@ -298,36 +304,44 @@ jobs:
 
       - name: Download latest main interop result
         if: github.event.pull_request
+        env:
+          MAIN_SHA: ${{ steps.mainsha.outputs.MAIN_SHA }}
         run: |
           rm -f prev_result.json
-          wget $CDN/${{ steps.mainsha.outputs.MAIN_SHA }}/interop/logs/latest/result.json || echo '{}' > result.json
+          wget "$CDN/$MAIN_SHA/interop/logs/latest/result.json" || echo '{}' > result.json
           mv result.json prev_result.json
 
       - name: Generate report for pull request
         if: github.event.pull_request
+        # Values reach the script through env, not ${{ }} interpolation.
+        env:
+          INTEROP_LOG_URL: ${{ steps.download.outputs.INTEROP_LOG_URL }}
+          MAIN_SHA: ${{ steps.mainsha.outputs.MAIN_SHA }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           mkdir -p web/logs/latest
-          MAIN_SHA=${{ steps.mainsha.outputs.MAIN_SHA }}
           python3 .github/interop/merge.py \
             --prev_version prev_result.json \
-            --new_version_suffix "pr${{github.event.pull_request.number}}" \
-            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${{github.event.pull_request.number}}" \
+            --new_version_suffix "pr${PR_NUMBER}" \
+            --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/${PR_NUMBER}" \
             --new_version_log_url "$LOG_URL" \
             --prev_version_log_url "$CDN/$MAIN_SHA/interop/$LOG_URL" \
             --prev_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$MAIN_SHA" \
-            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+            --interop_log_url "$INTEROP_LOG_URL" \
             latest.json \
             results/**/result.json > \
               web/logs/latest/result.json
 
       - name: Generate report for push to main or daily schedule job
         if: github.event_name == 'push' || github.event_name == 'schedule'
+        env:
+          INTEROP_LOG_URL: ${{ steps.download.outputs.INTEROP_LOG_URL }}
         run: |
           mkdir -p web/logs/latest
           python3 .github/interop/merge.py \
             --new_version_log_url "$LOG_URL" \
             --new_version_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" \
-            --interop_log_url "${{ steps.download.outputs.INTEROP_LOG_URL }}" \
+            --interop_log_url "$INTEROP_LOG_URL" \
             latest.json \
             results/**/result.json > \
               web/logs/latest/result.json
