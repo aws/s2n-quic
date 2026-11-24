@@ -811,6 +811,9 @@ enum DatagramDropReason {
     ///
     /// Note: This drop reason is no longer emitted
     InsufficientConnectionIds,
+    /// An Initial packet was carried in a datagram smaller than the smallest allowed maximum
+    /// datagram size of 1200 bytes.
+    UndersizedInitialPacket,
 }
 
 struct MtuConfig {

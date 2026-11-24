@@ -905,6 +905,10 @@ pub mod api {
         ///
         /// Note: This drop reason is no longer emitted
         InsufficientConnectionIds {},
+        #[non_exhaustive]
+        /// An Initial packet was carried in a datagram smaller than the smallest allowed maximum
+        /// datagram size of 1200 bytes.
+        UndersizedInitialPacket {},
     }
     impl aggregate::AsVariant for DatagramDropReason {
         const VARIANTS: &'static [aggregate::info::Variant] = &[
@@ -973,6 +977,11 @@ pub mod api {
                 id: 12usize,
             }
             .build(),
+            aggregate::info::variant::Builder {
+                name: aggregate::info::Str::new("UNDERSIZED_INITIAL_PACKET\0"),
+                id: 13usize,
+            }
+            .build(),
         ];
         #[inline]
         fn variant_idx(&self) -> usize {
@@ -990,6 +999,7 @@ pub mod api {
                 Self::RejectedConnectionMigration { .. } => 10usize,
                 Self::PathLimitExceeded { .. } => 11usize,
                 Self::InsufficientConnectionIds { .. } => 12usize,
+                Self::UndersizedInitialPacket { .. } => 13usize,
             }
         }
     }
@@ -6005,6 +6015,9 @@ pub mod builder {
         ///
         /// Note: This drop reason is no longer emitted
         InsufficientConnectionIds,
+        /// An Initial packet was carried in a datagram smaller than the smallest allowed maximum
+        /// datagram size of 1200 bytes.
+        UndersizedInitialPacket,
     }
     impl IntoEvent<api::DatagramDropReason> for DatagramDropReason {
         #[inline]
@@ -6030,6 +6043,7 @@ pub mod builder {
                 },
                 Self::PathLimitExceeded => PathLimitExceeded {},
                 Self::InsufficientConnectionIds => InsufficientConnectionIds {},
+                Self::UndersizedInitialPacket => UndersizedInitialPacket {},
             }
         }
     }

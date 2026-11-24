@@ -43,25 +43,6 @@ impl<Config: endpoint::Config> endpoint::Endpoint<Config> {
             "only servers can accept new initial connections"
         );
 
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
-        //# A client MUST expand the payload of all UDP datagrams carrying
-        //# Initial packets to at least the smallest allowed maximum datagram
-        //# size of 1200 bytes
-
-        //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
-        //# A server MUST discard an Initial packet that is carried in a UDP
-        //# datagram with a payload that is smaller than the smallest allowed
-        //# maximum datagram size of 1200 bytes.
-
-        //= https://www.rfc-editor.org/rfc/rfc9001#section-9.3
-        //# First, the packet
-        //# containing a ClientHello MUST be padded to a minimum size.
-        if datagram.payload_len < 1200 {
-            return Err(transport::Error::PROTOCOL_VIOLATION
-                .with_reason("packet too small")
-                .into());
-        }
-
         let remote_address = header.path.remote_address();
 
         // The first connection ID to persist and use for routing incoming packets
