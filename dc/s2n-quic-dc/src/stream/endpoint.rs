@@ -12,6 +12,7 @@ use crate::{
         recv,
         send::{self, flow},
         server, shared,
+        transport::Transport,
     },
 };
 use core::cell::UnsafeCell;
@@ -300,7 +301,6 @@ where
                 subscriber,
                 context: subscriber_ctx,
             },
-            s2n_connection: None,
         }
     };
 
@@ -405,6 +405,13 @@ where
 
     let read = recv::application::Builder::new(endpoint_type, env.reader_rt());
     let write = send::application::Builder::new(env.writer_rt());
+
+    let shared: shared::ArcShared<Env::Subscriber> = shared;
+    let shared = if features.is_reliable() {
+        Transport::DcTcp(shared)
+    } else {
+        Transport::DcUdp(shared)
+    };
 
     let stream = application::Builder {
         read,

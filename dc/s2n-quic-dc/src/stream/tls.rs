@@ -20,7 +20,6 @@
 use s2n_quic_core::{
     buffer::{reader::Incremental, writer::Storage as _, Writer as _},
     event::IntoEvent,
-    inet::ExplicitCongestionNotification,
     time::{Clock, Timestamp},
     varint::VarInt,
 };
@@ -683,10 +682,8 @@ pub(crate) fn build_stream<Sub>(
     kernel_start_time: Timestamp,
     addr: std::net::SocketAddr,
     socket: Arc<Single<TcpStream>>,
-    s2n_connection: crate::stream::tls::S2nTlsConnection,
+    connection: crate::stream::tls::S2nTlsConnection,
     env: &Environment<Sub>,
-    // FIXME: Do we really need the map for this?
-    map: &crate::path::secret::Map,
     endpoint_type: s2n_quic_core::endpoint::Type,
 ) -> io::Result<crate::stream::application::Builder<Sub>>
 where
@@ -725,18 +722,6 @@ where
     let subscriber = env.subscriber().clone();
     let subscriber_ctx = subscriber.create_connection_context(&meta, &info);
 
-    // Fake up a secret -- this will need some reworking to store the keys in the TLS state
-    // probably?
-    let mut secret = [0; 32];
-    #[expect(clippy::unwrap_used, reason = "entropy failure is unrecoverable")]
-    aws_lc_rs::rand::fill(&mut secret).unwrap();
-    let secret = crate::path::secret::schedule::Secret::new(
-        crate::path::secret::schedule::Ciphersuite::AES_GCM_128_SHA256,
-        s2n_quic_core::dc::SUPPORTED_VERSIONS[0],
-        endpoint_type,
-        &secret,
-    );
-
     let common = {
         let application = crate::stream::send::application::state::State { is_reliable: true };
 
@@ -762,18 +747,10 @@ where
                 subscriber,
                 context: subscriber_ctx,
             },
-            s2n_connection: Some(s2n_connection),
         }
     };
 
-    let pair = crate::path::secret::map::ApplicationPair::new(
-        &secret,
-        VarInt::ZERO,
-        crate::path::secret::schedule::Initiator::Local,
-        // Not currently actually using these credentials.
-        crate::path::secret::map::Dedup::disabled(),
-    );
-    let shared = Arc::new(crate::stream::shared::Shared {
+    let shared = Arc::new(crate::stream::shared::TlsShared {
         receiver: crate::stream::recv::shared::State::new(
             stream_id,
             &params,
@@ -786,18 +763,8 @@ where
             endpoint_type,
             &env.clock(),
         ),
-        sender: crate::stream::send::shared::State::new(
-            crate::stream::send::flow::non_blocking::State::new(VarInt::MAX),
-            crate::stream::send::path::Info {
-                max_datagram_size: params.max_datagram_size(),
-                send_quantum: 10,
-                ecn: ExplicitCongestionNotification::Ect0,
-                next_expected_control_packet: VarInt::ZERO,
-            },
-            None,
-        ),
-        crypto: crate::stream::shared::Crypto::new(pair.sealer, pair.opener, None, map),
-        application_data: None,
+        segment_alloc: Default::default(),
+        connection,
         common,
     });
 
@@ -807,7 +774,7 @@ where
     Ok(crate::stream::application::Builder {
         read,
         write,
-        shared,
+        shared: crate::stream::transport::Transport::Tls(shared),
         sockets: Box::new(socket),
         kernel_start_time,
         app_queue_time: None,
