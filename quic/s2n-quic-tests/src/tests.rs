@@ -53,6 +53,7 @@ mod skip_packets;
 mod slow_tls;
 mod stream_limits;
 mod tls_context;
+mod undersized_initial;
 // This test uses quiche, which depends on BoringSSL. See the `boringssl` cfg in build.rs.
 #[cfg(boringssl)]
 mod zero_length_cid_client_connection_migration;

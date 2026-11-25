@@ -698,6 +698,38 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         match (Cfg::ENDPOINT_TYPE, packet) {
             (s2n_quic_core::endpoint::Type::Server, ProtectedPacket::Initial(packet)) => {
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+                //# A client MUST expand the payload of all UDP datagrams carrying
+                //# Initial packets to at least the smallest allowed maximum datagram
+                //# size of 1200 bytes
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-14.1
+                //# A server MUST discard an Initial packet that is carried in a UDP
+                //# datagram with a payload that is smaller than the smallest allowed
+                //# maximum datagram size of 1200 bytes.
+
+                //= https://www.rfc-editor.org/rfc/rfc9001#section-9.3
+                //# First, the packet
+                //# containing a ClientHello MUST be padded to a minimum size.
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1
+                //# Prior to validating the client address, servers MUST NOT send more
+                //# than three times as many bytes as the number of bytes they have
+                //# received.
+
+                // This is checked before anything can be sent in response to the datagram, so an
+                // undersized Initial cannot elicit a Retry or a CONNECTION_CLOSE toward an
+                // unvalidated source address.
+                if payload_len < path::MINIMUM_MAX_DATAGRAM_SIZE as usize {
+                    publisher.on_endpoint_datagram_dropped(
+                        event::builder::EndpointDatagramDropped {
+                            len: payload_len as u16,
+                            reason: event::builder::DatagramDropReason::UndersizedInitialPacket,
+                        },
+                    );
+                    return;
+                }
+
                 let source_connection_id =
                     match connection::PeerId::try_from_bytes(packet.source_connection_id()) {
                         Some(connection_id) => connection_id,
