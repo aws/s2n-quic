@@ -344,6 +344,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
         header: &datagram::Header<Cfg::PathHandle>,
         packet: &ProtectedInitial,
         payload_len: usize,
+        address_validated: bool,
         timestamp: Timestamp,
     ) -> Option<()> {
         if !self.connections.can_accept() {
@@ -356,6 +357,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             self.connections.handshake_connections(),
             self.connections.len(),
             &remote_address,
+            address_validated,
             timestamp.into_event(),
         );
 
@@ -372,6 +374,15 @@ impl<Cfg: Config> Endpoint<Cfg> {
 
         match outcome {
             Outcome::Allow { .. } => Some(()),
+            //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
+            //# In response to processing an Initial packet containing a token that
+            //# was provided in a Retry packet, a server cannot send another Retry
+            //# packet; it can only refuse the connection or permit it to proceed.
+
+            // The address has already been validated, so a Retry is not an option that
+            // is available to us. Permit the connection to proceed; a limiter that needs
+            // to refuse these attempts must return `Close` or `Drop`.
+            Outcome::Retry { .. } if address_validated => Some(()),
             Outcome::Retry { .. } => {
                 //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
                 //# A server can also use a Retry packet to defer the state and
@@ -720,11 +731,12 @@ impl<Cfg: Config> Endpoint<Cfg> {
                 //# the peer uses a connection ID chosen by the endpoint and the
                 //# connection ID contains at least 64 bits of entropy
 
-                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
-                //# In response to processing an Initial packet containing a token that
-                //# was provided in a Retry packet, a server cannot send another Retry
-                //# packet; it can only refuse the connection or permit it to proceed.
-                let retry_token_dcid = if !packet.token().is_empty() {
+                // An Initial packet carrying a token asserts that the peer's address was
+                // already validated. Admission control should still take place regardless
+                // of whether the address is validated.
+                let address_validated = !packet.token().is_empty();
+
+                let retry_token_dcid = if address_validated {
                     let mut context = token::Context::new(
                         &remote_address,
                         &source_connection_id,
@@ -796,22 +808,25 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         return;
                     }
 
-                    //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
-                    //# Upon receiving the client's Initial packet, the server can request
-                    //# address validation by sending a Retry packet (Section 17.2.5)
-                    //# containing a token.
-                    if self
-                        .connection_allowed(header, &packet, payload_len, timestamp)
-                        .is_none()
-                    {
-                        //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
-                        //# A server MUST NOT send more than one Retry
-                        //# packet in response to a single UDP datagram.
-                        return;
-                    }
-
                     None
                 };
+
+                //= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
+                //# Upon receiving the client's Initial packet, the server can request
+                //# address validation by sending a Retry packet (Section 17.2.5)
+                //# containing a token.
+                // Both the token bearing and tokenless paths pass through admission control
+                // before any connection state is allocated. `connection_allowed` will not
+                // request a Retry when the address has already been validated.
+                if self
+                    .connection_allowed(header, &packet, payload_len, address_validated, timestamp)
+                    .is_none()
+                {
+                    //= https://www.rfc-editor.org/rfc/rfc9000#section-17.2.5.1
+                    //# A server MUST NOT send more than one Retry
+                    //# packet in response to a single UDP datagram.
+                    return;
+                }
 
                 if let Err(err) = self.handle_initial_packet(
                     header,
