@@ -18,6 +18,27 @@ struct AllowFirstThenCloseLimiter {
     connection_count: usize,
 }
 
+/// Defers connection attempts from unvalidated addresses with a Retry, and refuses the
+/// attempt once the address has been validated.
+///
+/// Records the `address_validated` value of every attempt it is consulted for.
+#[derive(Clone, Default)]
+struct RetryThenCloseLimiter {
+    attempts: Arc<Mutex<Vec<bool>>>,
+}
+
+impl Limiter for RetryThenCloseLimiter {
+    fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome {
+        self.attempts.lock().unwrap().push(info.address_validated);
+
+        if info.address_validated {
+            Outcome::close()
+        } else {
+            Outcome::retry()
+        }
+    }
+}
+
 impl Limiter for AllowFirstThenCloseLimiter {
     fn on_connection_attempt(&mut self, _info: &ConnectionAttempt) -> Outcome {
         if self.connection_count == 0 {
@@ -123,4 +144,56 @@ fn endpoint_limits_close_test() {
             ..
         } if (code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code && initiator == endpoint::Location::Remote)
     ));
+}
+
+//= https://www.rfc-editor.org/rfc/rfc9000#section-8.1.2
+//= type=test
+//# In response to processing an Initial packet containing a token that
+//# was provided in a Retry packet, a server cannot send another Retry
+//# packet; it can only refuse the connection or permit it to proceed.
+
+// An Initial packet carrying a valid address validation token is still subject to the
+// endpoint limiter. The limiter is consulted with `address_validated` set, and a Close
+// outcome refuses the connection rather than admitting it.
+#[test]
+fn token_bearing_initial_is_subject_to_endpoint_limits() {
+    let model = Model::default();
+    let limiter = RetryThenCloseLimiter::default();
+    let observed = limiter.clone();
+
+    test(model.clone(), |handle| {
+        let server = Server::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(SERVER_CERTS)?
+            .with_event(tracing_events(false, model.clone()))?
+            .with_random(Random::with_seed(456))?
+            .with_endpoint_limits(limiter)?
+            .start()?;
+
+        let server_addr = start_server(server)?;
+
+        let client = Client::builder()
+            .with_io(handle.builder().build()?)?
+            .with_tls(certificates::CERT_PEM)?
+            .with_event(tracing_events(true, model.clone()))?
+            .with_random(Random::with_seed(789))?
+            .start()?;
+
+        primary::spawn(async move {
+            // The first Initial is answered with a Retry. The client redeems the token,
+            // and that attempt is refused instead of being admitted. The CONNECTION_REFUSED
+            // error also shows the client could decrypt the refusal, which is protected with
+            // keys derived from the connection ID the server chose for the Retry.
+            let connect = Connect::new(server_addr).with_server_name("localhost");
+            let result = client.connect(connect).await;
+            assert!(matches!(result.unwrap_err(), Error::Transport { code, .. } if code == s2n_quic_core::transport::Error::CONNECTION_REFUSED.code));
+        });
+
+        Ok(())
+    })
+    .unwrap();
+
+    // The limiter is consulted twice: once for the client's first Initial, which has no
+    // token, and once for the Initial that carries the token from the Retry.
+    assert_eq!(observed.attempts.lock().unwrap().clone(), [false, true]);
 }

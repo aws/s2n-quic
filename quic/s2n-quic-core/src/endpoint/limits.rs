@@ -74,6 +74,14 @@ pub struct ConnectionAttempt<'a> {
     /// The unverified address of the connecting peer
     /// This address comes from the datagram
     pub remote_address: SocketAddress<'a>,
+
+    /// True if the peer's address has already been validated
+    ///
+    /// This is the case when the connection attempt carried a valid address validation
+    /// token, which means the peer has demonstrated it can receive packets at
+    /// `remote_address`.
+    pub address_validated: bool,
+
     pub timestamp: Timestamp,
 }
 
@@ -83,12 +91,14 @@ impl<'a> ConnectionAttempt<'a> {
         inflight_handshakes: usize,
         connection_count: usize,
         remote_address: &'a inet::SocketAddress,
+        address_validated: bool,
         timestamp: Timestamp,
     ) -> Self {
         Self {
             inflight_handshakes,
             connection_count,
             remote_address: remote_address.into_event(),
+            address_validated,
             timestamp,
         }
     }
