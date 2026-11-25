@@ -373,7 +373,7 @@ impl LocalIdRegistry {
         //= https://www.rfc-editor.org/rfc/rfc9000#section-5.1.1
         //# The sequence number on
         //# each newly issued connection ID MUST increase by 1.
-        self.next_sequence_number += 1;
+        self.next_sequence_number = self.next_sequence_number.checked_add(1).unwrap();
 
         // If we are provided an expiration, update the timers
         if expiration.is_some() {
