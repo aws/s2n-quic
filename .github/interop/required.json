@@ -803,8 +803,7 @@
       "server"
     ],
     "neqo": [
-      "client",
-      "server"
+      "client"
     ],
     "ngtcp2": [
       "client"
