@@ -3,11 +3,11 @@
 
 use std::{
     fs::OpenOptions,
-    io::{BufWriter, Result, Write},
+    io::{BufWriter, Error, ErrorKind, Result, Write},
     path::{Path, PathBuf},
 };
 
-use chrono::{DateTime, Duration, Timelike, Utc};
+use jiff::{RoundMode, SignedDuration, Timestamp, TimestampRound, Unit};
 
 /// Rolling service log writer. Automatically opens new service log files each period (supports
 /// hourly and sub-hourly rotation).
@@ -15,12 +15,12 @@ pub struct MetricsWriter {
     base_path: PathBuf,
     filename_prefix: String,
     active: Option<ActiveWriter>,
-    time_source: Box<dyn Fn() -> DateTime<Utc> + Send + Sync + 'static>,
+    time_source: Box<dyn Fn() -> Timestamp + Send + Sync + 'static>,
     #[allow(clippy::type_complexity)]
     file_factory: Box<
         dyn Fn(&Path) -> Result<Box<dyn Write + Send + Sync + 'static>> + Send + Sync + 'static,
     >,
-    log_rotation: Duration,
+    log_rotation: SignedDuration,
 }
 
 impl std::fmt::Debug for MetricsWriter {
@@ -51,9 +51,9 @@ impl MetricsWriter {
             base_path,
             filename_prefix,
             active: None,
-            log_rotation: Duration::from_std(log_rotation)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?,
-            time_source: Box::new(Utc::now),
+            log_rotation: SignedDuration::try_from(log_rotation)
+                .map_err(|e| Error::new(ErrorKind::InvalidInput, e))?,
+            time_source: Box::new(Timestamp::now),
             file_factory: Box::new(|path| {
                 let f = OpenOptions::new()
                     .read(false)
@@ -71,8 +71,8 @@ impl MetricsWriter {
             base_path: PathBuf::new(),
             filename_prefix: String::new(),
             active: None,
-            log_rotation: Duration::try_minutes(60).unwrap(),
-            time_source: Box::new(Utc::now),
+            log_rotation: SignedDuration::from_hours(1),
+            time_source: Box::new(Timestamp::now),
             file_factory: Box::new(|_| Ok(Box::new(std::io::sink()))),
         }
     }
@@ -81,8 +81,8 @@ impl MetricsWriter {
 /// Information about a single opened file
 struct ActiveWriter {
     filename: PathBuf,
-    valid_starting: DateTime<Utc>,
-    valid_until: DateTime<Utc>,
+    valid_starting: Timestamp,
+    valid_until: Timestamp,
     writer: BufWriter<Box<dyn Write + Send + Sync + 'static>>,
 }
 
@@ -134,27 +134,28 @@ impl MetricsWriter {
         Ok(FlushOnDrop(&mut self.active.as_mut().unwrap().writer))
     }
 
-    fn open_writer(&self, now: DateTime<Utc>) -> std::io::Result<ActiveWriter> {
-        let mut filename = format!("{}.{}", self.filename_prefix, now.format("%Y-%m-%d-%H"));
-        let mut start_time = now.date_naive().and_hms_opt(now.hour(), 0, 0).unwrap();
-        if self.log_rotation.num_minutes() < 60 {
-            filename = format!("{}.{}", self.filename_prefix, now.format("%Y-%m-%d-%H-%M"));
-            start_time = now
-                .date_naive()
-                .and_hms_opt(now.hour(), now.minute(), 0)
-                .unwrap();
-        }
+    fn open_writer(&self, now: Timestamp) -> std::io::Result<ActiveWriter> {
+        let (unit, format) = if self.log_rotation < SignedDuration::from_hours(1) {
+            (Unit::Minute, "%Y-%m-%d-%H-%M")
+        } else {
+            (Unit::Hour, "%Y-%m-%d-%H")
+        };
+        let start_time = now
+            .round(TimestampRound::new().smallest(unit).mode(RoundMode::Floor))
+            .map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
+        let deadline = start_time
+            .checked_add(self.log_rotation)
+            .map_err(|e| Error::new(ErrorKind::InvalidInput, e))?;
+        let filename = format!("{}.{}", self.filename_prefix, start_time.strftime(format));
 
         let mut path = self.base_path.clone();
         path.push(filename);
 
         let file = (self.file_factory)(&path)?;
-        let deadline = start_time.checked_add_signed(self.log_rotation).unwrap();
-
         Ok(ActiveWriter {
             filename: path,
-            valid_starting: DateTime::from_naive_utc_and_offset(start_time, Utc),
-            valid_until: DateTime::from_naive_utc_and_offset(deadline, Utc),
+            valid_starting: start_time,
+            valid_until: deadline,
             writer: BufWriter::new(file),
         })
     }
@@ -228,9 +229,7 @@ mod test {
     #[test]
     fn test_reuse() {
         let now = Arc::new(Mutex::new(
-            "2020-01-01T00:00:00+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
+            "2020-01-01T00:00:00+00:00".parse::<Timestamp>().unwrap(),
         ));
 
         let time_source = { Box::new(move || *now.lock().unwrap()) };
@@ -246,7 +245,7 @@ mod test {
                 let files = files.clone();
                 Box::new(move |path| files.open(path))
             },
-            log_rotation: Duration::minutes(60),
+            log_rotation: SignedDuration::from_hours(1),
         };
 
         write!(&mut writer.writer().unwrap(), "foobar").unwrap();
@@ -266,9 +265,7 @@ mod test {
     #[test]
     fn test_rotation() {
         let now = Arc::new(Mutex::new(
-            "2020-01-23T12:34:56+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
+            "2020-01-23T12:34:56+00:00".parse::<Timestamp>().unwrap(),
         ));
 
         let time_source = {
@@ -287,7 +284,7 @@ mod test {
                 let files = files.clone();
                 Box::new(move |path| files.open(path))
             },
-            log_rotation: Duration::minutes(60),
+            log_rotation: SignedDuration::from_hours(1),
         };
 
         write!(&mut writer.writer().unwrap(), "foobar").unwrap();
@@ -299,9 +296,7 @@ mod test {
         );
         *buf.lock().unwrap() = (false, vec![]);
 
-        *now.lock().unwrap() = "2020-01-23T12:59:59+00:00"
-            .parse::<DateTime<Utc>>()
-            .unwrap();
+        *now.lock().unwrap() = "2020-01-23T12:59:59+00:00".parse::<Timestamp>().unwrap();
 
         write!(&mut writer.writer().unwrap(), "foobar").unwrap();
 
@@ -312,9 +307,7 @@ mod test {
         );
         *buf.lock().unwrap() = (false, vec![]);
 
-        *now.lock().unwrap() = "2020-01-23T13:00:00+00:00"
-            .parse::<DateTime<Utc>>()
-            .unwrap();
+        *now.lock().unwrap() = "2020-01-23T13:00:00+00:00".parse::<Timestamp>().unwrap();
         write!(&mut writer.writer().unwrap(), "quux").unwrap();
         let buf = files.assert_opened("/foo/bar/baz.2020-01-23-13");
         assert_eq!((true, Vec::from(&b"quux"[..])), buf.lock().unwrap().clone());
@@ -323,9 +316,7 @@ mod test {
     #[test]
     fn test_configured_rotation() {
         let now = Arc::new(Mutex::new(
-            "2020-01-23T12:34:56+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
+            "2020-01-23T12:34:56+00:00".parse::<Timestamp>().unwrap(),
         ));
 
         let time_source = {
@@ -344,7 +335,7 @@ mod test {
                 let files = files.clone();
                 Box::new(move |path| files.open(path))
             },
-            log_rotation: Duration::minutes(5),
+            log_rotation: SignedDuration::from_mins(5),
         };
 
         write!(&mut writer.writer().unwrap(), "foobar").unwrap();
@@ -356,9 +347,7 @@ mod test {
         );
         *buf.lock().unwrap() = (false, vec![]);
 
-        *now.lock().unwrap() = "2020-01-23T12:35:59+00:00"
-            .parse::<DateTime<Utc>>()
-            .unwrap();
+        *now.lock().unwrap() = "2020-01-23T12:35:59+00:00".parse::<Timestamp>().unwrap();
 
         write!(&mut writer.writer().unwrap(), "foobar").unwrap();
 
@@ -369,9 +358,7 @@ mod test {
         );
         *buf.lock().unwrap() = (false, vec![]);
 
-        *now.lock().unwrap() = "2020-01-23T12:39:00+00:00"
-            .parse::<DateTime<Utc>>()
-            .unwrap();
+        *now.lock().unwrap() = "2020-01-23T12:39:00+00:00".parse::<Timestamp>().unwrap();
         write!(&mut writer.writer().unwrap(), "quux").unwrap();
         let buf = files.assert_opened("/foo/bar/baz.2020-01-23-12-39");
         assert_eq!((true, Vec::from(&b"quux"[..])), buf.lock().unwrap().clone());
@@ -380,9 +367,7 @@ mod test {
     #[test]
     fn test_time_rollback() {
         let now = Arc::new(Mutex::new(
-            "2020-01-23T12:34:56+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
+            "2020-01-23T12:34:56+00:00".parse::<Timestamp>().unwrap(),
         ));
 
         let time_source = {
@@ -401,7 +386,7 @@ mod test {
                 let files = files.clone();
                 Box::new(move |path| files.open(path))
             },
-            log_rotation: Duration::minutes(60),
+            log_rotation: SignedDuration::from_hours(1),
         };
 
         write!(&mut writer.writer().unwrap(), "foobar").unwrap();
@@ -412,9 +397,7 @@ mod test {
             buf.lock().unwrap().clone()
         );
 
-        *now.lock().unwrap() = "2020-01-01T13:00:00+00:00"
-            .parse::<DateTime<Utc>>()
-            .unwrap();
+        *now.lock().unwrap() = "2020-01-01T13:00:00+00:00".parse::<Timestamp>().unwrap();
         write!(&mut writer.writer().unwrap(), "quux").unwrap();
         let buf = files.assert_opened("/foo/bar/baz.2020-01-01-13");
         assert_eq!((true, Vec::from(&b"quux"[..])), buf.lock().unwrap().clone());
@@ -423,9 +406,7 @@ mod test {
     #[test]
     fn flush_on_drop() {
         let now = Arc::new(Mutex::new(
-            "2020-01-01T00:00:00+00:00"
-                .parse::<DateTime<Utc>>()
-                .unwrap(),
+            "2020-01-01T00:00:00+00:00".parse::<Timestamp>().unwrap(),
         ));
 
         let time_source = { Box::new(move || *now.lock().unwrap()) };
@@ -441,7 +422,7 @@ mod test {
                 let files = files.clone();
                 Box::new(move |path| files.open(path))
             },
-            log_rotation: Duration::minutes(60),
+            log_rotation: SignedDuration::from_hours(1),
         };
 
         let mut handle = writer.writer().unwrap();
