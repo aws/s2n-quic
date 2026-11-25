@@ -80,11 +80,15 @@ fn datagrams_prioritized_alternates_between_packets() {
 
     let prioritized = prioritized.lock().unwrap();
     assert!(prioritized.len() > 1);
-    assert!(
-        prioritized.windows(2).any(|pair| pair[0] != pair[1]),
-        "datagrams_prioritized never changed across {} packets",
-        prioritized.len()
-    );
+    // The sender is only called for packets that can carry datagrams, so it
+    // must see the priority flip on every call. Packets that can't carry them,
+    // such as congestion-limited ACK-only packets, must not take a turn.
+    if let Some(i) = prioritized.windows(2).position(|pair| pair[0] == pair[1]) {
+        panic!(
+            "datagrams_prioritized did not alternate at packet {i} of {}",
+            prioritized.len()
+        );
+    }
 }
 
 /// Ensures a queued datagram doesn't wait for all of the pending stream data to be sent

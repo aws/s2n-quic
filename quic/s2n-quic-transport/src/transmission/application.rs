@@ -163,8 +163,12 @@ impl<Config: endpoint::Config> Normal<'_, Config> {
             self.ack_manager.on_transmit_complete(context);
         }
 
-        // Alternate between prioritizing datagrams or not each packet
-        *self.prioritize_datagrams = !prioritize_datagrams;
+        // Alternate between prioritizing datagrams or not each packet that can carry
+        // them. Packets that can't, such as congestion-limited ACK-only packets, don't
+        // take a turn, or the alternation would slip under congestion.
+        if can_transmit {
+            *self.prioritize_datagrams = !prioritize_datagrams;
+        }
     }
 
     // Sends control data frames
