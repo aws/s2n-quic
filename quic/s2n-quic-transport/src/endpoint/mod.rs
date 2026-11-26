@@ -317,6 +317,14 @@ impl<Cfg: Config> Endpoint<Cfg> {
         let connection_id_mapper =
             ConnectionIdMapper::new(config.context().random_generator, Cfg::ENDPOINT_TYPE);
 
+        let max_peers = config
+            .context()
+            .endpoint_limits
+            .max_peers()
+            .unwrap_or(DEFAULT_MAX_PEERS)
+            // a limit of zero would silently stop all stateless responses
+            .max(1);
+
         let endpoint = Self {
             config,
             connections: ConnectionContainer::new(acceptor_sender, connector_receiver),
@@ -325,11 +333,11 @@ impl<Cfg: Config> Endpoint<Cfg> {
             wakeup_queue: WakeupQueue::new(),
             close_handle,
             dequeued_wakeups: VecDeque::new(),
-            version_negotiator: version::Negotiator::default(),
-            retry_dispatch: retry::Dispatch::default(),
-            stateless_reset_dispatch: stateless_reset::Dispatch::default(),
+            version_negotiator: version::Negotiator::new(max_peers),
+            retry_dispatch: retry::Dispatch::new(max_peers),
+            stateless_reset_dispatch: stateless_reset::Dispatch::new(max_peers),
             connection_close_dispatch: connection_close::Dispatch::new(
-                DEFAULT_MAX_PEERS,
+                max_peers,
                 Cfg::ENDPOINT_TYPE,
             ),
             close_packet_buffer: Default::default(),

@@ -180,9 +180,19 @@ pub mod default {
     #[derive(Default)]
     pub struct Builder {
         max_inflight_handshake_limit: Option<usize>,
+        max_peers: Option<usize>,
     }
 
     impl Builder {
+        /// Sets the maximum number of peers the endpoint queues stateless responses for
+        /// (version negotiation, Retry, stateless reset and CONNECTION_CLOSE packets).
+        ///
+        /// If unset, the endpoint's built-in default is used. A value of 0 is treated as 1.
+        pub fn with_max_peers(mut self, max_peers: usize) -> Result<Self, Infallible> {
+            self.max_peers = Some(max_peers);
+            Ok(self)
+        }
+
         /// Sets limit on inflight handshakes
         pub fn with_inflight_handshake_limit(mut self, limit: usize) -> Result<Self, Infallible> {
             self.max_inflight_handshake_limit = Some(limit);
@@ -193,6 +203,7 @@ pub mod default {
         pub fn build(self) -> Result<Limits, Infallible> {
             Ok(Limits {
                 max_inflight_handshake_limit: self.max_inflight_handshake_limit,
+                max_peers: self.max_peers,
                 rate_limiter: [BasicRateLimiter::default(); THROTTLED_PORTS_LEN],
             })
         }
@@ -202,6 +213,8 @@ pub mod default {
     pub struct Limits {
         /// Maximum number of handshakes to allow before Retry packets are queued
         max_inflight_handshake_limit: Option<usize>,
+        /// Maximum number of peers to queue stateless responses for
+        max_peers: Option<usize>,
         rate_limiter: [BasicRateLimiter; THROTTLED_PORTS_LEN],
     }
 
@@ -235,6 +248,10 @@ pub mod default {
 
             Outcome::allow()
         }
+
+        fn max_peers(&self) -> Option<usize> {
+            self.max_peers
+        }
     }
 
     /// Default limit values are as non-intrusive as possible
@@ -242,6 +259,7 @@ pub mod default {
         fn default() -> Self {
             Self {
                 max_inflight_handshake_limit: None,
+                max_peers: None,
                 rate_limiter: [BasicRateLimiter::default(); THROTTLED_PORTS_LEN],
             }
         }
@@ -255,6 +273,19 @@ pub mod default {
             .build()
             .unwrap();
         assert_eq!(elp.max_inflight_handshake_limit, Some(100));
+    }
+
+    #[test]
+    fn max_peers_test() {
+        use super::Limiter;
+
+        assert_eq!(Limits::default().max_peers(), None);
+        let limits = Limits::builder()
+            .with_max_peers(7)
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(limits.max_peers(), Some(7));
     }
 
     #[test]

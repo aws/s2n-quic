@@ -119,4 +119,12 @@ pub trait Limiter: 'static + Send {
     /// }
     /// ```
     fn on_connection_attempt(&mut self, info: &ConnectionAttempt) -> Outcome;
+
+    /// Returns the maximum number of peers the endpoint will queue stateless responses
+    /// (version negotiation, Retry, stateless reset and CONNECTION_CLOSE packets) for.
+    ///
+    /// Returning `None` (the default) uses the endpoint's built-in limit.
+    fn max_peers(&self) -> Option<usize> {
+        None
+    }
 }
