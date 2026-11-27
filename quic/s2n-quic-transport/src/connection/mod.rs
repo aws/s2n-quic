@@ -28,7 +28,7 @@ pub(crate) mod transmission;
 pub(crate) use api_provider::{ConnectionApi, ConnectionApiProvider};
 pub(crate) use connection_container::{ConnectionContainer, ConnectionContainerIterationResult};
 pub(crate) use connection_id_mapper::{ConnectionIdMapper, OpenRegistry};
-pub(crate) use connection_interests::ConnectionInterests;
+pub(crate) use connection_interests::Interests;
 pub(crate) use connection_timers::ConnectionTimers;
 pub(crate) use connection_trait::ConnectionTrait as Trait;
 pub(crate) use internal_connection_id::{InternalConnectionId, InternalConnectionIdGenerator};

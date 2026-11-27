@@ -5,7 +5,7 @@
 
 use crate::{
     connection::{
-        self, connection_interests::ConnectionInterests, id::ConnectionInfo,
+        self, connection_interests::Interests, id::ConnectionInfo,
         internal_connection_id::InternalConnectionId, local_id_registry::LocalIdRegistrationError,
         ConnectionIdMapper, Parameters as ConnectionParameters, ProcessingError,
     },
@@ -71,7 +71,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     );
 
     /// Marks a connection which advertised itself as having completed the handshake
-    /// (via [`ConnectionInterests`]) as accepted. After this call the `accept` interest should
+    /// (via [`Interests`]) as accepted. After this call the `accept` interest should
     /// no longer be signalled.
     fn mark_as_accepted(&mut self);
 
@@ -231,7 +231,7 @@ pub trait ConnectionTrait: 'static + Send + Sized {
     ) -> Result<path::Id, DatagramDropReason>;
 
     /// Returns the Connections interests
-    fn interests(&self) -> ConnectionInterests;
+    fn interests(&self) -> Interests;
 
     /// Returns the QUIC version selected for the current connection
     fn quic_version(&self) -> u32;
