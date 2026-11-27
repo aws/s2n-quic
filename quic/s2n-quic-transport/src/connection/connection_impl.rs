@@ -10,9 +10,9 @@ use crate::{
         id::{ConnectionInfo, Interest},
         limits::Limits,
         local_id_registry::LocalIdRegistrationError,
-        ConnectionIdMapper, ConnectionInterests, ConnectionTimers, ConnectionTransmission,
-        ConnectionTransmissionContext, InternalConnectionId, Parameters as ConnectionParameters,
-        ProcessingError, Trait,
+        ConnectionIdMapper, ConnectionTimers, ConnectionTransmission,
+        ConnectionTransmissionContext, Interests, InternalConnectionId,
+        Parameters as ConnectionParameters, ProcessingError, Trait,
     },
     contexts::{ConnectionApiCallContext, ConnectionOnTransmitError},
     endpoint,
@@ -2168,12 +2168,12 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
         self.accept_state = AcceptState::Active;
     }
 
-    fn interests(&self) -> ConnectionInterests {
+    fn interests(&self) -> Interests {
         use crate::connection::finalization::Provider as _;
         use timer::Provider as _;
         use transmission::interest::Provider as _;
 
-        let mut interests = ConnectionInterests::default();
+        let mut interests = Interests::default();
 
         if self.accept_state == AcceptState::HandshakeCompleted {
             interests.accept = true;
@@ -2214,7 +2214,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
 
         if interests.finalization {
             // clear all of the other interests if we're finalizing
-            interests = ConnectionInterests {
+            interests = Interests {
                 finalization: true,
                 ..Default::default()
             };

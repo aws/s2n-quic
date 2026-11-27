@@ -9,7 +9,7 @@
 
 use super::{ConnectionApi, ConnectionApiProvider};
 use crate::{
-    connection::{self, Connection, ConnectionInterests, InternalConnectionId},
+    connection::{self, Connection, Interests, InternalConnectionId},
     endpoint::{
         self,
         connect::{self, ConnectionSender},
@@ -402,7 +402,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> InterestLists<C, L> {
         &mut self,
         accept_queue: &mut AcceptorSender,
         node: &ConnectionNode<C, L>,
-        interests: ConnectionInterests,
+        interests: Interests,
         result: ConnectionContainerIterationResult,
     ) -> Result<(), L::Error> {
         let id = node.internal_connection_id;
@@ -899,7 +899,7 @@ impl<C: connection::Trait, L: connection::Lock<C>> ConnectionContainer<C, L> {
         &mut self,
         connection_id: InternalConnectionId,
         func: F,
-    ) -> Option<(R, ConnectionInterests)>
+    ) -> Option<(R, Interests)>
     where
         F: FnOnce(&mut C) -> R,
     {

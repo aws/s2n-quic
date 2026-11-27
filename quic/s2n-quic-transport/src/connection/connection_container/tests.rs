@@ -4,7 +4,7 @@
 use super::*;
 use crate::{
     connection::{
-        self, connection_impl::AcceptState, connection_interests::ConnectionInterests,
+        self, connection_impl::AcceptState, connection_interests::Interests,
         internal_connection_id::InternalConnectionId, InternalConnectionIdGenerator,
         ProcessingError, Trait,
     },
@@ -46,7 +46,7 @@ thread_local! {
 struct TestConnection {
     accept_state: AcceptState,
     is_closed: bool,
-    interests: ConnectionInterests,
+    interests: Interests,
     close_timer: Timer,
 }
 
@@ -55,7 +55,7 @@ impl Default for TestConnection {
         Self {
             accept_state: AcceptState::Handshaking,
             is_closed: false,
-            interests: ConnectionInterests {
+            interests: Interests {
                 transmission: true,
                 ..Default::default()
             },
@@ -278,7 +278,7 @@ impl connection::Trait for TestConnection {
     }
 
     /// Returns the Connections interests
-    fn interests(&self) -> ConnectionInterests {
+    fn interests(&self) -> Interests {
         self.interests
     }
 
@@ -501,7 +501,7 @@ fn container_test() {
 
                         if *finalization {
                             // in the finalization state, that should be the only interest
-                            *i = ConnectionInterests {
+                            *i = Interests {
                                 finalization: true,
                                 ..Default::default()
                             };
@@ -546,7 +546,7 @@ fn container_test() {
                                 // The connection was closed immediately following the
                                 // handshake being completed and before it could be accepted
                                 conn.is_closed = true;
-                                conn.interests = ConnectionInterests {
+                                conn.interests = Interests {
                                     finalization: true,
                                     ..Default::default()
                                 };
