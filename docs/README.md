@@ -4,7 +4,7 @@
 
 ### User Guide
 
-If you are wanting to use `s2n-quic` in your application, you can find documentation on how to do that in the [user guide](user-guide.md).
+If you are wanting to use `s2n-quic` in your application, you can find documentation on how to do that in the [user guide](user-guide/installation.md).
 
 ### Developer Guide
 
